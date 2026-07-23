@@ -353,7 +353,8 @@ private extension ChatMessage {
             toolCalls: toolCalls,
             contentParts: contentParts,
             reasoning: cachedMessage.reasoning,
-            attachments: attachments
+            attachments: attachments,
+            turnTps: cachedMessage.turnTps
         )
     }
 }
