@@ -144,9 +144,9 @@ Read these from the upstream repo (in this order) and summarize key takeaways in
 7. `api/workspace.py` — file listing/reading endpoints
 8. `ARCHITECTURE.md` — narrative reference
 
-Also note: this repo uses a pinned, read-only upstream clone at `.codex-tmp/hermes-webui/` (clone it if missing: `git clone https://github.com/nesquena/hermes-webui .codex-tmp/hermes-webui`). **Read from that pinned copy first** when convenient. Cross-check against GitHub master only when you need to confirm something changed after the pin.
+The repo-local `.codex-tmp/hermes-webui/` is a read-only working checkout, not the compatibility pin. Before citing it, record its `git status` and HEAD SHA. `UPSTREAM_TESTED_SHA` names the last validated compatibility pin; use that exact commit for baseline contract validation.
 
-When in doubt about behavior, hit your running server with `curl` and inspect the JSON. **The wire format is the source of truth — not docs.**
+When in doubt about the current deployment, hit the running server with `curl` and inspect the JSON. **The wire format is the source of truth for that deployment; official docs are supplementary intent, not a replacement for wire/source verification.**
 
 ---
 
@@ -907,8 +907,9 @@ All requests use the existing authenticated `URLSession` cookie jar and configur
 custom proxy headers. Native requests do not add `Authorization`, `Origin`, or
 `Referer`. JSON routes are expected to return `application/json`; SSE is expected to
 return `text/event-stream`. Each implementation slice must re-check its exact request
-and response shape against the running server, then the latest official API docs, then
-the pinned upstream source, in the precedence required by `AGENTS.md`.
+and response shape against live wire data for the tested deployment and upstream source
+at a recorded SHA. Official API docs are supplementary intent and never override
+wire/source evidence, as required by `AGENTS.md`.
 
 | Capability | Verified method and path | Required contract notes |
 |---|---|---|
