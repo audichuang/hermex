@@ -108,10 +108,14 @@ After each completed implementation slice:
 
 1. Confirm XcodeBuildMCP sees the repo defaults.
 2. Run focused tests for the changed behavior when available.
-3. Run the full XCTest suite before asking for review or committing.
+3. Run the full XCTest suite after rebasing app code and before review/PR handoff.
 4. Build and launch the app in Simulator when UI or runtime behavior changed.
 5. Capture a screenshot or logs if the slice needs visual/runtime evidence.
 6. Let the owner run the manual simulator checklist for the slice.
+
+For transcript scroll/layout changes, XCTest is not sufficient runtime evidence. Use a
+normally signed, logged-in Simulator to cold-open and repeatedly switch among long
+cached, Markdown/code-heavy chats, then confirm CPU settles after loading.
 
 Agent/MCP flow:
 

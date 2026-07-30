@@ -89,10 +89,10 @@ bug here, reproduce it in the hermes-webui **web UI** against the same server:
    `issue/42-fix-session-search`).
 3. **Make the change**, keeping these repo hard rules (full list in
    [`AGENTS.md`](AGENTS.md)):
-   - **Tolerant decoding:** every `Codable` model uses optionals for fields the
-     server might add or rename — never crash on unknown fields.
-   - **Never invent API endpoints or JSON shapes** — verify against the pinned
-     upstream `hermes-webui` source or your own running server.
+   - **Tolerant decoding:** upstream response models tolerate missing, renamed,
+     unknown, and observed type-drifted fields, then validate required semantics.
+   - **Never invent API endpoints or JSON shapes** — verify live wire data and
+     upstream source at a recorded SHA; `UPSTREAM_TESTED_SHA` is the validated baseline.
    - **No new third-party dependencies** without approval.
 4. **Run the full test suite** (command above) and make sure it passes.
 5. **Open a PR** against `master` using the PR template — link the issue with
