@@ -33,6 +33,7 @@ node_modules/
 .sc/
 .claude/
 .codex/
+.codegraph/
 .cursor/
 
 # App packaging
