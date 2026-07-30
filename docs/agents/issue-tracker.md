@@ -39,7 +39,7 @@ GitHub Issues are the work queue; pull requests are the review and merge record.
 
 - Track upstream parity in the thin, always-current index `docs/agents/feature-gap-index.md` (route group → status + priority + safety + one-line note).
 - Create GitHub issues from a `roadmap` row in the index only when a specific gap becomes selected or ready for triage.
-- Validate request/response shapes **just-in-time** at implementation time against the pinned upstream copy (not pre-cached in the index); record the validated shape, handler name, and upstream commit in the issue/PR, and reference the archived catalog section when its notes still help.
+- Validate request/response shapes **just-in-time** against upstream source at a recorded SHA (not pre-cached in the index); use `UPSTREAM_TESTED_SHA` for the validated compatibility baseline, record the checked shape, handler, and commit in the issue/PR, and reference the archived catalog only when its notes still help.
 
 ## Skill Semantics
 
