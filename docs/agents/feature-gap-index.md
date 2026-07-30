@@ -10,7 +10,7 @@ that rotted between upstream releases.
   one-line note. Cheap to keep true.
 - The **volatile layer** (request/response shapes, handler names) is **not**
   cached here. It is validated **just-in-time**, when a feature is selected for
-  implementation, against the pinned upstream copy. See
+  implementation, against upstream source at a recorded SHA. See
   [Just-in-time research rule](#just-in-time-research-rule).
 - The old catalog (durable per-feature regression notes and validated shapes as
   of 2026-05-21) was retired during open-source prep (#347); shapes are always
@@ -67,8 +67,7 @@ sub-paths of a group. Do not reorder casually.
 | `/api/shutdown` | n-a | — | — | Server shutdown; admin-only |
 | `/api/auth/passkey` | n-a | — | — | WebAuthn passkey browser auth; mobile uses its own server-connection auth |
 | `/api/auth/passkeys` | n-a | — | — | WebAuthn passkey list; browser auth surface |
-| `/api/git-info` | roadmap | P3 | read | Git Info & Rollback — branch/status read |
-| `/api/git/` | roadmap | P3 | write | Git review & management — branches/diff/commit/stage/push/pull/discard/stash |
+| `/api/git/` | roadmap | P3 | write | Unimplemented Git review/management subroutes; implemented paths are derived live from `Endpoints.swift` |
 | `/api/rollback/` | roadmap | P3 | write | Git Info & Rollback — checkpoint list/diff/restore |
 | `/api/crons/history` | roadmap | P2 | read | Cron History / Recent Runs |
 | `/api/session/usage` | roadmap | P2 | read | Session Token Usage — mostly covered by the context ring |
@@ -126,11 +125,9 @@ during open-source prep, #347).
 
 Any upstream route group not in `Endpoints.swift` and not in the table above
 surfaces in the digest's **New / unclassified** bucket — the just-in-time triage
-queue. As of upstream `v0.51.338` this includes groups such as `prompts` (saved
-prompts library), `background`, `personalities`/`personality`, `default-model`,
-and `btw`. Leaving them uncatalogued is deliberate: they need an owner triage
-decision (priority + fit) before they earn a durable row here. Do not invent a
-classification for them without that decision.
+queue. The generated digest is authoritative; do not hand-list examples here because
+they become stale as endpoints ship. New groups need an owner triage decision before
+they earn a durable row here.
 
 ## Just-in-time research rule
 
@@ -139,7 +136,8 @@ implementation**, not pre-cached in this index. When you pick up a `roadmap` row
 
 1. Read the matching handler in `.codex-tmp/hermes-webui/api/routes.py` (and the
    WebUI caller in `.codex-tmp/hermes-webui/static/` when one exists) at the
-   pinned upstream commit. Never guess JSON shapes — see `AGENTS.md` hard rule 3.
+   recorded upstream SHA; use `UPSTREAM_TESTED_SHA` for the validated compatibility
+   baseline. Never guess JSON shapes — see `AGENTS.md` hard rule 1.
 2. Record the validated shape, handler name, and upstream commit **in the issue
    and the PR**, not in this index. The index stays thin.
 3. If the durable judgment changes (priority, safety, defer/skip), update this
@@ -177,7 +175,8 @@ We are implementing "[FEATURE NAME]".
 Before coding (just-in-time validation):
 - Create a branch with the prefix `issue/` (e.g. `issue/<n>-slug`).
 - Validate the endpoint and JSON shape in .codex-tmp/hermes-webui/api/routes.py
-  at the pinned upstream commit. Never guess shapes.
+  at a recorded SHA; use UPSTREAM_TESTED_SHA for the validated compatibility baseline.
+  Never guess shapes.
 - Check WebUI static callers when relevant.
 - Record the validated shape + handler + upstream commit in the issue/PR.
 

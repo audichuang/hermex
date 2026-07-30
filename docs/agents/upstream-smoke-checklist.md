@@ -22,8 +22,8 @@ top-to-bottom run sheet so nothing is invented at the keyboard.
 
 ## Setup
 
-Some steps below read from `.codex-tmp/hermes-webui` — the repo's pinned, read-only
-local clone of the public upstream. If it is missing, clone it first:
+Some steps below read from `.codex-tmp/hermes-webui` — the repo's read-only local
+checkout of the public upstream. If it is missing, clone it first:
 
 ```bash
 git clone https://github.com/nesquena/hermes-webui .codex-tmp/hermes-webui
