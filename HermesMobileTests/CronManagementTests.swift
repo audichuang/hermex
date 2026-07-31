@@ -343,6 +343,16 @@ final class CronManagementViewModelTests: XCTestCase {
         XCTAssertEqual(running.ok, false)
         XCTAssertNil(running.error)
 
+        // Lossy decoding: a type drift on `ok` must not fail the whole response,
+        // because `ok` is what decides the success path.
+        let drifted = try decoder.decode(
+            CronMutationResponse.self,
+            from: Data(#"{"ok": 0, "status": "already_running", "elapsed": "12"}"#.utf8)
+        )
+        XCTAssertEqual(drifted.ok, false)
+        XCTAssertEqual(drifted.elapsed, 12)
+        XCTAssertEqual(drifted.statusExplanation, "This task is already running.")
+
         // An ordinary failure still routes through `error`.
         let failed = try decoder.decode(
             CronMutationResponse.self,

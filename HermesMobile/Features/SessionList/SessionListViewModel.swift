@@ -873,7 +873,15 @@ final class SessionListViewModel {
     /// Creates a new session. `profile` pins it to a specific server profile (the "New Chat
     /// in <Profile>" App Intent, #339); nil keeps the legacy behavior of letting the server
     /// use its active profile (the "+" button / plain New Chat).
-    func createSession(modelContext: ModelContext? = nil, profile: String? = nil) async -> SessionSummary? {
+    /// `previousSessionID` is the chat this one is being started from, when there is
+    /// one. The server uses it to commit that session's memory before the new one
+    /// begins; omitting it skips that step entirely, so "+ New Chat" from an open
+    /// conversation would lose the handoff the web client performs.
+    func createSession(
+        modelContext: ModelContext? = nil,
+        profile: String? = nil,
+        previousSessionID: String? = nil
+    ) async -> SessionSummary? {
         isCreatingSession = true
         actionErrorMessage = nil
         lastError = nil
@@ -886,7 +894,8 @@ final class SessionListViewModel {
                 workspace: workspace,
                 model: nil,
                 modelProvider: nil,
-                profile: Self.nonEmpty(profile)
+                profile: Self.nonEmpty(profile),
+                previousSessionID: Self.nonEmpty(previousSessionID)
             )
 
             guard let sessionDetail = response.session else {

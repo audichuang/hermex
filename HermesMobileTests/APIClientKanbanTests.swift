@@ -62,19 +62,52 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertNil(absent.assignees)
     }
 
-    /// `board_stats()` nests counts as `{assignee: {status: count}}`; decoding a
-    /// flat `[String: Int]` type-mismatched and left it nil.
-    func testStatsDecodeNestedByAssigneeCounts() throws {
+    /// Both stats shapes are live and must decode. `board_stats()` nests counts as
+    /// `{assignee: {status: count}}`; the bridge's own fallback — taken when the
+    /// installed `hermes_cli` predates `board_stats`, which is what the pinned
+    /// `UPSTREAM_TESTED_SHA` produces — returns flat `{assignee: total}`.
+    /// PROJECT_SPEC requires tolerating the older shape.
+    func testStatsDecodeBothNestedAndFlatByAssigneeShapes() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-        let stats = try decoder.decode(KanbanStats.self, from: Data("""
+        let nested = try decoder.decode(KanbanStats.self, from: Data("""
         {"by_status": {"ready": 3}, "by_assignee": {"review": {"ready": 2, "done": 1}}}
         """.utf8))
+        XCTAssertEqual(nested.byStatus?["ready"], 3)
+        XCTAssertEqual(nested.byAssignee?["review"]?["ready"], 2)
+        XCTAssertEqual(nested.byAssignee?["review"]?["done"], 1)
+        XCTAssertNil(nested.byAssigneeTotals)
+        // The accessor UI reads sums the nested counts.
+        XCTAssertEqual(nested.assigneeTotals?["review"], 3)
 
-        XCTAssertEqual(stats.byStatus?["ready"], 3)
-        XCTAssertEqual(stats.byAssignee?["review"]?["ready"], 2)
-        XCTAssertEqual(stats.byAssignee?["review"]?["done"], 1)
+        let flat = try decoder.decode(KanbanStats.self, from: Data("""
+        {"by_status": {"ready": 3}, "by_assignee": {"review": 3, "unassigned": 1}}
+        """.utf8))
+        XCTAssertNil(flat.byAssignee)
+        XCTAssertEqual(flat.byAssigneeTotals?["review"], 3)
+        XCTAssertEqual(flat.byAssigneeTotals?["unassigned"], 1)
+        XCTAssertEqual(flat.assigneeTotals?["review"], 3)
+
+        let absent = try decoder.decode(KanbanStats.self, from: Data(#"{"by_status": {"ready": 1}}"#.utf8))
+        XCTAssertNil(absent.byAssignee)
+        XCTAssertNil(absent.byAssigneeTotals)
+        XCTAssertNil(absent.assigneeTotals)
+    }
+
+    /// The primary keys are the `Run` dataclass's own fields, but the previous
+    /// spellings stay accepted so a server reporting a run through some other
+    /// serializer still decodes.
+    func testDispatchRunAcceptsLegacyFieldNamesAsFallback() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let run = try decoder.decode(KanbanDispatchRun.self, from: Data("""
+        {"id": 5, "status": "finished", "worker": "worker-legacy", "finished_at": "2024-01-01T00:00:00Z"}
+        """.utf8))
+
+        XCTAssertEqual(run.workerID, "worker-legacy")
+        XCTAssertEqual(run.finishedAt, "2024-01-01T00:00:00Z")
     }
 
     func testCompatibilityHandshakeUsesOnlyVerifiedGETRequests() async throws {

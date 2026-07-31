@@ -40,11 +40,14 @@ struct CronMutationResponse: Decodable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        ok = try container.decodeIfPresent(Bool.self, forKey: .ok)
+        // Lossy throughout: a type drift on any one field must not fail the whole
+        // response. `ok` in particular decides the success path, so a server that
+        // starts sending 0/1 or "true" cannot be allowed to take the object with it.
+        ok = container.decodeLossyBoolIfPresent(forKey: .ok)
         job = try? container.decodeIfPresent(CronJob.self, forKey: .job)
-        error = try container.decodeIfPresent(String.self, forKey: .error)
-        status = try? container.decodeIfPresent(String.self, forKey: .status)
-        elapsed = try container.decodeFlexibleDoubleIfPresent(forKey: .elapsed)
+        error = container.decodeLossyStringIfPresent(forKey: .error)
+        status = container.decodeLossyStringIfPresent(forKey: .status)
+        elapsed = try? container.decodeFlexibleDoubleIfPresent(forKey: .elapsed)
     }
 }
 

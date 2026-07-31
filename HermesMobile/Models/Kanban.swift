@@ -702,16 +702,22 @@ struct KanbanDispatchRun: Decodable, Equatable, Sendable {
     /// that starts sending one needs no client change.
     let logTail: String?
 
-    /// The bridge returns `Run` straight from `asdict()`, so these are the
-    /// dataclass's own field names as seen after snake_case conversion:
-    /// `worker_pid` → `workerPid`, `ended_at` → `endedAt`. Spelling them
-    /// otherwise silently left every value nil.
+    /// The bridge returns `Run` straight from `asdict()`, so the primary names are
+    /// the dataclass's own fields as seen after snake_case conversion:
+    /// `worker_pid` → `workerPid`, `ended_at` → `endedAt`. Spelling them otherwise
+    /// silently left every value nil.
+    ///
+    /// The previous spellings are kept as fallbacks. Costing nothing to try, they
+    /// keep this tolerant of a server that reports the run through some other
+    /// serializer, which is the project's rule for every upstream-facing field.
     enum CodingKeys: String, CodingKey {
         case runID = "id"
         case alternateRunID = "runId"
         case status, outcome, summary, error, startedAt
         case finishedAt = "endedAt"
+        case alternateFinishedAt = "finishedAt"
         case workerID = "workerPid"
+        case alternateWorkerID = "worker"
         case logTail
     }
 
@@ -725,7 +731,9 @@ struct KanbanDispatchRun: Decodable, Equatable, Sendable {
         error = container.decodeLossyStringIfPresent(forKey: .error)
         startedAt = container.decodeLossyStringIfPresent(forKey: .startedAt)
         finishedAt = container.decodeLossyStringIfPresent(forKey: .finishedAt)
+            ?? container.decodeLossyStringIfPresent(forKey: .alternateFinishedAt)
         workerID = container.decodeLossyStringIfPresent(forKey: .workerID)
+            ?? container.decodeLossyStringIfPresent(forKey: .alternateWorkerID)
         logTail = container.decodeLossyStringIfPresent(forKey: .logTail)
     }
 
@@ -827,10 +835,24 @@ struct KanbanAppliedFilters: Decodable, Equatable, Sendable {
 struct KanbanStats: Decodable, Equatable, Sendable {
     let total: Int?
     let byStatus: [String: Int]?
-    /// Counts per assignee, broken down by status — `board_stats()` nests them
-    /// as `{assignee: {status: count}}`. Decoding this as a flat
-    /// `[String: Int]` type-mismatched and left it nil on every response.
+    /// Counts per assignee broken down by status — the shape `board_stats()` returns,
+    /// `{assignee: {status: count}}`. Nil when the server sent the flat shape.
     let byAssignee: [String: [String: Int]]?
+    /// Per-assignee totals — the shape the bridge's own fallback returns when the
+    /// installed `hermes_cli` predates `board_stats`
+    /// (`if hasattr(kb, "board_stats")` in `_stats_payload`, which is still present
+    /// upstream and is the shape the pinned `UPSTREAM_TESTED_SHA` produces).
+    /// Nil when the server sent the nested shape.
+    let byAssigneeTotals: [String: Int]?
+
+    /// Totals per assignee regardless of which shape arrived — nested counts are
+    /// summed. The single accessor UI should read, so a server on either side of the
+    /// `board_stats` split behaves the same.
+    var assigneeTotals: [String: Int]? {
+        if let byAssigneeTotals { return byAssigneeTotals }
+        guard let byAssignee else { return nil }
+        return byAssignee.mapValues { $0.values.reduce(0, +) }
+    }
 
     enum CodingKeys: String, CodingKey { case total, byStatus, byAssignee }
 
@@ -838,7 +860,13 @@ struct KanbanStats: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         total = container.decodeLossyIntIfPresent(forKey: .total)
         byStatus = try? container.decodeIfPresent([String: Int].self, forKey: .byStatus)
+        // Both shapes are live: nested from `board_stats()`, flat from the
+        // pre-`board_stats` fallback. Accepting only one silently decoded the other
+        // to nil, and PROJECT_SPEC requires stats to tolerate the older shape.
         byAssignee = try? container.decodeIfPresent([String: [String: Int]].self, forKey: .byAssignee)
+        byAssigneeTotals = byAssignee == nil
+            ? (try? container.decodeIfPresent([String: Int].self, forKey: .byAssignee))
+            : nil
     }
 }
 
