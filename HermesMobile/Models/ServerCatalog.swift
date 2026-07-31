@@ -681,9 +681,39 @@ struct ModelCatalogGroup: Identifiable, Equatable, Sendable {
 }
 
 extension ModelCatalogGroup {
+    var allModels: [ModelCatalogOption] {
+        deduplicated(models + extraModels)
+    }
+
+    var hasOverflowModels: Bool {
+        allModels.count > deduplicated(models).count
+    }
+
+    func pickerModels(searchText: String, showsAll: Bool) -> [ModelCatalogOption] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            return showsAll ? allModels : deduplicated(models)
+        }
+
+        if name.localizedCaseInsensitiveContains(query)
+            || (providerID?.localizedCaseInsensitiveContains(query) ?? false) {
+            return allModels
+        }
+
+        return allModels.filter { option in
+            option.displayName.localizedCaseInsensitiveContains(query)
+                || option.id.localizedCaseInsensitiveContains(query)
+                || (option.providerID?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
     var slashAutocompleteModels: [ModelCatalogOption] {
+        allModels
+    }
+
+    private func deduplicated(_ options: [ModelCatalogOption]) -> [ModelCatalogOption] {
         var seen = Set<String>()
-        return (models + extraModels).filter { seen.insert($0.id).inserted }
+        return options.filter { seen.insert($0.id).inserted }
     }
 }
 

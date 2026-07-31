@@ -41,7 +41,7 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(response.displayName(for: "@openai:gpt-5.4"), "GPT-5.4")
     }
 
-    func testModelsResponseKeepsExtraModelsForSlashAutocompleteOnly() throws {
+    func testModelsResponseKeepsExtraModelsForCompleteCatalog() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let response = try decoder.decode(
@@ -75,6 +75,32 @@ final class ModelCatalogTests: XCTestCase {
             ["@nous:anthropic/claude-opus-4.7", "@nous:qwen/qwen3-coder"]
         )
         XCTAssertEqual(response.displayName(for: "@nous:qwen/qwen3-coder"), "Qwen3 Coder (via Nous)")
+    }
+
+    func testPickerModelsKeepsCuratedDefaultSearchesOverflowShowsAllAndDeduplicates() {
+        let curated = ModelCatalogOption(
+            id: "@nous:anthropic/claude-opus-4.7",
+            displayName: "Claude Opus 4.7 (via Nous)",
+            providerID: "nous"
+        )
+        let overflow = ModelCatalogOption(
+            id: "@nous:deepseek/deepseek-v3.2",
+            displayName: "DeepSeek V3.2 (via Nous)",
+            providerID: "nous"
+        )
+        let group = ModelCatalogGroup(
+            id: "nous",
+            name: "Nous Portal",
+            providerID: "nous",
+            models: [curated],
+            extraModels: [curated, overflow]
+        )
+
+        XCTAssertEqual(group.pickerModels(searchText: "", showsAll: false), [curated])
+        XCTAssertEqual(group.pickerModels(searchText: "deepseek", showsAll: false), [overflow])
+        XCTAssertEqual(group.pickerModels(searchText: "", showsAll: true), [curated, overflow])
+        XCTAssertEqual(group.allModels, [curated, overflow])
+        XCTAssertTrue(group.hasOverflowModels)
     }
 
     // MARK: - /api/models/live (issue #236)

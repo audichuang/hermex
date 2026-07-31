@@ -15,6 +15,7 @@ struct ComposerModelPickerSheet: View {
     @State private var customModelID = ""
     @State private var customProviderID = ""
     @State private var sectionExpansion = ComposerModelPickerSectionExpansionState()
+    @State private var showingAllGroupIDs: Set<String> = []
 
     private let currentCustomGroupID = "current-custom-model"
     private let savedCustomGroupID = "saved-custom-models"
@@ -139,7 +140,12 @@ struct ComposerModelPickerSheet: View {
     }
 
     private func modelGroupDisclosure(_ group: ModelCatalogGroup) -> some View {
-        DisclosureGroup(
+        let visibleModels = group.pickerModels(
+            searchText: searchText,
+            showsAll: showingAllGroupIDs.contains(group.id)
+        )
+
+        return DisclosureGroup(
             isExpanded: Binding(
                 get: { sectionExpansion.isExpanded(groupID: group.id) },
                 set: { isExpanded in
@@ -152,8 +158,20 @@ struct ComposerModelPickerSheet: View {
                     .padding(.leading, 10)
 
                 LazyVStack(spacing: 1) {
-                    ForEach(group.models, id: \.self) { option in
+                    ForEach(visibleModels, id: \.self) { option in
                         modelOptionRow(option, allowsDelete: group.id == savedCustomGroupID)
+                    }
+
+                    if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       group.hasOverflowModels,
+                       !showingAllGroupIDs.contains(group.id) {
+                        Button("Show all models") {
+                            showingAllGroupIDs.insert(group.id)
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 29)
+                        .padding(.vertical, 9)
                     }
                 }
             }
@@ -165,7 +183,7 @@ struct ComposerModelPickerSheet: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text("\(group.models.count)")
+                Text("\(group.allModels.count)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
 
@@ -261,25 +279,11 @@ struct ComposerModelPickerSheet: View {
 
     private var filteredModelGroups: [ModelCatalogGroup] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseGroups: [ModelCatalogGroup]
-
-        if query.isEmpty {
-            baseGroups = modelGroups
-        } else {
-            baseGroups = modelGroups.compactMap { group in
-                let filteredModels = group.models.filter { option in
-                    matches(option, query: query)
-                }
-
-                guard !filteredModels.isEmpty else { return nil }
-
-                return ModelCatalogGroup(
-                    id: group.id,
-                    name: group.name,
-                    providerID: group.providerID,
-                    models: filteredModels
-                )
-            }
+        let baseGroups = modelGroups.filter { group in
+            !group.pickerModels(
+                searchText: query,
+                showsAll: showingAllGroupIDs.contains(group.id)
+            ).isEmpty
         }
 
         return customModelGroups + baseGroups
@@ -315,7 +319,7 @@ struct ComposerModelPickerSheet: View {
     }
 
     private var storedCustomOptions: [ModelCatalogOption] {
-        let catalogKeys = Set(modelGroups.flatMap(\.models).map(\.favoriteKey))
+        let catalogKeys = Set(modelGroups.flatMap(\.allModels).map(\.favoriteKey))
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         var seen = Set<ModelFavoriteKey>()
         var result: [ModelCatalogOption] = []
@@ -351,7 +355,7 @@ struct ComposerModelPickerSheet: View {
 
     private var selectedCustomOption: ModelCatalogOption? {
         guard let selectedModelID, !selectedModelID.isEmpty else { return nil }
-        let catalogOptions = modelGroups.flatMap(\.models)
+        let catalogOptions = modelGroups.flatMap(\.allModels)
         if catalogOptions.firstMatchingSelection(
             modelID: selectedModelID,
             providerID: selectedModelProviderID

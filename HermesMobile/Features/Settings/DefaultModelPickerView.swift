@@ -18,6 +18,7 @@ struct DefaultModelPickerView: View {
     @State private var isSaving = false
     @State private var isSavingCustom = false
     @State private var saveError: String?
+    @State private var showingAllGroupIDs: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -106,14 +107,27 @@ struct DefaultModelPickerView: View {
             }
         } else {
             ForEach(filteredGroups) { group in
-                ModelPickerCard(title: group.name) {
+                let visibleModels = group.pickerModels(
+                    searchText: searchText,
+                    showsAll: showingAllGroupIDs.contains(group.id)
+                )
+
+                ModelPickerCard(title: "\(group.name) (\(group.allModels.count))") {
                     VStack(spacing: 0) {
-                        ForEach(Array(group.models.enumerated()), id: \.element.id) { index, model in
+                        ForEach(Array(visibleModels.enumerated()), id: \.element.id) { index, model in
                             modelRow(model)
 
-                            if index < group.models.count - 1 {
+                            if index < visibleModels.count - 1 {
                                 Divider()
                             }
+                        }
+                    }
+
+                    if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       group.hasOverflowModels,
+                       !showingAllGroupIDs.contains(group.id) {
+                        ModelPickerButton(String(localized: "Show all models")) {
+                            showingAllGroupIDs.insert(group.id)
                         }
                     }
                 }
@@ -122,23 +136,11 @@ struct DefaultModelPickerView: View {
     }
 
     private var filteredGroups: [ModelCatalogGroup] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return groups }
-
-        return groups.compactMap { group in
-            let matchingModels = group.models.filter { model in
-                model.displayName.lowercased().contains(query)
-                    || model.id.lowercased().contains(query)
-                    || group.name.lowercased().contains(query)
-            }
-
-            guard !matchingModels.isEmpty else { return nil }
-            return ModelCatalogGroup(
-                id: group.id,
-                name: group.name,
-                providerID: group.providerID,
-                models: matchingModels
-            )
+        groups.filter { group in
+            !group.pickerModels(
+                searchText: searchText,
+                showsAll: showingAllGroupIDs.contains(group.id)
+            ).isEmpty
         }
     }
 

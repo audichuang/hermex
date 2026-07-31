@@ -68,13 +68,22 @@ final class ModelFavoritesStoreTests: XCTestCase {
     func testVisibleFavoriteOptionsPreservesFavoriteOrderAndKeepsMissingModels() {
         let gpt = ModelCatalogOption(id: "gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
         let claude = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude Sonnet 4.5", providerID: "anthropic")
+        let deepSeek = ModelCatalogOption(id: "deepseek-v3.2", displayName: "DeepSeek V3.2", providerID: "nous")
         let missing = ModelCatalogOption(id: "missing-model", displayName: "missing-model", providerID: "local")
         let groups = [
             ModelCatalogGroup(id: "openai", name: "OpenAI", providerID: "openai", models: [gpt]),
-            ModelCatalogGroup(id: "anthropic", name: "Anthropic", providerID: "anthropic", models: [claude])
+            ModelCatalogGroup(id: "anthropic", name: "Anthropic", providerID: "anthropic", models: [claude]),
+            ModelCatalogGroup(
+                id: "nous",
+                name: "Nous",
+                providerID: "nous",
+                models: [],
+                extraModels: [deepSeek]
+            )
         ]
         let favoriteKeys = [
             claude.favoriteKey,
+            deepSeek.favoriteKey,
             missing.favoriteKey,
             gpt.favoriteKey
         ]
@@ -84,7 +93,7 @@ final class ModelFavoritesStoreTests: XCTestCase {
             favoriteKeys: favoriteKeys
         )
 
-        XCTAssertEqual(visibleOptions, [claude, missing, gpt])
+        XCTAssertEqual(visibleOptions, [claude, deepSeek, missing, gpt])
     }
 
     func testRecordRecentMovesModelToFrontAndLimitsResults() {
