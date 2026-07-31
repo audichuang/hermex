@@ -1,9 +1,48 @@
 import AVFoundation
+import SwiftUI
 import UIKit
 import XCTest
 @testable import HermesMobile
 
 final class ComposerVoiceDraftComposerTests: XCTestCase {
+    @MainActor
+    func testChatComposerDisablesAutomaticCapitalization() async throws {
+        let controller = UIHostingController(
+            rootView: ComposerTextInputView(
+                text: .constant(""),
+                isFocused: .constant(false),
+                inputHeight: .constant(42),
+                measuredHeight: .constant(42),
+                isDisabled: false,
+                isKeyboardSendEnabled: false,
+                verticalPadding: 10,
+                onKeyboardSend: {},
+                onPasteFileProviders: { _ in },
+                onPasteFileURLs: { _ in },
+                onPasteImageProviders: { _ in },
+                onPasteImages: { _ in }
+            )
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.beginAppearanceTransition(true, animated: false)
+        controller.endAppearanceTransition()
+        defer {
+            controller.beginAppearanceTransition(false, animated: false)
+            controller.endAppearanceTransition()
+            window.rootViewController = nil
+            window.isHidden = true
+        }
+
+        controller.loadViewIfNeeded()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+
+        let textView = try XCTUnwrap(controller.view.firstDescendant(of: UITextView.self))
+        XCTAssertEqual(textView.autocapitalizationType, .none)
+    }
+
     func testComposerSendKeyboardCommandIsDiscoverableCommandReturn() {
         XCTAssertEqual(ComposerKeyboardCommand.title, "Send Message")
         XCTAssertEqual(ComposerKeyboardCommand.input, "\r")
@@ -270,6 +309,15 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
                 onDeviceSupported: true
             )
         )
+    }
+}
+
+private extension UIView {
+    func firstDescendant<T: UIView>(of type: T.Type) -> T? {
+        if let match = self as? T {
+            return match
+        }
+        return subviews.lazy.compactMap { $0.firstDescendant(of: type) }.first
     }
 }
 
