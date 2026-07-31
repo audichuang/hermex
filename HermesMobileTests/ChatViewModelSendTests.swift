@@ -3627,6 +3627,149 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testSuccessfulReconnectClearsPreviousRecoveryError() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var statusRequestCount = 0
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            case "/api/chat/stream/status":
+                statusRequestCount += 1
+                if statusRequestCount == 1 {
+                    throw URLError(.timedOut)
+                }
+                return apiTestJSONResponse("""
+                {
+                  "active": true,
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "active_stream_id": "stream-123",
+                    "messages": []
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        viewModel.suspendStreamForBackground()
+
+        await viewModel.reconnectStreamIfNeeded()
+        XCTAssertNotNil(viewModel.sendErrorMessage)
+
+        await viewModel.reconnectStreamIfNeeded()
+        XCTAssertNil(viewModel.sendErrorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertEqual(statusRequestCount, 2)
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
+    }
+
+    @MainActor
+    func testHealthyConnectionDoesNotClearLaterStreamError() throws {
+        let viewModel = try makeViewModel { _ in
+            throw URLError(.badURL)
+        }
+        let message = URLError(.timedOut).localizedDescription
+
+        viewModel.streamCoordinatorDidReceiveRecoveryError(URLError(.timedOut))
+        viewModel.streamCoordinatorDidReceiveErrorMessage(message)
+        viewModel.streamCoordinatorDidConfirmHealthyConnection()
+
+        XCTAssertEqual(viewModel.sendErrorMessage, message)
+    }
+
+    @MainActor
+    func testHealthyConnectionClearsRecoveryWarningWithoutClearingUnrelatedError() throws {
+        let viewModel = try makeViewModel { _ in
+            throw URLError(.badURL)
+        }
+        let unrelatedError = URLError(.cannotConnectToHost)
+
+        viewModel.streamCoordinatorDidReceiveRecoveryError(URLError(.timedOut))
+        viewModel.attachmentCoordinatorDidFail(unrelatedError)
+        viewModel.streamCoordinatorDidConfirmHealthyConnection()
+
+        XCTAssertNil(viewModel.sendErrorMessage)
+        XCTAssertEqual((viewModel.lastError as? URLError)?.code, unrelatedError.code)
+    }
+
+    @MainActor
+    func testValidStreamEventClearsPreviousRecoveryWarning() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse(
+                #"{"session_id":"session-abc","stream_id":"stream-123"}"#,
+                for: request
+            )
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.token("Working."))
+        viewModel.streamCoordinatorDidReceiveRecoveryError(URLError(.timedOut))
+        XCTAssertNotNil(viewModel.sendErrorMessage)
+
+        streamClient.emit(.token("Still working."))
+
+        XCTAssertNil(viewModel.sendErrorMessage)
+        XCTAssertNil(viewModel.lastError)
+    }
+
+    @MainActor
+    func testSuccessfulStaleStatusPollClearsPreviousRecoveryWarningWithoutReconnect() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var statusRequestCount = 0
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-123"}"#,
+                    for: request
+                )
+            case "/api/chat/stream/status":
+                statusRequestCount += 1
+                return apiTestJSONResponse(
+                    #"{"active":true,"stream_id":"stream-123"}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.token("Working."))
+        viewModel.streamCoordinatorDidReceiveRecoveryError(URLError(.timedOut))
+
+        await viewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(6))
+
+        XCTAssertNil(viewModel.sendErrorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertEqual(statusRequestCount, 1)
+        XCTAssertEqual(streamClient.startedURLs.count, 1)
+    }
+
+    @MainActor
     func testReconnectAfterBackgroundRefreshesTranscriptBeforeReattachingActiveStream() async throws {
         let streamClient = SpySSEStreamingClient()
         var didRequestStatus = false

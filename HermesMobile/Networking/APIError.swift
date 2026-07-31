@@ -31,13 +31,15 @@ enum APIError: LocalizedError {
             case 404:
                 return String(localized: "The server endpoint was not found. Check that the URL points to a Hermes Web UI server.")
             case 408:
-                return String(localized: "The server took too long to respond. Check that the Mac is awake and the server is running.")
+                return String(localized: "The server took too long to respond. Check that the server host and connection are available.")
             case 429:
                 return String(localized: "The server is receiving too many requests. Wait a moment, then try again.")
             case 500:
                 return String(localized: "The Hermes server hit an internal error. Check the server logs, then try again.")
-            case 502, 503, 504:
+            case 502, 503:
                 return String(localized: "The server or Cloudflare tunnel is unavailable. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected.")
+            case 504:
+                return String(localized: "The server took too long to respond. Check that the server host and connection are available.")
             default:
                 if let message = Self.serverErrorMessage(from: body) {
                     return String(localized: "Server returned HTTP \(statusCode): \(message)")
@@ -143,7 +145,7 @@ private extension APIError {
 
         switch urlError.code {
         case .timedOut:
-            return String(localized: "The server did not respond in time. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected.")
+            return String(localized: "The server did not respond in time. Check that the server host is available, hermes-webui is running, and the connection is working.")
         case .cannotFindHost, .dnsLookupFailed:
             return String(localized: "Could not find that server. Check the URL and Cloudflare DNS hostname.")
         case .cannotConnectToHost, .networkConnectionLost:

@@ -222,10 +222,19 @@ final class ChatViewModel {
     var activeStreamID: String? { streamCoordinator.activeStreamID }
     var activeStreamRecoveryState: ActiveStreamRecoveryState { streamCoordinator.recoveryState }
     private(set) var errorMessage: String?
-    private(set) var sendErrorMessage: String?
+    private(set) var sendErrorMessage: String? {
+        didSet {
+            streamRecoveryErrorMessage = nil
+            streamRecoveryOwnsLastError = false
+        }
+    }
+    @ObservationIgnored private var streamRecoveryErrorMessage: String?
+    @ObservationIgnored private var streamRecoveryOwnsLastError = false
     private(set) var messageActionErrorMessage: String?
     private(set) var cacheErrorMessage: String?
-    private(set) var lastError: Error?
+    private(set) var lastError: Error? {
+        didSet { streamRecoveryOwnsLastError = false }
+    }
     private(set) var displayTitle: String
     private(set) var listeningMessageID: String?
     private(set) var streamingScrollTrigger = 0
@@ -4954,6 +4963,20 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {
         lastError = error
         sendErrorMessage = error.localizedDescription
+        streamRecoveryErrorMessage = sendErrorMessage
+        streamRecoveryOwnsLastError = true
+    }
+
+    func streamCoordinatorDidConfirmHealthyConnection() {
+        guard let streamRecoveryErrorMessage,
+              sendErrorMessage == streamRecoveryErrorMessage
+        else { return }
+
+        let shouldClearLastError = streamRecoveryOwnsLastError
+        sendErrorMessage = nil
+        if shouldClearLastError {
+            lastError = nil
+        }
     }
 
     func streamCoordinatorDidStartConnection(isReplay: Bool) {
