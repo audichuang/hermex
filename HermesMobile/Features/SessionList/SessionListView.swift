@@ -312,6 +312,7 @@ struct SessionListView: View {
                 initialAttachments: route.initialAttachments,
                 autoStartsVoiceInput: route.autoStartsVoiceInput,
                 profileName: route.profileName,
+                previousSessionID: navigationState.lastSelectedSessionID,
                 server: server,
                 viewModel: viewModel,
                 onAPIError: authManager.handleAPIError,
@@ -1296,6 +1297,12 @@ private struct PendingNewChatView: View {
     let initialAttachments: [SharedAttachmentImport]
     let autoStartsVoiceInput: Bool
     let profileName: String?
+    /// The chat this new one is being started from, when there is one, so the server
+    /// commits that session's memory first (`prev_session_id`). Captured when the
+    /// route opens — by then `navigationState.selectedSessionID` is already nil,
+    /// because `select(_: PendingNewChatRoute)` clears it while leaving
+    /// `lastSelectedSessionID` intact.
+    let previousSessionID: String?
 
     @State private var createdSession: SessionSummary?
     @State private var draftMessage = ""
@@ -1309,6 +1316,7 @@ private struct PendingNewChatView: View {
         initialAttachments: [SharedAttachmentImport] = [],
         autoStartsVoiceInput: Bool = false,
         profileName: String? = nil,
+        previousSessionID: String? = nil,
         server: URL,
         viewModel: SessionListViewModel,
         onAPIError: @escaping (Error) -> Void,
@@ -1321,6 +1329,7 @@ private struct PendingNewChatView: View {
         self.initialAttachments = initialAttachments
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
+        self.previousSessionID = previousSessionID
         _draftMessage = State(initialValue: initialDraft)
     }
 
@@ -1435,7 +1444,11 @@ private struct PendingNewChatView: View {
 
         didStartCreation = true
         creationErrorMessage = nil
-        let session = await viewModel.createSession(modelContext: modelContext, profile: profileName)
+        let session = await viewModel.createSession(
+            modelContext: modelContext,
+            profile: profileName,
+            previousSessionID: previousSessionID
+        )
         guard !Task.isCancelled else { return }
         if let lastError = viewModel.lastError {
             onAPIError(lastError)

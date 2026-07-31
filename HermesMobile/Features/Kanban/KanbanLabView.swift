@@ -945,7 +945,10 @@ actor KanbanLabClient: KanbanDataClient {
 
     func kanbanStats(board: String) throws -> KanbanStats {
         if scenario == .partial { throw APIError.http(statusCode: 404, body: nil) }
-        return decode(#"{"by_status":{"triage":1,"todo":1,"ready":2,"running":1,"blocked":1,"done":1},"by_assignee":{"builder":4,"reviewer":2,"unassigned":1}}"#)
+        // `by_assignee` is nested per status upstream (`board_stats()`), not flat —
+        // a flat fixture decodes to nil through the model's `try?` and would let
+        // the Lab silently pass on a shape the server never sends.
+        return decode(#"{"by_status":{"triage":1,"todo":1,"ready":2,"running":1,"blocked":1,"done":1},"by_assignee":{"builder":{"ready":2,"running":1,"done":1},"reviewer":{"triage":1,"todo":1},"unassigned":{"blocked":1}}}"#)
     }
 
     func kanbanAssignees(board: String) throws -> KanbanAssigneeHistory {
@@ -1006,10 +1009,14 @@ actor KanbanLabClient: KanbanDataClient {
                 "payload": ["status": "ready", "secret": "discarded"], "created_at": 1_700_000_000
             ]],
             "links": isEmpty ? ["parents": [], "children": []] : ["parents": ["CARD-1"], "children": ["CARD-7"]],
+            // Field names mirror the upstream `Run` dataclass exactly, since the
+            // bridge serializes it with `asdict()`. An earlier fixture invented
+            // `worker`/`finished_at`, which matched the client's (wrong) keys and
+            // so hid a real mismatch from every test that used it.
             "runs": isEmpty ? [] : [[
                 "id": "run-fixture", "status": "finished", "outcome": "success",
-                "summary": "Validated the focused suite.", "worker": "worker-fixture",
-                "started_at": 1_699_999_500, "finished_at": 1_700_000_000
+                "summary": "Validated the focused suite.", "worker_pid": 4242,
+                "started_at": 1_699_999_500, "ended_at": 1_700_000_000
             ]],
             "read_only": false
         ]

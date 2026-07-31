@@ -297,6 +297,62 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertNotNil(viewModel.lastError)
     }
 
+    /// "+ New Chat" opened from a conversation must hand that conversation's id to
+    /// the server as `prev_session_id`, so its memory is committed before the new
+    /// session starts. The web client does this whenever a session is open; omitting
+    /// it skipped the handoff entirely.
+    @MainActor
+    func testCreateSessionForwardsPreviousSessionIDForMemoryHandoff() async throws {
+        let context = try makeContext()
+        var forwardedPreviousID: String??
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
+            case "/api/session/new":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                forwardedPreviousID = body["prev_session_id"] as? String
+                return apiTestJSONResponse(#"{"session": {"session_id": "new-123"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let created = await viewModel.createSession(
+            modelContext: context,
+            previousSessionID: "session-previous"
+        )
+
+        XCTAssertEqual(created?.sessionId, "new-123")
+        XCTAssertEqual(forwardedPreviousID, "session-previous")
+    }
+
+    /// Without a previous chat the key stays off the wire entirely — upstream reads it
+    /// by presence, and a blank value must not be sent as if it were a session.
+    @MainActor
+    func testCreateSessionOmitsPreviousSessionIDWhenThereIsNone() async throws {
+        let context = try makeContext()
+        var sawKey = true
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
+            case "/api/session/new":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                sawKey = body.keys.contains("prev_session_id")
+                return apiTestJSONResponse(#"{"session": {"session_id": "new-123"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        _ = await viewModel.createSession(modelContext: context, previousSessionID: "   ")
+
+        XCTAssertFalse(sawKey, "A blank previous id must be omitted, not sent.")
+    }
+
     @MainActor
     func testCreateSessionReturnsEmptyPlaceholderWithoutInsertingIntoSessionList() async throws {
         let context = try makeContext()

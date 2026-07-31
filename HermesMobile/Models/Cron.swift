@@ -8,6 +8,47 @@ struct CronMutationResponse: Decodable, Equatable {
     let ok: Bool?
     let job: CronJob?
     let error: String?
+    /// Machine-readable refusal reason. `POST /api/crons/run` answers a
+    /// double-run with HTTP 200 and `{"ok": false, "status": "already_running",
+    /// "elapsed": …}` and **no** `error` key, so a caller that only reads
+    /// `error` shows a generic failure for what is really a benign "already
+    /// working on it".
+    let status: String?
+    /// Seconds the in-flight run has been going, sent alongside
+    /// `status == "already_running"`.
+    let elapsed: Double?
+
+    /// A specific message for the refusals the server explains via `status`
+    /// instead of `error`, or nil when `error` (or a generic message) should be
+    /// used instead.
+    ///
+    /// Deliberately does not quote `elapsed`: the detail view already shows a
+    /// running job's elapsed time, so restating it here would need a localized
+    /// format string for no added information.
+    var statusExplanation: String? {
+        guard status == "already_running" else { return nil }
+        return String(localized: "This task is already running.")
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case job
+        case error
+        case status
+        case elapsed
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Lossy throughout: a type drift on any one field must not fail the whole
+        // response. `ok` in particular decides the success path, so a server that
+        // starts sending 0/1 or "true" cannot be allowed to take the object with it.
+        ok = container.decodeLossyBoolIfPresent(forKey: .ok)
+        job = try? container.decodeIfPresent(CronJob.self, forKey: .job)
+        error = container.decodeLossyStringIfPresent(forKey: .error)
+        status = container.decodeLossyStringIfPresent(forKey: .status)
+        elapsed = try? container.decodeFlexibleDoubleIfPresent(forKey: .elapsed)
+    }
 }
 
 struct CronStatusResponse: Decodable, Equatable {

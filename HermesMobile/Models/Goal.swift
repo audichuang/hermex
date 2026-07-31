@@ -81,6 +81,83 @@ struct SubmittedGoal: Decodable, Equatable {
     }
 }
 
+/// Payload of the `goal` and `goal_continue` SSE frames emitted mid-turn by
+/// `api/streaming.py` while a goal is driving the conversation.
+///
+/// The frames are not uniform, which is why every field here is optional:
+/// - the first `goal` frame ("evaluating") carries only
+///   `{session_id, state, message, message_key}` — no `decision`;
+/// - a second `goal` frame follows only when the evaluation produced a message,
+///   and that one does carry `decision` plus `state` of "continuing" / "idle";
+/// - `goal_continue` carries the prompt that advances the goal one more turn,
+///   sent as `continuation_prompt` and mirrored in `text`, and no `state`.
+///
+/// Other frames (`metering`, `title`, …) interleave with these before
+/// `stream_end`, so nothing here may assume a fixed ordering.
+///
+/// Decoded by `SSEEventDecoder` with a plain `JSONDecoder`, so every key is
+/// spelled out in snake_case rather than relying on a conversion strategy.
+struct GoalStreamEvent: Decodable, Equatable {
+    let sessionId: String?
+    let state: String?
+    let message: String?
+    let messageKey: String?
+    let continuationPrompt: String?
+    let text: String?
+    let decision: GoalDecision?
+
+    /// The prompt to resend so the goal advances, or nil when this frame does
+    /// not carry one. Upstream mirrors the value across `continuation_prompt`,
+    /// `text`, and `decision.continuation_prompt`; any one of them is
+    /// authoritative, and a blank value counts as absent.
+    var continuationPromptText: String? {
+        for candidate in [continuationPrompt, text, decision?.continuationPrompt] {
+            let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case state
+        case message
+        case messageKey = "message_key"
+        case continuationPrompt = "continuation_prompt"
+        case text
+        case decision
+    }
+
+    init(
+        sessionId: String? = nil,
+        state: String? = nil,
+        message: String? = nil,
+        messageKey: String? = nil,
+        continuationPrompt: String? = nil,
+        text: String? = nil,
+        decision: GoalDecision? = nil
+    ) {
+        self.sessionId = sessionId
+        self.state = state
+        self.message = message
+        self.messageKey = messageKey
+        self.continuationPrompt = continuationPrompt
+        self.text = text
+        self.decision = decision
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
+        state = container.decodeLossyStringIfPresent(forKey: .state)
+        message = container.decodeLossyStringIfPresent(forKey: .message)
+        messageKey = container.decodeLossyStringIfPresent(forKey: .messageKey)
+        continuationPrompt = container.decodeLossyStringIfPresent(forKey: .continuationPrompt)
+        text = container.decodeLossyStringIfPresent(forKey: .text)
+        decision = try? container.decodeIfPresent(GoalDecision.self, forKey: .decision)
+    }
+}
+
 struct GoalDecision: Decodable, Equatable {
     let status: String?
     let shouldContinue: Bool?

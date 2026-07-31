@@ -234,7 +234,7 @@ struct KanbanConfiguration: Decodable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         columns = try? container.decodeIfPresent([String].self, forKey: .columns)
-        assignees = try? container.decodeIfPresent([String].self, forKey: .assignees)
+        assignees = decodeAssigneeNames(from: container, forKey: .assignees)
         defaultTenant = container.decodeLossyStringIfPresent(forKey: .defaultTenant)
         laneByProfile = container.decodeLossyBoolIfPresent(forKey: .laneByProfile)
         includeArchivedByDefault = container.decodeLossyBoolIfPresent(forKey: .includeArchivedByDefault)
@@ -696,13 +696,28 @@ struct KanbanDispatchRun: Decodable, Equatable, Sendable {
     let startedAt: String?
     let finishedAt: String?
     let workerID: String?
+    /// Not emitted by any upstream version we know of: the bridge serializes the
+    /// `Run` dataclass verbatim (`_obj_dict` → `asdict`) and it has no log field.
+    /// Kept because the detail view already renders it when present, so a server
+    /// that starts sending one needs no client change.
     let logTail: String?
 
+    /// The bridge returns `Run` straight from `asdict()`, so the primary names are
+    /// the dataclass's own fields as seen after snake_case conversion:
+    /// `worker_pid` → `workerPid`, `ended_at` → `endedAt`. Spelling them otherwise
+    /// silently left every value nil.
+    ///
+    /// The previous spellings are kept as fallbacks. Costing nothing to try, they
+    /// keep this tolerant of a server that reports the run through some other
+    /// serializer, which is the project's rule for every upstream-facing field.
     enum CodingKeys: String, CodingKey {
         case runID = "id"
         case alternateRunID = "runId"
-        case status, outcome, summary, error, startedAt, finishedAt
-        case workerID = "worker"
+        case status, outcome, summary, error, startedAt
+        case finishedAt = "endedAt"
+        case alternateFinishedAt = "finishedAt"
+        case workerID = "workerPid"
+        case alternateWorkerID = "worker"
         case logTail
     }
 
@@ -716,7 +731,9 @@ struct KanbanDispatchRun: Decodable, Equatable, Sendable {
         error = container.decodeLossyStringIfPresent(forKey: .error)
         startedAt = container.decodeLossyStringIfPresent(forKey: .startedAt)
         finishedAt = container.decodeLossyStringIfPresent(forKey: .finishedAt)
+            ?? container.decodeLossyStringIfPresent(forKey: .alternateFinishedAt)
         workerID = container.decodeLossyStringIfPresent(forKey: .workerID)
+            ?? container.decodeLossyStringIfPresent(forKey: .alternateWorkerID)
         logTail = container.decodeLossyStringIfPresent(forKey: .logTail)
     }
 
@@ -818,7 +835,24 @@ struct KanbanAppliedFilters: Decodable, Equatable, Sendable {
 struct KanbanStats: Decodable, Equatable, Sendable {
     let total: Int?
     let byStatus: [String: Int]?
-    let byAssignee: [String: Int]?
+    /// Counts per assignee broken down by status — the shape `board_stats()` returns,
+    /// `{assignee: {status: count}}`. Nil when the server sent the flat shape.
+    let byAssignee: [String: [String: Int]]?
+    /// Per-assignee totals — the shape the bridge's own fallback returns when the
+    /// installed `hermes_cli` predates `board_stats`
+    /// (`if hasattr(kb, "board_stats")` in `_stats_payload`, which is still present
+    /// upstream and is the shape the pinned `UPSTREAM_TESTED_SHA` produces).
+    /// Nil when the server sent the nested shape.
+    let byAssigneeTotals: [String: Int]?
+
+    /// Totals per assignee regardless of which shape arrived — nested counts are
+    /// summed. The single accessor UI should read, so a server on either side of the
+    /// `board_stats` split behaves the same.
+    var assigneeTotals: [String: Int]? {
+        if let byAssigneeTotals { return byAssigneeTotals }
+        guard let byAssignee else { return nil }
+        return byAssignee.mapValues { $0.values.reduce(0, +) }
+    }
 
     enum CodingKeys: String, CodingKey { case total, byStatus, byAssignee }
 
@@ -826,7 +860,13 @@ struct KanbanStats: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         total = container.decodeLossyIntIfPresent(forKey: .total)
         byStatus = try? container.decodeIfPresent([String: Int].self, forKey: .byStatus)
-        byAssignee = try? container.decodeIfPresent([String: Int].self, forKey: .byAssignee)
+        // Both shapes are live: nested from `board_stats()`, flat from the
+        // pre-`board_stats` fallback. Accepting only one silently decoded the other
+        // to nil, and PROJECT_SPEC requires stats to tolerate the older shape.
+        byAssignee = try? container.decodeIfPresent([String: [String: Int]].self, forKey: .byAssignee)
+        byAssigneeTotals = byAssignee == nil
+            ? (try? container.decodeIfPresent([String: Int].self, forKey: .byAssignee))
+            : nil
     }
 }
 
@@ -837,8 +877,48 @@ struct KanbanAssigneeHistory: Decodable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        assignees = try? container.decodeIfPresent([String].self, forKey: .assignees)
+        assignees = decodeAssigneeNames(from: container, forKey: .assignees)
     }
+}
+
+/// Decodes an assignee list from either shape upstream uses.
+///
+/// `/api/kanban/assignees` and the `assignees` key of `/api/kanban/config` are
+/// built from `kb.known_assignees()`, which yields
+/// `[{"name": …, "on_disk": …, "counts": …}]`. The board snapshot's own
+/// `assignees` key is a plain `[String]`. Reading only the string form made the
+/// richer responses type-mismatch and decode to nil, dropping every assignee
+/// who had no unarchived task yet — exactly the people `known_assignees()`
+/// exists to surface. Accepting both shapes also keeps a mixed-version server
+/// working.
+private func decodeAssigneeNames<Key: CodingKey>(
+    from container: KeyedDecodingContainer<Key>,
+    forKey key: Key
+) -> [String]? {
+    if let names = try? container.decodeIfPresent([String].self, forKey: key) {
+        return names
+    }
+
+    guard let rows = try? container.decodeIfPresent([KanbanAssigneeRow].self, forKey: key) else {
+        return nil
+    }
+
+    let names = rows.compactMap { $0.name?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    return names.isEmpty ? nil : names
+}
+
+/// One row of the object form of an assignee list. Only `name` is read; the
+/// remaining keys (`on_disk`, `counts`) have no consumer in the app yet.
+private struct KanbanAssigneeRow: Decodable {
+    let name: String?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = container.decodeLossyStringIfPresent(forKey: .name)
+    }
+
+    enum CodingKeys: String, CodingKey { case name }
 }
 
 enum KanbanStaleness: Equatable, Sendable {
