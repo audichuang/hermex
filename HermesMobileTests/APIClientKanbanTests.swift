@@ -2,6 +2,81 @@ import XCTest
 @testable import HermesMobile
 
 final class APIClientKanbanTests: APIClientTestCase {
+    /// The bridge serializes the upstream `Run` dataclass with `asdict()`, so the
+    /// wire keys are its own field names: `worker_pid` and `ended_at`. The client
+    /// previously looked for `worker` and `finished_at`, leaving both nil on every
+    /// response — and the old test fixture used the invented names, so nothing
+    /// caught it.
+    func testDispatchRunDecodesUpstreamRunDataclassFieldNames() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let run = try decoder.decode(KanbanDispatchRun.self, from: Data("""
+        {
+          "id": 17,
+          "task_id": "CARD-9",
+          "status": "finished",
+          "outcome": "success",
+          "summary": "Ran the focused suite.",
+          "worker_pid": 4242,
+          "started_at": 1699999500,
+          "ended_at": 1700000000,
+          "error": null
+        }
+        """.utf8))
+
+        XCTAssertEqual(run.runID, "17")
+        XCTAssertEqual(run.workerID, "4242")
+        XCTAssertEqual(run.startedAt, "1699999500")
+        XCTAssertEqual(run.finishedAt, "1700000000")
+        XCTAssertEqual(run.outcome, "success")
+    }
+
+    /// `known_assignees()` returns `[{name, on_disk, counts}]`. Reading only the
+    /// plain-string form type-mismatched and dropped the whole list, hiding every
+    /// assignee who had no unarchived task yet.
+    func testAssigneeListsDecodeFromBothStringAndObjectShapes() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let objectForm = try decoder.decode(KanbanAssigneeHistory.self, from: Data("""
+        {"assignees": [
+          {"name": "review", "on_disk": true, "counts": {"ready": 2}},
+          {"name": "fresh-profile", "on_disk": true, "counts": {}}
+        ]}
+        """.utf8))
+        XCTAssertEqual(objectForm.assignees, ["review", "fresh-profile"])
+
+        let stringForm = try decoder.decode(
+            KanbanAssigneeHistory.self,
+            from: Data(#"{"assignees": ["review"]}"#.utf8)
+        )
+        XCTAssertEqual(stringForm.assignees, ["review"])
+
+        let configuration = try decoder.decode(KanbanConfiguration.self, from: Data("""
+        {"columns": ["ready"], "assignees": [{"name": "review", "on_disk": false}]}
+        """.utf8))
+        XCTAssertEqual(configuration.assignees, ["review"])
+
+        let absent = try decoder.decode(KanbanAssigneeHistory.self, from: Data("{}".utf8))
+        XCTAssertNil(absent.assignees)
+    }
+
+    /// `board_stats()` nests counts as `{assignee: {status: count}}`; decoding a
+    /// flat `[String: Int]` type-mismatched and left it nil.
+    func testStatsDecodeNestedByAssigneeCounts() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let stats = try decoder.decode(KanbanStats.self, from: Data("""
+        {"by_status": {"ready": 3}, "by_assignee": {"review": {"ready": 2, "done": 1}}}
+        """.utf8))
+
+        XCTAssertEqual(stats.byStatus?["ready"], 3)
+        XCTAssertEqual(stats.byAssignee?["review"]?["ready"], 2)
+        XCTAssertEqual(stats.byAssignee?["review"]?["done"], 1)
+    }
+
     func testCompatibilityHandshakeUsesOnlyVerifiedGETRequests() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.httpMethod, "GET")
@@ -617,8 +692,9 @@ final class APIClientKanbanTests: APIClientTestCase {
     {"changed":true,"latest_event_id":7,"read_only":false,"columns":[{"name":"triage","tasks":[{"id":"card-1","title":"Safe read","status":"triage"}]}]}
     """
 
+    // `by_assignee` is nested per status upstream (`board_stats()`), not flat.
     private static let statsJSON = """
-    {"total":3,"by_status":{"ready":2,"done":1},"by_assignee":{"work":3}}
+    {"total":3,"by_status":{"ready":2,"done":1},"by_assignee":{"work":{"ready":2,"done":1}}}
     """
 
     private static let detailJSON = """
@@ -631,7 +707,7 @@ final class APIClientKanbanTests: APIClientTestCase {
       "comments":[{"id":7,"task_id":"CARD-1","author":"review","body":"Ship it","created_at":1700000000}],
       "events":[{"id":8,"task_id":"CARD-1","kind":"status","payload":{"status":"ready","secret":"discarded"},"created_at":1700000001}],
       "links":{"parents":["CARD-0"],"children":["CARD-2"]},
-      "runs":[{"run_id":"run-1","status":"finished","worker":"worker-private","future":true}],
+      "runs":[{"run_id":"run-1","status":"finished","worker_pid":9182,"future":true}],
       "read_only":false,
       "future_envelope_field":{"nested":true}
     }

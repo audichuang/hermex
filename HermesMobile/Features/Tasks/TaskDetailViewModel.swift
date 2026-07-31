@@ -149,7 +149,12 @@ final class TaskDetailViewModel {
         do {
             let response = try await action(jobID)
             guard response.ok != false else {
-                actionErrorMessage = response.error ?? String(localized: "Could not update task.")
+                // `statusExplanation` first: a refusal explained via `status`
+                // (e.g. Run Now on an already-running job) carries no `error`
+                // key, and reporting it as a generic failure hid the real reason.
+                actionErrorMessage = response.statusExplanation
+                    ?? response.error
+                    ?? String(localized: "Could not update task.")
                 return false
             }
 

@@ -439,6 +439,69 @@ final class SSEClientTests: XCTestCase {
         XCTAssertEqual(event, .transportError("The stream returned a malformed completion event."))
     }
 
+    func testGoalContinueEventDecodesUpstreamPayload() {
+        // Shape taken from api/streaming.py's `put('goal_continue', {...})`.
+        let event = SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: #"{"session_id": "session-abc", "continuation_prompt": "Next: run the tests.", "text": "Next: run the tests.", "message": "Continuing goal…", "message_key": "goal_continuing", "message_args": [], "decision": {"should_continue": true, "continuation_prompt": "Next: run the tests."}}"#
+        )
+
+        guard case let .goalContinue(payload) = event else {
+            return XCTFail("Expected .goalContinue, got \(event)")
+        }
+        XCTAssertEqual(payload.sessionId, "session-abc")
+        XCTAssertEqual(payload.continuationPromptText, "Next: run the tests.")
+        XCTAssertEqual(payload.decision?.shouldContinue, true)
+    }
+
+    /// Upstream mirrors the prompt across three keys. Any single one surviving is
+    /// enough to keep the goal advancing.
+    func testGoalContinueFallsBackToDecisionPromptWhenTopLevelKeysAreAbsent() {
+        let event = SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: #"{"session_id": "session-abc", "decision": {"should_continue": true, "continuation_prompt": "Only in decision."}}"#
+        )
+
+        guard case let .goalContinue(payload) = event else {
+            return XCTFail("Expected .goalContinue, got \(event)")
+        }
+        XCTAssertEqual(payload.continuationPromptText, "Only in decision.")
+    }
+
+    /// A blank prompt must not read as a continuation — queueing an empty turn
+    /// would send an empty message to the server.
+    func testGoalContinueWithBlankPromptExposesNoContinuation() {
+        let event = SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: #"{"session_id": "session-abc", "continuation_prompt": "   ", "text": ""}"#
+        )
+
+        guard case let .goalContinue(payload) = event else {
+            return XCTFail("Expected .goalContinue, got \(event)")
+        }
+        XCTAssertNil(payload.continuationPromptText)
+    }
+
+    func testGoalStatusEventDecodesWithoutAContinuationPrompt() {
+        let event = SSEEventDecoder.decode(
+            eventType: "goal",
+            data: #"{"session_id": "session-abc", "state": "evaluating", "message": "Evaluating goal progress…", "message_key": "goal_evaluating_progress"}"#
+        )
+
+        guard case let .goalStatus(payload) = event else {
+            return XCTFail("Expected .goalStatus, got \(event)")
+        }
+        XCTAssertEqual(payload.state, "evaluating")
+        XCTAssertEqual(payload.message, "Evaluating goal progress…")
+        XCTAssertNil(payload.continuationPromptText)
+    }
+
+    func testMalformedGoalContinuePayloadStillDecodesAsAnEmptyGoalFrame() {
+        let event = SSEEventDecoder.decode(eventType: "goal_continue", data: "{")
+
+        XCTAssertEqual(event, .goalContinue(GoalStreamEvent()))
+    }
+
     func testMalformedDoneSessionPayloadSurfacesTransportError() {
         let event = SSEEventDecoder.decode(eventType: "done", data: #"{"session":1,"usage":{}}"#)
 
