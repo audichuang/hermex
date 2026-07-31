@@ -73,6 +73,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         await coordinator.reconnectIfNeeded()
 
         XCTAssertEqual(delegate.loadMessagesCount, 1)
+        XCTAssertEqual(delegate.healthyConnectionCount, 1)
         XCTAssertFalse(coordinator.isConnectionSuspended)
         XCTAssertEqual(streamClient.startedURLs.count, 2)
         let resumedURL = try XCTUnwrap(streamClient.startedURLs.last)
@@ -303,8 +304,10 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     func testStaleDetectionWaitsForCheckingIntervalThenPollsStatus() async throws {
         var statusRequests = 0
         let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
         let coordinator = makeCoordinator(
             streamClient: streamClient,
+            delegate: delegate,
             timing: ChatStreamCoordinatorTiming(
                 checkingInterval: 5,
                 reconnectInterval: 18,
@@ -327,6 +330,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(5.1))
         XCTAssertEqual(statusRequests, 1)
+        XCTAssertEqual(delegate.healthyConnectionCount, 2)
         XCTAssertEqual(coordinator.recoveryState, .checking)
     }
 
@@ -568,6 +572,16 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testProgressConfirmsHealthyConnection() {
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(delegate: delegate)
+
+        coordinator.markProgress()
+
+        XCTAssertEqual(delegate.healthyConnectionCount, 1)
+    }
+
+    @MainActor
     private func makeCoordinator(
         streamClient: CoordinatorSpySSEStreamingClient? = nil,
         liveActivityManager: CoordinatorSpyLiveActivityManager? = nil,
@@ -631,6 +645,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var finishCount = 0
     private(set) var errorMessages: [String] = []
     private(set) var recoveryErrors: [String] = []
+    private(set) var healthyConnectionCount = 0
     private(set) var startConnectionReplayValues: [Bool] = []
     private(set) var resetRecoveryCount = 0
     private(set) var tokens: [String] = []
@@ -697,6 +712,10 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {
         recoveryErrors.append(error.localizedDescription)
+    }
+
+    func streamCoordinatorDidConfirmHealthyConnection() {
+        healthyConnectionCount += 1
     }
 
     func streamCoordinatorDidStartConnection(isReplay: Bool) {

@@ -51,6 +51,7 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorDidFinishStream()
     func streamCoordinatorDidReceiveErrorMessage(_ message: String)
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error)
+    func streamCoordinatorDidConfirmHealthyConnection()
     func streamCoordinatorDidStartConnection(isReplay: Bool)
     func streamCoordinatorDidResetRecoveryState()
 
@@ -244,6 +245,7 @@ final class ChatStreamCoordinator {
         do {
             let response = try await client.chatStreamStatus(streamID: activeStreamID)
             guard self.activeStreamID == activeStreamID, isConnectionSuspended else { return }
+            delegate?.streamCoordinatorDidConfirmHealthyConnection()
 
             if response.active == true {
                 await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
@@ -296,6 +298,8 @@ final class ChatStreamCoordinator {
 
         do {
             let response = try await client.chatStreamStatus(streamID: expectedStreamID)
+            guard activeStreamID == expectedStreamID, !isConnectionSuspended else { return }
+            delegate?.streamCoordinatorDidConfirmHealthyConnection()
             guard response.active == false else { return }
 
             await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
@@ -371,6 +375,7 @@ final class ChatStreamCoordinator {
         lastProgressDate = now
         lastRecoveryStatusCheckDate = nil
         recoveryState = .idle
+        delegate?.streamCoordinatorDidConfirmHealthyConnection()
     }
 
     func clearReplayConnection() {
@@ -513,6 +518,7 @@ final class ChatStreamCoordinator {
         do {
             let response = try await client.chatStreamStatus(streamID: expectedStreamID)
             guard activeStreamID == expectedStreamID, !isConnectionSuspended else { return }
+            delegate?.streamCoordinatorDidConfirmHealthyConnection()
 
             if response.active == false {
                 await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)

@@ -207,8 +207,19 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
 
         XCTAssertEqual(
             error.localizedDescription,
-            "The server did not respond in time. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected."
+            "The server did not respond in time. Check that the server host is available, hermes-webui is running, and the connection is working."
         )
+    }
+
+    func testHTTPTimeoutUsesGenericHostGuidance() {
+        for statusCode in [408, 504] {
+            let error = APIError.http(statusCode: statusCode, body: nil)
+
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The server took too long to respond. Check that the server host and connection are available."
+            )
+        }
     }
 
     func testAppTransportSecurityErrorUsesHTTPGuidance() async throws {
