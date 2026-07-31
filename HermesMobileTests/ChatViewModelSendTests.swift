@@ -3627,6 +3627,82 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testSuccessfulSteeringConfirmationReplacesAndRestartsDismissalTimer() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/chat/steer":
+                return apiTestJSONResponse(#"{"accepted":true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start a long response")
+        XCTAssertTrue(didStart)
+        let steer = try XCTUnwrap(SlashCommandCatalog.command(named: "steer"))
+
+        let firstResult = await viewModel.executeSlashCommand(steer, args: "Prefer tests")
+        if case .executed(let message) = firstResult, let message {
+            viewModel.pinLocalNoticeMessage(message)
+        }
+        XCTAssertEqual(viewModel.pinnedLocalNotices, ["Steering hint delivered."])
+
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        let secondResult = await viewModel.submitStreamingMessage("Keep it concise", behavior: .steer)
+        if case .executed(let message) = secondResult, let message {
+            viewModel.pinLocalNoticeMessage(message)
+        }
+        XCTAssertEqual(viewModel.pinnedLocalNotices, ["Steering hint delivered."])
+
+        try await Task.sleep(nanoseconds: 1_300_000_000)
+        XCTAssertEqual(viewModel.pinnedLocalNotices, ["Steering hint delivered."])
+
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
+    }
+
+    @MainActor
+    func testResponseCompletionDiscardsSteeringConfirmationButStreamEndFlushesOtherNotices() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/chat/steer":
+                return apiTestJSONResponse(#"{"accepted":true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start a long response")
+        XCTAssertTrue(didStart)
+        viewModel.pinLocalNoticeMessage("Goal set.")
+
+        let result = await viewModel.submitStreamingMessage("Prefer tests", behavior: .steer)
+        if case .executed(let message) = result, let message {
+            viewModel.pinLocalNoticeMessage(message)
+        }
+        streamClient.emit(.done(DoneStreamEvent()))
+
+        XCTAssertEqual(viewModel.pinnedLocalNotices, ["Goal set."])
+        XCTAssertTrue(viewModel.messages.filter { $0.role == "local_notice" }.isEmpty)
+
+        streamClient.emit(.streamEnd)
+
+        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
+        XCTAssertEqual(
+            viewModel.messages.filter { $0.role == "local_notice" }.compactMap(\.content),
+            ["Goal set."]
+        )
+    }
+
+    @MainActor
     func testReconnectAfterBackgroundRefreshesTranscriptBeforeReattachingActiveStream() async throws {
         let streamClient = SpySSEStreamingClient()
         var didRequestStatus = false
@@ -4790,17 +4866,30 @@ final class ChatViewModelSendTests: XCTestCase {
     func testReopeningActiveStreamRestoresLiveSnapshotBeforeBufferedTailArrives() async throws {
         let originalStreamClient = SpySSEStreamingClient()
         let originalViewModel = try makeViewModel(streamClient: originalStreamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            case "/api/chat/steer":
+                return apiTestJSONResponse(#"{"accepted":true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
             }
-            """, for: request)
         }
 
         let didStart = await originalViewModel.sendMessage("Tell me a tiger story")
         XCTAssertTrue(didStart)
+        originalViewModel.pinLocalNoticeMessage("Goal set.")
+        _ = await originalViewModel.submitStreamingMessage("Keep it concise", behavior: .steer)
+        XCTAssertEqual(
+            originalViewModel.pinnedLocalNotices,
+            ["Goal set.", "Steering hint delivered."]
+        )
 
         originalStreamClient.emit(.reasoning("Planning the tiger story."))
         originalStreamClient.emit(.toolStarted(ToolStreamEvent(
@@ -4876,6 +4965,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(reopenedViewModel.liveToolCalls.first?.isCompleted, true)
         XCTAssertEqual(reopenedViewModel.messages.compactMap(\.role), ["user", "assistant"])
         XCTAssertEqual(reopenedViewModel.messages.last?.content, "Once Raj reached the river. ")
+        XCTAssertEqual(reopenedViewModel.pinnedLocalNotices, ["Goal set."])
 
         reopenedStreamClient.emit(.token("The snare broke."))
 

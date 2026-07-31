@@ -199,6 +199,7 @@ enum ActiveStreamRecoveryState: Equatable {
 @Observable
 final class ChatViewModel {
     private static let messagePageLimit = 50
+    private static let steeringConfirmationNotice = String(localized: "Steering hint delivered.")
 
     private(set) var messages: [ChatMessage] = [] {
         didSet { recomputeDisplayedTranscriptMessages() }
@@ -237,6 +238,7 @@ final class ChatViewModel {
     private(set) var cacheFirstReconcileScrollToken = 0
     private var hasPrimedInitialCachedMessages = false
     @ObservationIgnored private var pendingStreamingScrollTriggerTask: Task<Void, Never>?
+    @ObservationIgnored private var steeringConfirmationDismissalTask: Task<Void, Never>?
     @ObservationIgnored private var pendingAssistantTokenChunks: [String] = []
     @ObservationIgnored private var pendingReasoningChunks: [String] = []
     @ObservationIgnored private var pendingStreamingContentFlushTask: Task<Void, Never>?
@@ -517,6 +519,7 @@ final class ChatViewModel {
         backgroundPollTask?.cancel()
         pendingStreamingScrollTriggerTask?.cancel()
         pendingStreamingContentFlushTask?.cancel()
+        steeringConfirmationDismissalTask?.cancel()
         listenPreparationTask?.cancel()
         listenPlaybackTicker?.invalidate()
     }
@@ -1256,6 +1259,7 @@ final class ChatViewModel {
             completedReasoningGroups = []
             liveToolCalls = []
             liveReasoningText = ""
+            dismissSteeringConfirmation()
             pinnedLocalNotices = []
             toolCallAnchorMessageID = nil
             reasoningAnchorMessageID = nil
@@ -1292,6 +1296,7 @@ final class ChatViewModel {
                         completedReasoningGroups = []
                         liveToolCalls = []
                         liveReasoningText = ""
+                        dismissSteeringConfirmation()
                         pinnedLocalNotices = []
                         toolCallAnchorMessageID = nil
                         reasoningAnchorMessageID = nil
@@ -2287,6 +2292,7 @@ final class ChatViewModel {
         completedReasoningGroups = []
         liveToolCalls = []
         liveReasoningText = ""
+        dismissSteeringConfirmation()
         pinnedLocalNotices = []
         streamingAssistantMessageID = nil
         toolCallAnchorMessageID = nil
@@ -2406,7 +2412,8 @@ final class ChatViewModel {
         do {
             let response = try await client.steerChat(sessionID: sessionID, text: message)
             if response.accepted == true {
-                return .executed(message: String(localized: "Steering hint delivered."))
+                showSteeringConfirmation()
+                return .executed(message: nil)
             }
         } catch {
             lastError = error
@@ -3193,6 +3200,24 @@ final class ChatViewModel {
         pinnedLocalNotices.append(trimmed)
     }
 
+    private func showSteeringConfirmation() {
+        dismissSteeringConfirmation()
+        pinnedLocalNotices.append(Self.steeringConfirmationNotice)
+        steeringConfirmationDismissalTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+
+            self.steeringConfirmationDismissalTask = nil
+            self.pinnedLocalNotices.removeAll { $0 == Self.steeringConfirmationNotice }
+        }
+    }
+
+    private func dismissSteeringConfirmation() {
+        steeringConfirmationDismissalTask?.cancel()
+        steeringConfirmationDismissalTask = nil
+        pinnedLocalNotices.removeAll { $0 == Self.steeringConfirmationNotice }
+    }
+
     private func appendLocalMessage(_ text: String, role: String, idPrefix: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -3707,7 +3732,9 @@ final class ChatViewModel {
                 reasoningAnchorMessageID: reasoningAnchorMessageID,
                 contextWindowSnapshot: contextWindowSnapshot,
                 localAttachmentPreviews: attachmentCoordinator.localAttachmentPreviews,
-                pinnedLocalNotices: pinnedLocalNotices
+                pinnedLocalNotices: pinnedLocalNotices.filter {
+                    $0 != Self.steeringConfirmationNotice
+                }
             ),
             server: server,
             sessionID: sessionID,
@@ -3749,7 +3776,9 @@ final class ChatViewModel {
         )
         contextWindowSnapshot = contextWindowSnapshot ?? snapshot.contextWindowSnapshot
         attachmentCoordinator.mergeLocalAttachmentPreviews(snapshot.localAttachmentPreviews)
-        pinnedLocalNotices = snapshot.pinnedLocalNotices
+        pinnedLocalNotices = snapshot.pinnedLocalNotices.filter {
+            $0 != Self.steeringConfirmationNotice
+        }
         scheduleStreamingScrollTrigger()
         return snapshot.activeStreamLastEventID
     }
@@ -4453,6 +4482,7 @@ final class ChatViewModel {
     }
 
     private func flushPinnedLocalNoticesToTranscript() {
+        dismissSteeringConfirmation()
         let notices = pinnedLocalNotices
         pinnedLocalNotices.removeAll()
         for notice in notices {
@@ -4938,6 +4968,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     func streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: Bool) {
+        dismissSteeringConfirmation()
         responseCompletionNeedsTranscriptRefresh = needsTranscriptRefresh
         responseCompletionHapticTrigger += 1
     }
