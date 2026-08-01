@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermex Full UI Acceptance"
+  short_description: "Run exhaustive Hermex Simulator and server acceptance"
+  default_prompt: "Use $hermex-full-ui-acceptance to perform a full UI acceptance check on the exact Hermex commit under review."
