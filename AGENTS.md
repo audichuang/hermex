@@ -103,7 +103,7 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 - Behavior changes ship with focused tests for that behavior.
 - Async flows wait on expectations and scripted fixtures, never on sleeps or polling. A test that needs a timeout to pass is wrong.
 - UI or runtime changes get one integrated pass in the real app: build, install, and launch a signed Debug build (`build_run_sim`), then hand the maintainer a short manual simulator test plan. Capture screenshots or logs when they are evidence. Subagents do not launch their own builds.
-- Physical-device builds require gitignored `Config/Local.xcconfig` in the exact worktree. Verify it exists, never commit it, and stop any Xcode Run session before terminal `devicectl` install or launch.
+- Physical-device artifacts must come from the exact commit under review. If the main worktree is dirty, use an isolated worktree with gitignored `Config/Local.xcconfig`; verify it remains ignored, and stop any Xcode Run session before terminal `devicectl` install or launch.
 - Run `scripts/check-swift-file-sizes` when a production Swift file grows. It is a warning, not a gate: use it to notice a missing seam, not to force unrelated refactors into the current issue.
 
 ## Pull requests

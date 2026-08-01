@@ -105,6 +105,8 @@ Xcode does not need to be open. The exact worktree being built must contain the 
 gitignored `Config/Local.xcconfig`. Git does not copy ignored files; a clone-local hook
 may sync it, but hooks are not versioned, so verify with `test -f Config/Local.xcconfig`.
 Stop any active Xcode Run session for the device before using `devicectl`.
+Keep the device unlocked during install and launch; a locked device can block the
+remote services used by the CLI.
 
 Build a normally signed Debug app:
 
@@ -130,6 +132,10 @@ Launch using the printed bundle ID:
 xcrun devicectl device process launch --device '<device-id-or-name>' --timeout 30 \
   --terminate-existing '<bundle-id>'
 ```
+
+Treat build, install, and launch as separate proof gates. A local `codesign` trust
+warning does not prove that device signing is invalid; confirm the signing identity
+and require the device install and launch commands to succeed.
 
 ## TestFlight
 
