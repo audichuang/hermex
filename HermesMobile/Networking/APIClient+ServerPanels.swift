@@ -32,11 +32,11 @@ extension APIClient {
         try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
     }
 
-    func saveReasoningEffort(_ effort: String) async throws -> ReasoningStatusResponse {
+    func saveReasoningEffort(_ effort: String, sessionID: String) async throws -> ReasoningStatusResponse {
         try await send(
             endpoint: .reasoning(),
             method: "POST",
-            body: ReasoningEffortRequest(effort: effort)
+            body: ReasoningEffortRequest(effort: effort, sessionId: sessionID)
         )
     }
 
@@ -170,6 +170,7 @@ private struct DefaultModelRequest: Encodable {
 
 private struct ReasoningEffortRequest: Encodable {
     let effort: String
+    let sessionId: String
 }
 
 private struct ReasoningDisplayRequest: Encodable {

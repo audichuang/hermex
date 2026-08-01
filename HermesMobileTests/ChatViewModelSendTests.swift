@@ -5554,6 +5554,9 @@ final class ChatViewModelSendTests: XCTestCase {
         ) { request in
             switch request.url?.path {
             case "/api/reasoning" where request.httpMethod == "POST":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["effort"] as? String, "xhigh")
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
                 return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "xhigh"}"#, for: request)
             case "/api/session/update":
                 return apiTestJSONResponse("""
@@ -5606,6 +5609,41 @@ final class ChatViewModelSendTests: XCTestCase {
         // "xhigh" is not supported by the new model: snap to the server's
         // coerced reasoning_effort.
         XCTAssertEqual(viewModel.selectedReasoningEffort, "high")
+    }
+
+    @MainActor
+    func testSlashReasoningEffortScopesMutationToActiveSession() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/reasoning")
+            XCTAssertEqual(request.httpMethod, "POST")
+            let body = try XCTUnwrap(apiTestJSONBody(from: request))
+            XCTAssertEqual(body["effort"] as? String, "high")
+            XCTAssertEqual(body["session_id"] as? String, "session-abc")
+            return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "high"}"#, for: request)
+        }
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "reasoning")),
+            args: "high"
+        )
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(viewModel.selectedReasoningEffort, "high")
+    }
+
+    @MainActor
+    func testSelectingReasoningEffortWithoutSessionIDDoesNotSendRequest() async throws {
+        var requestCount = 0
+        let viewModel = try makeViewModel(sessionSummary: makeSession(sessionID: "")) { request in
+            requestCount += 1
+            return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+        }
+
+        let didSelect = await viewModel.selectReasoningEffort("high")
+
+        XCTAssertFalse(didSelect)
+        XCTAssertEqual(requestCount, 0)
+        XCTAssertEqual(viewModel.composerConfigurationErrorMessage, "The server did not provide a session ID.")
     }
 
     @MainActor
@@ -7193,6 +7231,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     private func makeSession(
+        sessionID: String = "session-abc",
         title: String = "Planning",
         model: String? = "gpt-5.4",
         modelProvider: String? = nil,
@@ -7207,7 +7246,7 @@ final class ChatViewModelSendTests: XCTestCase {
             SessionSummary.self,
             from: Data("""
             {
-              "session_id": "session-abc",
+              "session_id": "\(sessionID)",
               "title": "\(title)",
               "workspace": "/tmp/workspace"\(modelJSON)\(modelProviderJSON)\(profileJSON)
             }
