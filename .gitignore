@@ -29,7 +29,10 @@ UPDATES.md
 # Local agent tooling (per-machine caches, skills, session state)
 node_modules/
 .codex-tmp/
-.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/hermex-full-ui-acceptance/
 .sc/
 .claude/
 .codex/
