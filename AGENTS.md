@@ -18,6 +18,8 @@ product/API source of truth. If a request conflicts with it, stop and ask.
 
 - Follow `docs/agents/issue-tracker.md` for issue, branch, PR, and triage conventions.
   Keep protected `master` buildable; it is the internal TestFlight candidate branch.
+- Before preparing, reviewing, updating, or handing off a PR, read and apply
+  `docs/agents/pr-readiness.md`.
 - Git/GitHub approval is operation- and destination-specific: pushing, opening,
   updating/commenting on a PR, and merging are separate approvals.
 - Before any push, verify and report the destination owner/repository and branch.
