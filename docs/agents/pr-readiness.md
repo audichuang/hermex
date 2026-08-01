@@ -42,6 +42,8 @@ Report unmet items as `Need to verify`; do not hide them behind a green unit-tes
 - Record unavailable live-server, wire, or UI proof as a verification gap.
 - Run `git diff --check` and inspect staged, unstaged, and untracked files so local WIP
   and generated artifacts do not enter the PR.
+- After pushing, query the named destination remote and verify its branch SHA matches
+  the reviewed commit; a local tracking ref alone is not remote evidence.
 
 ### Review and PR description
 
