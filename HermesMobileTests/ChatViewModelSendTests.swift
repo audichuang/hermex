@@ -3033,6 +3033,37 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testReadOnlyCLISessionRejectsSendWithoutNetworkRequest() async throws {
+        var requestCount = 0
+        let viewModel = try makeViewModel(
+            sessionSummary: SessionSummary(
+                sessionId: "cli-session",
+                title: "Telegram",
+                workspace: "/tmp/workspace",
+                isCliSession: true
+            )
+        ) { request in
+            requestCount += 1
+            return apiTestJSONResponse(#"{"session_id":"cli-session","stream_id":"unexpected"}"#, for: request)
+        }
+
+        let didStart = await viewModel.sendMessage("This must stay local")
+
+        XCTAssertFalse(didStart)
+        XCTAssertEqual(requestCount, 0)
+        XCTAssertEqual(viewModel.sendErrorMessage, "This session is read-only.")
+
+        let didSendVoiceNote = await viewModel.sendVoiceNote(
+            audioData: Data([0x01]),
+            filename: "note.m4a"
+        )
+
+        XCTAssertFalse(didSendVoiceNote)
+        XCTAssertEqual(requestCount, 0)
+        XCTAssertEqual(viewModel.uploadAttachmentErrorMessage, "This session is read-only.")
+    }
+
+    @MainActor
     func testLoadMessagesSurfacesTunnelUnavailableFailureWhenCacheIsEmpty() async throws {
         let context = try makeContext()
         let viewModel = try makeViewModel { request in

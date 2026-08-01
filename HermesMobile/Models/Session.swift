@@ -355,7 +355,7 @@ extension SessionSummary {
     /// emitted both read-only spellings across row sources, so either explicit
     /// true value preserves that safety for other imported sessions.
     var isSessionReadOnly: Bool {
-        isDelegatedSubagentSession || readOnly == true || isReadOnly == true
+        isCliSession == true || isDelegatedSubagentSession || readOnly == true || isReadOnly == true
     }
 
     var shouldAppearInSessionList: Bool {

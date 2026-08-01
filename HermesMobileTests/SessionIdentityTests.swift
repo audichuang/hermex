@@ -99,6 +99,13 @@ final class SessionIdentityTests: XCTestCase {
             SessionRowView.accessibilityStateLabels(for: SessionSummary(sessionId: "plain"), isViewingCachedData: false),
             []
         )
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(
+                for: SessionSummary(sessionId: "cli", isCliSession: true),
+                isViewingCachedData: false
+            ),
+            ["Read-only"]
+        )
     }
 
     func testSessionSummaryFallbackIDIsDeterministicWithoutSessionID() throws {

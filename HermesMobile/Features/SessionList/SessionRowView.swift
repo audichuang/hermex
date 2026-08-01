@@ -66,6 +66,10 @@ struct SessionRowView: View {
             labels.append(String(localized: "Pinned"))
         }
 
+        if session.isSessionReadOnly {
+            labels.append(String(localized: "Read-only"))
+        }
+
         if isViewingCachedData {
             labels.append(String(localized: "Cached"))
         }
@@ -218,6 +222,10 @@ struct SessionRowView: View {
             badges.append(.cached)
         }
 
+        if session.isSessionReadOnly {
+            badges.append(.readOnly)
+        }
+
         return badges
     }
 
@@ -275,6 +283,7 @@ struct SessionRowView: View {
 private enum SessionRowStateBadgeKind: String, Identifiable {
     case streaming
     case cached
+    case readOnly
 
     var id: String { rawValue }
 
@@ -284,6 +293,8 @@ private enum SessionRowStateBadgeKind: String, Identifiable {
             return String(localized: "Live")
         case .cached:
             return String(localized: "Cached")
+        case .readOnly:
+            return String(localized: "Read-only")
         }
     }
 
@@ -293,6 +304,8 @@ private enum SessionRowStateBadgeKind: String, Identifiable {
             return .green
         case .cached:
             return .orange
+        case .readOnly:
+            return .secondary
         }
     }
 }

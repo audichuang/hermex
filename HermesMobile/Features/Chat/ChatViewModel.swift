@@ -219,6 +219,7 @@ final class ChatViewModel {
     private(set) var isCompressingSession = false
     private(set) var isCancellingStream = false
     private(set) var isViewingCachedData = false
+    let isSessionReadOnly: Bool
     var activeStreamID: String? { streamCoordinator.activeStreamID }
     var activeStreamRecoveryState: ActiveStreamRecoveryState { streamCoordinator.recoveryState }
     var liveTokensPerSecond: Double? { streamCoordinator.liveTokensPerSecond }
@@ -471,6 +472,7 @@ final class ChatViewModel {
         userDefaults: UserDefaults = .standard
     ) {
         sessionID = session.sessionId
+        isSessionReadOnly = session.isSessionReadOnly
         currentWorkspace = session.workspace
         currentModel = session.model
         currentModelProvider = session.modelProvider
@@ -1954,6 +1956,11 @@ final class ChatViewModel {
     }
 
     func sendMessage(_ draft: String, modelContext: ModelContext? = nil) async -> Bool {
+        guard !isSessionReadOnly else {
+            sendErrorMessage = String(localized: "This session is read-only.")
+            return false
+        }
+
         guard !isViewingCachedData else {
             sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
             return false
@@ -1996,6 +2003,10 @@ final class ChatViewModel {
         // firing two concurrent `startChat`s). The UI already blocks this; the guard
         // keeps a future caller (accessibility shortcut, test harness) safe too.
         guard !isSendingVoiceNote, !isStartingChat else { return false }
+        guard !isSessionReadOnly else {
+            setUploadAttachmentError(String(localized: "This session is read-only."))
+            return false
+        }
         guard !isViewingCachedData else {
             setUploadAttachmentError(String(localized: "Reconnect to the server to send a voice note."))
             return false

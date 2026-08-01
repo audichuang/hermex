@@ -2265,10 +2265,12 @@ final class SessionListMutationTests: XCTestCase {
     func testReadOnlyRowsOfferExportButNoMutationActions() {
         let currentShape = SessionSummary(sessionId: "current", readOnly: true)
         let legacyShape = SessionSummary(sessionId: "legacy", isReadOnly: true)
+        let cliShape = SessionSummary(sessionId: "cli", isCliSession: true)
         let normal = SessionSummary(sessionId: "normal")
 
         XCTAssertFalse(SessionRowActionPolicy.offersMutationActions(for: currentShape))
         XCTAssertFalse(SessionRowActionPolicy.offersMutationActions(for: legacyShape))
+        XCTAssertFalse(SessionRowActionPolicy.offersMutationActions(for: cliShape))
         XCTAssertFalse(
             SessionRowActionPolicy.offersMutationActions(
                 for: SessionSummary(sessionId: "subagent", sourceTag: "subagent")

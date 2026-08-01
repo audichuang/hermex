@@ -49,6 +49,8 @@ struct ComposerVoiceControlButton: View {
             .contentShape(Circle())
             .opacity(isDisabled && !isRecordingVoiceNote ? 0.4 : 1)
             .gesture(pressGesture)
+            .allowsHitTesting(!isDisabled || isRecordingVoiceNote)
+            .disabled(isDisabled && !isRecordingVoiceNote)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction {
@@ -61,7 +63,7 @@ struct ComposerVoiceControlButton: View {
             .accessibilityAction(named: Text("Record voice note")) {
                 // VoiceOver can't hold-to-talk, so this starts recording; the
                 // recording bar then exposes "Stop and send" / "Cancel" actions.
-                onRecordingStart()
+                if !isDisabled { onRecordingStart() }
             }
     }
 

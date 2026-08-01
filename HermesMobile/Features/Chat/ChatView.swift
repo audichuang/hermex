@@ -363,6 +363,7 @@ struct ChatView: View {
             isWaitingForStream: viewModel.activeStreamID != nil,
             isCancellingStream: viewModel.isCancellingStream,
             isOfflineReadOnly: viewModel.isViewingCachedData,
+            isSessionReadOnly: viewModel.isSessionReadOnly,
             isChromeCompact: isComposerChromeCompact,
             errorMessage: viewModel.sendErrorMessage,
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage,
