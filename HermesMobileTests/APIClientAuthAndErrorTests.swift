@@ -154,6 +154,18 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
         }
     }
 
+    func testForbiddenResponseSurfacesServerReason() {
+        let error = APIError.http(
+            statusCode: 403,
+            body: #"{"error":"This messaging session is read-only in its foreign store."}"#
+        )
+
+        XCTAssertEqual(
+            error.localizedDescription,
+            "The server refused the request: This messaging session is read-only in its foreign store."
+        )
+    }
+
     func testCloudflareErrorDoesNotExposeRawHTMLBody() async throws {
         let client = makeClient { request in
             let response = HTTPURLResponse(
