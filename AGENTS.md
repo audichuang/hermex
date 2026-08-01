@@ -51,9 +51,10 @@ product/API source of truth. If a request conflicts with it, stop and ask.
   `.xcodebuildmcp/config.yaml`.
 - Manual Simulator installs must use a normally signed Debug build. Do not install a
   `CODE_SIGNING_ALLOWED=NO` build; it lacks the entitlements needed by login/Keychain.
-- Physical-device builds require gitignored `Config/Local.xcconfig` in the exact worktree
-  being built. A clone-local hook may sync it, but hooks are not versioned: verify the
-  file exists, keep it local, and never commit it.
+- Physical-device artifacts must come from the exact commit under review. If the main
+  worktree is dirty, build from an isolated worktree; copy the gitignored
+  `Config/Local.xcconfig` into that worktree, verify it remains ignored, and never
+  commit it. Hooks may sync the file, but are not versioned.
 - Before terminal `devicectl` install/launch, stop any Xcode Run session using that device;
   concurrent GUI and CLI CoreDevice sessions can stall. Follow `DEVELOPMENT.md`.
 - Run focused tests while iterating. Rerun the full XCTest suite after rebasing app code
