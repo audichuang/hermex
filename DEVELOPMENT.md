@@ -99,6 +99,38 @@ xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'pl
 
 If `iPhone 17` is not installed, choose a nearby available iPhone simulator.
 
+### Direct physical-device install from the terminal
+
+Xcode does not need to be open. The exact worktree being built must contain the local,
+gitignored `Config/Local.xcconfig`. Git does not copy ignored files; a clone-local hook
+may sync it, but hooks are not versioned, so verify with `test -f Config/Local.xcconfig`.
+Stop any active Xcode Run session for the device before using `devicectl`.
+
+Build a normally signed Debug app:
+
+```zsh
+xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Debug \
+  -destination 'generic/platform=iOS' -derivedDataPath /tmp/hermex-device-derived \
+  -allowProvisioningUpdates build
+```
+
+Find the paired device, install with a bounded timeout, then read the built bundle ID:
+
+```zsh
+xcrun devicectl list devices
+xcrun devicectl device install app --device '<device-id-or-name>' --timeout 60 \
+  /tmp/hermex-device-derived/Build/Products/Debug-iphoneos/HermesMobile.app
+plutil -extract CFBundleIdentifier raw \
+  /tmp/hermex-device-derived/Build/Products/Debug-iphoneos/HermesMobile.app/Info.plist
+```
+
+Launch using the printed bundle ID:
+
+```zsh
+xcrun devicectl device process launch --device '<device-id-or-name>' --timeout 30 \
+  --terminate-existing '<bundle-id>'
+```
+
 ## TestFlight
 
 Production internal/external uploads, signing setup, release gates, and review notes
