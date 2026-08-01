@@ -2265,12 +2265,15 @@ final class SessionListMutationTests: XCTestCase {
     func testReadOnlyRowsOfferExportButNoMutationActions() {
         let currentShape = SessionSummary(sessionId: "current", readOnly: true)
         let legacyShape = SessionSummary(sessionId: "legacy", isReadOnly: true)
-        let cliShape = SessionSummary(sessionId: "cli", isCliSession: true)
+        let messagingShape = SessionSummary(sessionId: "telegram", sourceTag: "telegram")
+        let claimableCLI = SessionSummary(sessionId: "cli", isCliSession: true, sourceTag: "cli")
         let normal = SessionSummary(sessionId: "normal")
 
         XCTAssertFalse(SessionRowActionPolicy.offersMutationActions(for: currentShape))
         XCTAssertFalse(SessionRowActionPolicy.offersMutationActions(for: legacyShape))
-        XCTAssertFalse(SessionRowActionPolicy.offersMutationActions(for: cliShape))
+        XCTAssertFalse(SessionRowActionPolicy.offersMutationActions(for: messagingShape))
+        // Upstream claims CLI/TUI rows into writable sidecars — keep their actions.
+        XCTAssertTrue(SessionRowActionPolicy.offersMutationActions(for: claimableCLI))
         XCTAssertFalse(
             SessionRowActionPolicy.offersMutationActions(
                 for: SessionSummary(sessionId: "subagent", sourceTag: "subagent")

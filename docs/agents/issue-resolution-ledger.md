@@ -23,13 +23,13 @@ Update existing rows instead of appending a chronological log.
 | [#174](https://github.com/uzairansaruzi/hermex/issues/174) | Users who want opt-in live and persisted tokens-per-second metrics | `a65a999 feat: show opt-in response speed metrics (#174)` | `develop`, pushed to `fork/develop` | Implemented, acceptance incomplete | Validate live metering, final replacement, reopen persistence, Dynamic Type, and VoiceOver against a compatible server. |
 | [#178](https://github.com/uzairansaruzi/hermex/issues/178) | New self-hosters who rely on the generated Tailscale setup prompt | `cb66440 fix: make setup prompt use safe Tailscale Serve defaults (#178)`; `1222c96 test: cover Tailscale Funnel guard (#178)` | `develop`, pushed to `fork/develop` | Locally resolved | No remaining code gate; GitHub stays open because no upstream PR was submitted. |
 | [#179](https://github.com/uzairansaruzi/hermex/issues/179) | Users who need provider models outside the curated catalog | `93f9a6a fix(models): expose overflow catalogs in pickers (#179)` | `issue/179-model-picker-overflow`, local only | Implemented, acceptance incomplete | Rebase onto current `origin/master`; validate a live Nous overflow selection through chat and Settings. |
-| [#180](https://github.com/uzairansaruzi/hermex/issues/180) | Users connected to a Hermes WebUI version that scopes reasoning effort to the active session | `05dd228 fix(reasoning): scope effort writes to active session (#180)` | `codex/issue-audit-fixes`, local only | Implemented, acceptance incomplete | Exact-body tests and both signed-Simulator entry paths pass against a contract mock. Repeat against the reporter's session-scoped live server before upstream handoff. |
+| [#180](https://github.com/uzairansaruzi/hermex/issues/180) | Users changing reasoning effort from the composer picker or `/reasoning <level>` | `05dd228 fix(reasoning): scope effort writes to active session (#180)`; `<pending> fix(reasoning): send model context, stop gating on session id (#180)` | `codex/issue-audit-fixes`, local only | Implemented, reported root cause unconfirmed | The issue's stated server behaviour does not exist upstream (see "Upstream source verification"). The follow-up keeps `session_id` optional, adds the missing `model`/`provider` pair, and removes the fail-closed gate. Ask the reporter for the raw 400 response body and server version. |
 | [#183](https://github.com/uzairansaruzi/hermex/issues/183) | Users sending repeated steering hints during an active response | `1fc606f fix(chat): auto-dismiss steering confirmation (#183)` | `issue/183-auto-dismiss-steering-notice`, pushed to fork | Implemented, product decision incomplete | The commit changes `PROJECT_SPEC.md` from “persist as transcript notice” to “dismiss and never persist.” The owner must explicitly approve that spec change. |
 | [#186](https://github.com/uzairansaruzi/hermex/issues/186) | Users whose model reasoning or tool execution is semantically quiet while SSE heartbeats remain healthy | `892324d fix(chat): respect SSE heartbeat activity (#186)`; `9177ed3 fix(chat): recover silent initial streams`; `09a70dd fix(chat): defer silent recovery until timeout` | `develop`, pushed to `fork/develop` | Implemented, acceptance incomplete | Validate a real 60-second heartbeat-only stream and a real transport-stale reconnect/replay. The last two commit messages should identify `#186`. |
 | [#201](https://github.com/uzairansaruzi/hermex/issues/201) | Users seeing inconsistent spacing between thinking and tool activity cards | `aae2a37 fix(chat): align activity card spacing (#201)` | `develop`, pushed to `fork/develop` | Implemented, acceptance incomplete | Capture signed-Simulator evidence with adjacent thinking/tool cards; the one-line spacing change has no focused visual proof. |
 | [#207](https://github.com/uzairansaruzi/hermex/issues/207) | Users whose stream recovers but leaves a stale timeout warning visible | `e738a8c fix(chat): clear recovered stream warnings (#207)` | `issue/207-clear-recovered-warnings`, pushed to fork | Implemented, acceptance incomplete | Inject a temporary timeout through the real UI, observe resumed streaming, and verify only the recovery-owned warning clears. |
 | [#209](https://github.com/uzairansaruzi/hermex/issues/209) | Chinese users composing text with a Pinyin keyboard | `07db061 fix(chat): disable composer auto-capitalization (#209)` | `issue/209-disable-composer-auto-capitalization`, pushed to fork | Locally resolved | Focused/full XCTest and signed-Simulator `nihao` -> `你好` input passed. It is not integrated into `develop`. |
-| [#211](https://github.com/uzairansaruzi/hermex/issues/211) | Users opening Telegram, CLI, gateway-origin, or delegated sessions that are history-only in Hermes WebUI | `a7d9c2e fix(chat): make CLI sessions visibly read-only (#211)` | `codex/issue-audit-fixes`, local only | Implemented, acceptance incomplete | Signed-Simulator row/composer/accessibility and zero-request checks pass against a contract mock. Repeat with an actual Telegram/gateway session before upstream handoff. |
+| [#211](https://github.com/uzairansaruzi/hermex/issues/211) | Users opening Telegram, gateway-origin, cron, or delegated sessions that are history-only in Hermes WebUI | `a7d9c2e fix(chat): make CLI sessions visibly read-only (#211)`; `<pending> fix(chat): key read-only on the source family (#211)` | `codex/issue-audit-fixes`, local only | Implemented, acceptance incomplete | `a7d9c2e` keyed on `is_cli_session`, which upstream reports as `false` for messaging rows and `true` for writable CLI/TUI rows — wrong in both directions. The follow-up keys on `read_only` plus upstream's non-claimable source families and re-latches from the session detail. Repeat with an actual Telegram/gateway session before upstream handoff. |
 
 ## Open issues without a completed local fix
 
@@ -57,6 +57,46 @@ Update existing rows instead of appending a chronological log.
 - #180 slash request: `{"effort":"xhigh","session_id":"normal-session"}`.
 - #211: the CLI row exposed a read-only badge; all composer controls, including the named VoiceOver voice-note action, were disabled; activating the voice control produced no server request.
 - This is contract-mock acceptance, not the required live-server gate. Release-grade verdict remains **INCOMPLETE / NO-GO** until the two issue-specific live scenarios pass.
+- The follow-up commits on this branch are **not compiled or tested** — they were written on Linux, where neither `swift` nor `xcodebuild` exists. Re-run the full XCTest suite on macOS before trusting the rows above.
+
+## Upstream source verification (2026-08-01)
+
+Checked against `nesquena/hermes-webui` at `320789ae` (2026-07-31), the reporter's
+`c275db09` (v0.51.365), and `NousResearch/hermes-agent`.
+
+**#180 — the reported server contract does not exist.**
+
+- `POST /api/reasoning` reads only `effort` / `display` / `model` / `provider` / `base_url`
+  (`api/routes.py: handle_post`), and writes the profile-wide `agent.reasoning_effort`
+  (`api/config.py: set_reasoning_effort`). There is no session scope.
+- `git log --all -S "session_id is required for reasoning"` over the full upstream history
+  returns nothing. hermes-agent exposes no `/api/reasoning` route at all.
+- Real defect found instead: `get_reasoning_status` echoes the effort **coerced for the
+  resolved model**. Omitting `model`/`provider` from the POST makes the server coerce
+  against the config default model, so the composer chip can snap to a value the user did
+  not pick. The WebUI composer always sends the pair (`static/ui.js`).
+- Gating the request on a session id is a regression in both directions: it kills the
+  picker in a new chat, and a body-level `session_id` activates
+  `_guard_request_session_visibility`, which 404s a cross-profile session.
+  (Hermex switches the server profile on chat open, so that path is normally unreachable.)
+
+**#211 — real bug, wrong signal.**
+
+- `is_cli_session_row` (`api/agent_sessions.py`) excludes `MESSAGING_SOURCES`, so a
+  Telegram row reports `is_cli_session=false` in the sidebar projection — and
+  `_merge_cli_sidebar_metadata` re-stamps the same computed value onto the detail payload.
+- `read_only` is absent from the sidebar projection entirely, and on v0.51.365 the detail
+  stub set it from `cli_meta`, which upstream never populates for messaging rows. On the
+  reporter's server both flags are therefore false.
+- Conversely, `is_cli_session=true, read_only=false` is upstream's *claimable* state:
+  `_claim_or_synthesize_cli_session` materialises a writable sidecar for CLI/TUI/Desktop
+  rows on the first `POST /api/chat/start` (added in `31a01e8a`, 2026-06-28).
+- The durable signal is the source family in `_is_claimable_cli_source`: messaging
+  platforms, `external_agent`, `claude_code`, `cron`, `gateway`, `subagent`. Sidebar rows
+  always carry it via `normalize_agent_session_source`.
+- Current upstream answers a refused continue with **403** and a specific message, not 404
+  (`api/routes.py: _handle_chat_start`). Hermex mapped every 403 to "check the server
+  password"; it now surfaces the server's reason.
 
 ## Upstream-resolved issues from this work
 

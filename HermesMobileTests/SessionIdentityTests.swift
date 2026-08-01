@@ -101,10 +101,18 @@ final class SessionIdentityTests: XCTestCase {
         )
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(
-                for: SessionSummary(sessionId: "cli", isCliSession: true),
+                for: SessionSummary(sessionId: "telegram", sourceTag: "telegram"),
                 isViewingCachedData: false
             ),
             ["Read-only"]
+        )
+        // A claimable CLI row is writable upstream — it must not read as read-only.
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(
+                for: SessionSummary(sessionId: "cli", isCliSession: true, sourceTag: "cli"),
+                isViewingCachedData: false
+            ),
+            []
         )
     }
 

@@ -27,6 +27,14 @@ enum APIError: LocalizedError {
                 }
                 return String(localized: "The server rejected the request.")
             case 403:
+                // Upstream uses 403 for refusals that have nothing to do with
+                // auth — continuing a read-only foreign session is one
+                // ("session is read-only in its foreign store; cannot be
+                // claimed writeable in WebUI"). Surface the server's reason
+                // instead of sending the user to check their password.
+                if let message = Self.serverErrorMessage(from: body) {
+                    return String(localized: "The server refused the request: \(message)")
+                }
                 return String(localized: "The server refused access. Check the server password and permissions.")
             case 404:
                 return String(localized: "The server endpoint was not found. Check that the URL points to a Hermes Web UI server.")

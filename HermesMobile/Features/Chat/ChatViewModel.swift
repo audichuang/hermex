@@ -219,7 +219,7 @@ final class ChatViewModel {
     private(set) var isCompressingSession = false
     private(set) var isCancellingStream = false
     private(set) var isViewingCachedData = false
-    let isSessionReadOnly: Bool
+    private(set) var isSessionReadOnly: Bool
     var activeStreamID: String? { streamCoordinator.activeStreamID }
     var activeStreamRecoveryState: ActiveStreamRecoveryState { streamCoordinator.recoveryState }
     var liveTokensPerSecond: Double? { streamCoordinator.liveTokensPerSecond }
@@ -287,6 +287,17 @@ final class ChatViewModel {
     private func applyCompressionAnchorMetadata(from session: SessionDetail?) {
         compressionAnchorMetadata = CompressionAnchorMetadata(from: session)
         recomputeCompressionReferenceCard()
+    }
+    /// Latch the read-only state from a loaded session detail.
+    ///
+    /// The sidebar projection the list is built from omits `read_only` entirely
+    /// and reports `is_cli_session=false` for messaging rows, so a
+    /// Telegram/gateway session first becomes recognisable here. Latch-on only:
+    /// a later partial payload must not hand the composer back to a session the
+    /// server will refuse.
+    private func applySessionReadOnlyState(from session: SessionDetail?) {
+        guard let session, SessionSummary(from: session).isSessionReadOnly else { return }
+        isSessionReadOnly = true
     }
     private func clearCompressionAnchorMetadata() {
         compressionAnchorMetadata = nil
@@ -1106,11 +1117,12 @@ final class ChatViewModel {
         defer { isUpdatingComposerConfiguration = false }
 
         do {
-            guard let sessionID, !sessionID.isEmpty else {
-                composerConfigurationErrorMessage = String(localized: "The server did not provide a session ID.")
-                return false
-            }
-            let response = try await client.saveReasoningEffort(selectedEffort, sessionID: sessionID)
+            let response = try await client.saveReasoningEffort(
+                selectedEffort,
+                sessionID: sessionID,
+                model: currentModel,
+                provider: currentModelProvider
+            )
             selectedReasoningEffort = response.effectiveEffort ?? selectedEffort
             return true
         } catch {
@@ -1221,6 +1233,7 @@ final class ChatViewModel {
                 reloadedMessages = loadedMessages
             }
             applyCompressionAnchorMetadata(from: session)
+            applySessionReadOnlyState(from: session)
             applyReloadedMessages(
                 reloadedMessages,
                 from: session,
@@ -2680,10 +2693,12 @@ final class ChatViewModel {
             if Self.reasoningDisplayArgs.contains(reasoning) {
                 _ = try await client.saveReasoningDisplay(reasoning)
             } else if Self.reasoningEffortArgs.contains(reasoning) {
-                guard let sessionID, !sessionID.isEmpty else {
-                    return .unsupported(friendlyMessage: String(localized: "The server did not provide a session ID."))
-                }
-                let response = try await client.saveReasoningEffort(reasoning, sessionID: sessionID)
+                let response = try await client.saveReasoningEffort(
+                    reasoning,
+                    sessionID: sessionID,
+                    model: currentModel,
+                    provider: currentModelProvider
+                )
                 selectedReasoningEffort = response.effectiveEffort ?? reasoning
             } else {
                 return .unsupported(friendlyMessage: String(localized: "Unknown reasoning level: \(reasoning)."))

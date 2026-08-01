@@ -351,11 +351,36 @@ extension SessionSummary {
             .contains("claude_code")
     }
 
-    /// Delegated children are runner-owned and view-only. Upstream has also
-    /// emitted both read-only spellings across row sources, so either explicit
-    /// true value preserves that safety for other imported sessions.
+    /// Sessions another process owns, which the server lists for history but
+    /// refuses to take write ownership of. Mirrors upstream's
+    /// `_is_claimable_cli_source` denylist (`api/routes.py`): messaging
+    /// channels, external agents, Claude Code imports, cron runs, delegated
+    /// subagents, and platformless gateway rows.
+    ///
+    /// `is_cli_session` is deliberately NOT part of this. A plain CLI / TUI /
+    /// Desktop row is *claimable*: upstream materialises a WebUI sidecar for it
+    /// on the first `POST /api/chat/start`, so it stays writable — and the
+    /// sidebar projection reports `is_cli_session` for messaging rows as
+    /// `false` anyway (`is_cli_session_row` excludes MESSAGING_SOURCES).
+    var isForeignOwnedSession: Bool {
+        [sessionSource, sourceTag, rawSource, sourceLabel]
+            .compactMap(Self.normalizedSourceMarker)
+            .contains { Self.foreignOwnedSourceMarkers.contains($0) }
+    }
+
+    /// Read-only sessions: the server's explicit flag (upstream has emitted both
+    /// spellings across row sources), or a source family the server refuses to
+    /// claim. The source family is load-bearing — servers older than upstream's
+    /// claim path never set `read_only` on messaging rows, and the sidebar
+    /// projection omits the field entirely, so the flag alone misses the
+    /// Telegram/gateway sessions this is meant to catch.
+    ///
+    /// Trade-off: a messaging row that already owns a *writable* WebUI sidecar
+    /// reads as read-only here. Upstream refuses to create one
+    /// (`_get_or_materialize_session` raises on messaging records), so locking
+    /// that edge case is cheaper than missing the common one.
     var isSessionReadOnly: Bool {
-        isCliSession == true || isDelegatedSubagentSession || readOnly == true || isReadOnly == true
+        readOnly == true || isReadOnly == true || isForeignOwnedSession
     }
 
     var shouldAppearInSessionList: Bool {
@@ -423,6 +448,28 @@ extension SessionSummary {
     private static func normalizedSourceMarker(_ value: String?) -> String? {
         nonEmpty(value)?.lowercased()
     }
+
+    /// Source families upstream refuses to claim writeable. Kept in sync with
+    /// `MESSAGING_SOURCES` (`api/agent_sessions.py`) plus the extra families in
+    /// `_is_claimable_cli_source`. The literal `"unknown"` gateway fallback is
+    /// left out on purpose: a row with no usable source metadata should stay
+    /// writable and let the server refuse it with its own 403 message, rather
+    /// than being locked client-side on a guess.
+    private static let foreignOwnedSourceMarkers: Set<String> = [
+        "messaging",
+        "telegram",
+        "discord",
+        "slack",
+        "email",
+        "wecom",
+        "wecom_callback",
+        "weixin",
+        "external_agent",
+        "claude_code",
+        "cron",
+        "gateway",
+        "subagent",
+    ]
 }
 
 /// Which non-standard session kinds the session list should show. Cron jobs,

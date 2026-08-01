@@ -3032,19 +3032,25 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNotNil(viewModel.lastError)
     }
 
+    /// A Telegram row is what #211 reports: upstream lists it with history but
+    /// refuses `POST /api/chat/start` for it. Note the row carries
+    /// `is_cli_session=false` — `is_cli_session_row` excludes MESSAGING_SOURCES
+    /// — so the source tag is the only signal the client gets.
     @MainActor
-    func testReadOnlyCLISessionRejectsSendWithoutNetworkRequest() async throws {
+    func testReadOnlyMessagingSessionRejectsSendWithoutNetworkRequest() async throws {
         var requestCount = 0
         let viewModel = try makeViewModel(
             sessionSummary: SessionSummary(
-                sessionId: "cli-session",
+                sessionId: "telegram-session",
                 title: "Telegram",
                 workspace: "/tmp/workspace",
-                isCliSession: true
+                isCliSession: false,
+                sourceTag: "telegram",
+                rawSource: "telegram"
             )
         ) { request in
             requestCount += 1
-            return apiTestJSONResponse(#"{"session_id":"cli-session","stream_id":"unexpected"}"#, for: request)
+            return apiTestJSONResponse(#"{"session_id":"telegram-session","stream_id":"unexpected"}"#, for: request)
         }
 
         let didStart = await viewModel.sendMessage("This must stay local")
@@ -3061,6 +3067,67 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertFalse(didSendVoiceNote)
         XCTAssertEqual(requestCount, 0)
         XCTAssertEqual(viewModel.uploadAttachmentErrorMessage, "This session is read-only.")
+    }
+
+    /// The other half of #211: a plain CLI/TUI row is *claimable*. Upstream
+    /// materialises a WebUI sidecar for it on the first `POST /api/chat/start`,
+    /// so locking the composer on `is_cli_session` alone would take away a
+    /// send the server accepts.
+    @MainActor
+    func testClaimableCLISessionStillSends() async throws {
+        let viewModel = try makeViewModel(
+            sessionSummary: SessionSummary(
+                sessionId: "cli-session",
+                title: "hermes -c",
+                workspace: "/tmp/workspace",
+                isCliSession: true,
+                sourceTag: "cli",
+                rawSource: "cli"
+            )
+        ) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse(#"{"session_id":"cli-session","stream_id":"stream-1"}"#, for: request)
+        }
+
+        let didStart = await viewModel.sendMessage("Continue from the terminal")
+
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(viewModel.activeStreamID, "stream-1")
+        XCTAssertNil(viewModel.sendErrorMessage)
+    }
+
+    /// The list projection omits `read_only` and reports `is_cli_session=false`
+    /// for messaging rows, so a session opened from a stale/thin row must lock
+    /// itself once the detail payload arrives.
+    @MainActor
+    func testReadOnlyDetailLocksComposerAfterLoad() async throws {
+        let viewModel = try makeViewModel(
+            sessionSummary: SessionSummary(
+                sessionId: "telegram-session",
+                title: "Telegram",
+                workspace: "/tmp/workspace"
+            )
+        ) { request in
+            apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "telegram-session",
+                "title": "Telegram",
+                "workspace": "/tmp/workspace",
+                "read_only": true,
+                "is_cli_session": false,
+                "source_tag": "telegram",
+                "messages": []
+              }
+            }
+            """, for: request)
+        }
+
+        XCTAssertFalse(viewModel.isSessionReadOnly)
+
+        await viewModel.loadMessages()
+
+        XCTAssertTrue(viewModel.isSessionReadOnly)
     }
 
     @MainActor
@@ -5643,13 +5710,17 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testSlashReasoningEffortScopesMutationToActiveSession() async throws {
-        let viewModel = try makeViewModel { request in
+    func testSlashReasoningEffortSendsSessionAndModelContext() async throws {
+        let viewModel = try makeViewModel(
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai")
+        ) { request in
             XCTAssertEqual(request.url?.path, "/api/reasoning")
             XCTAssertEqual(request.httpMethod, "POST")
             let body = try XCTUnwrap(apiTestJSONBody(from: request))
             XCTAssertEqual(body["effort"] as? String, "high")
             XCTAssertEqual(body["session_id"] as? String, "session-abc")
+            XCTAssertEqual(body["model"] as? String, "gpt-5.4")
+            XCTAssertEqual(body["provider"] as? String, "openai")
             return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "high"}"#, for: request)
         }
 
@@ -5662,19 +5733,26 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedReasoningEffort, "high")
     }
 
+    /// Upstream's write is profile-wide, so a session id is context, not a
+    /// precondition. Refusing to send without one would kill the picker in a
+    /// brand-new chat — a regression the WebUI does not have.
     @MainActor
-    func testSelectingReasoningEffortWithoutSessionIDDoesNotSendRequest() async throws {
+    func testSelectingReasoningEffortWithoutSessionIDStillSends() async throws {
         var requestCount = 0
         let viewModel = try makeViewModel(sessionSummary: makeSession(sessionID: "")) { request in
             requestCount += 1
-            return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+            XCTAssertEqual(request.url?.path, "/api/reasoning")
+            let body = try XCTUnwrap(apiTestJSONBody(from: request))
+            XCTAssertNil(body["session_id"])
+            return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "high"}"#, for: request)
         }
 
         let didSelect = await viewModel.selectReasoningEffort("high")
 
-        XCTAssertFalse(didSelect)
-        XCTAssertEqual(requestCount, 0)
-        XCTAssertEqual(viewModel.composerConfigurationErrorMessage, "The server did not provide a session ID.")
+        XCTAssertTrue(didSelect)
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertNil(viewModel.composerConfigurationErrorMessage)
+        XCTAssertEqual(viewModel.selectedReasoningEffort, "high")
     }
 
     @MainActor

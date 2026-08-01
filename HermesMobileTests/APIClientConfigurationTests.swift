@@ -299,6 +299,10 @@ final class APIClientConfigurationTests: APIClientTestCase {
             XCTAssertEqual(body?["effort"] as? String, "xhigh")
             XCTAssertEqual(body?["session_id"] as? String, "session-abc")
             XCTAssertNil(body?["sessionId"])
+            // The model/provider pair is what makes the echoed effort accurate
+            // for this session's model instead of the config default.
+            XCTAssertEqual(body?["model"] as? String, "gpt-5.4")
+            XCTAssertEqual(body?["provider"] as? String, "openai")
 
             return apiTestJSONResponse("""
             {
@@ -308,10 +312,36 @@ final class APIClientConfigurationTests: APIClientTestCase {
             """, for: request)
         }
 
-        let response = try await client.saveReasoningEffort("xhigh", sessionID: "session-abc")
+        let response = try await client.saveReasoningEffort(
+            "xhigh",
+            sessionID: "session-abc",
+            model: "gpt-5.4",
+            provider: "openai"
+        )
 
         XCTAssertEqual(response.ok, true)
         XCTAssertEqual(response.effectiveEffort, "xhigh")
+    }
+
+    /// A brand-new chat has no session id yet and the picker must still work —
+    /// upstream's write is profile-wide, so gating on a session id would make
+    /// the control dead until the first message. Empty optionals stay out of the
+    /// body entirely rather than being sent as `""`.
+    func testSaveReasoningEffortOmitsAbsentSessionAndModel() async throws {
+        let client = makeClient { request in
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["effort"] as? String, "high")
+            XCTAssertNil(body?["session_id"])
+            XCTAssertNil(body?["model"])
+            XCTAssertNil(body?["provider"])
+
+            return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "high"}"#, for: request)
+        }
+
+        let response = try await client.saveReasoningEffort("high", sessionID: "", model: nil, provider: "")
+
+        XCTAssertEqual(response.effectiveEffort, "high")
     }
 
     func testSaveReasoningDisplayBuildsExpectedBodyAndDecodesResponse() async throws {

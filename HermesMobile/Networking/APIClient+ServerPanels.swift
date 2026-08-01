@@ -32,11 +32,36 @@ extension APIClient {
         try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
     }
 
-    func saveReasoningEffort(_ effort: String, sessionID: String) async throws -> ReasoningStatusResponse {
+    /// Persist a reasoning effort (`POST /api/reasoning`).
+    ///
+    /// Upstream writes the profile-wide `agent.reasoning_effort` and echoes back
+    /// the effort **coerced for the resolved model** (`api/config.py:
+    /// get_reasoning_status`). With no `model`/`provider` in the body the server
+    /// resolves the config default model instead of this session's — so a
+    /// session on an xhigh-capable model would get "high" echoed back and the
+    /// chip would snap to the wrong value. The WebUI composer sends the same
+    /// pair (`static/ui.js: _reasoningEffortContext`); mirror it.
+    ///
+    /// `sessionID` is optional and sent only when present: no upstream release
+    /// reads it, but a session-scoped deployment (issue #180) needs it, and
+    /// upstream ignores unknown body keys. It must not gate the request —
+    /// blocking the send when no session exists yet would break changing the
+    /// effort from a brand-new chat, which the WebUI allows.
+    func saveReasoningEffort(
+        _ effort: String,
+        sessionID: String? = nil,
+        model: String? = nil,
+        provider: String? = nil
+    ) async throws -> ReasoningStatusResponse {
         try await send(
             endpoint: .reasoning(),
             method: "POST",
-            body: ReasoningEffortRequest(effort: effort, sessionId: sessionID)
+            body: ReasoningEffortRequest(
+                effort: effort,
+                sessionId: sessionID?.nonEmptyValue,
+                model: model?.nonEmptyValue,
+                provider: provider?.nonEmptyValue
+            )
         )
     }
 
@@ -170,7 +195,12 @@ private struct DefaultModelRequest: Encodable {
 
 private struct ReasoningEffortRequest: Encodable {
     let effort: String
-    let sessionId: String
+    // Optionals are omitted from the body by the synthesized encoder, so an
+    // absent session/model never widens the request the server has to parse.
+    // `sessionId` encodes as `session_id` via convertToSnakeCase.
+    let sessionId: String?
+    let model: String?
+    let provider: String?
 }
 
 private struct ReasoningDisplayRequest: Encodable {
@@ -211,4 +241,10 @@ private struct ShowCliSessionsUpdateRequest: Encodable {
 private struct ShowClaudeCodeSessionsUpdateRequest: Encodable {
     // Encoded as `show_claude_code_sessions` by convertToSnakeCase.
     let showClaudeCodeSessions: Bool
+}
+
+private extension String {
+    var nonEmptyValue: String? {
+        isEmpty ? nil : self
+    }
 }

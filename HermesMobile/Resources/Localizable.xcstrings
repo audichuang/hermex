@@ -400,6 +400,25 @@
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已啟動" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "已啟動" } }
     } },
+    "The server refused the request: %@" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Server hat die Anfrage verweigert: %@" } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "El servidor denegó la solicitud: %@" } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le serveur a refusé la demande : %@" } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Il server ha negato la richiesta: %@" } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Serwer odmówił wykonania żądania: %@" } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "O servidor recusou a solicitação: %@" } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "De server heeft het verzoek geweigerd: %@" } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Sunucu bu isteği geri çevirdi: %@" } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Сервер отказал в запросе: %@" } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバはこの操作を拒否しました：%@" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "服务器拒绝执行该请求：%@" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "서버가 이 요청을 거부했어요: %@" } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "رفض الخادم تنفيذ الطلب: %@" } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "השרת סירב לבצע את הבקשה: %@" } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "سرور نے یہ درخواست مسترد کر دی: %@" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "伺服器拒絕執行該請求：%@" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "伺服器拒絕執行該請求：%@" } }
+    } },
     "This Preview is stale. Run Preview Dispatch again before relying on it." : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Diese Vorschau ist veraltet. Führe die Dispatch-Vorschau erneut aus, bevor du dich darauf verlässt." } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Esta vista previa está obsoleta. Ejecuta de nuevo la vista previa del despacho antes de confiar en ella." } },
@@ -456,6 +475,25 @@
       "ur" : { "stringUnit" : { "state" : "translated", "value" : "اس سے زیادہ سے زیادہ %lld ورکرز شروع ہو سکتے ہیں اور API بجٹ استعمال ہو سکتا ہے۔" } },
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "這可能會啟動最多 %lld 個工作程序並消耗 API 預算。" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "這可能會啟動最多 %lld 個工作程序並消耗 API 預算。" } }
+    } },
+    "This session is read-only." : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Diese Sitzung ist schreibgeschützt." } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "Esta sesión es de solo lectura." } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Cette session est en lecture seule." } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Questa sessione è di sola lettura." } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Ta sesja jest tylko do odczytu." } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Esta sessão é somente leitura." } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "Deze sessie is alleen-lezen." } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Bu oturum salt okunur." } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Этот сеанс доступен только для чтения." } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "このセッションは読み取り専用です。" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此会话为只读。" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 세션은 읽기 전용입니다." } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "هذه الجلسة للقراءة فقط." } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "הפעלה זו היא לקריאה בלבד." } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "یہ سیشن صرف پڑھنے کے لیے ہے۔" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "此工作階段為唯讀。" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "此工作階段為唯讀。" } }
     } },
     "Timed Out" : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Zeitüberschreitung" } },
