@@ -218,6 +218,38 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(updatedMessage.expiresAt, secondCachedAt.addingTimeInterval(CachePolicy.ttl))
     }
 
+    func testCacheMessagesKeepsOneRowWhenABatchRepeatsAMessageID() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+
+        try CacheStore.cacheMessages(
+            [
+                ChatMessage(
+                    role: "assistant",
+                    content: "First copy",
+                    timestamp: 1_770_000_000,
+                    messageId: "dup"
+                ),
+                ChatMessage(
+                    role: "assistant",
+                    content: "Second copy",
+                    timestamp: 1_770_000_001,
+                    messageId: "dup"
+                )
+            ],
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        let cachedMessages = try fetchCachedMessages(in: context)
+        XCTAssertEqual(cachedMessages.compactMap(\.messageId), ["dup"])
+        XCTAssertEqual(cachedMessages.first?.content, "Second copy")
+        XCTAssertEqual(cachedMessages.first?.sortIndex, 1)
+    }
+
     func testCacheSessionUpsertsOneSessionWithoutRemovingExistingSessions() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
