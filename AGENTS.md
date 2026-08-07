@@ -104,6 +104,8 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 - Async flows wait on expectations and scripted fixtures, never on sleeps or polling. A test that needs a timeout to pass is wrong.
 - UI or runtime changes get one integrated pass in the real app: build, install, and launch a signed Debug build (`build_run_sim`), then hand the maintainer a short manual simulator test plan. Capture screenshots or logs when they are evidence. Subagents do not launch their own builds.
 - Physical-device artifacts must come from the exact commit under review. If the main worktree is dirty, use an isolated worktree with gitignored `Config/Local.xcconfig`; verify it remains ignored, and stop any Xcode Run session before terminal `devicectl` install or launch.
+- Xcode string extraction can rewrite `.xcstrings` after `xcodebuild` exits. Re-read `git status`, stage edited paths explicitly, and never use `git add -A` or `git commit -a` after validation.
+- The project has no file-system synchronized group. Register every new test file in `HermesMobile.xcodeproj/project.pbxproj`; an unregistered file never runs even when the suite is green.
 - Run `scripts/check-swift-file-sizes` when a production Swift file grows. It is a warning, not a gate: use it to notice a missing seam, not to force unrelated refactors into the current issue.
 
 ## Pull requests
