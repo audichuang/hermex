@@ -19465,108 +19465,108 @@
         }
       }
     },
-    "Check that your Mac is awake and cloudflared is running." : {
+    "Check that the server host is awake and hermes-webui is reachable." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "تأكّد من أن جهاز Mac مستيقظ وأن cloudflared قيد التشغيل."
+            "state" : "translated",
+            "value" : "تأكّد من أن مضيف الخادم نشط وأن hermes-webui يمكن الوصول إليه."
           }
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Prüfe, ob dein Mac aktiv ist und cloudflared läuft."
+            "state" : "translated",
+            "value" : "Prüfe, ob der Server-Host aktiv und hermes-webui erreichbar ist."
           }
         },
         "es" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Comprueba que tu Mac esté encendido y que cloudflared esté en ejecución."
+            "state" : "translated",
+            "value" : "Comprueba que el host del servidor esté activo y que hermes-webui sea accesible."
           }
         },
         "fr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Vérifiez que votre Mac est actif et que cloudflared est en cours d'exécution."
+            "state" : "translated",
+            "value" : "Vérifiez que l'hôte du serveur est actif et que hermes-webui est accessible."
           }
         },
         "he" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "ודא שה-Mac שלך ער וש-cloudflared פועל."
+            "state" : "translated",
+            "value" : "ודא שמארח השרת ער ושניתן להגיע ל-hermes-webui."
           }
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Assicurati che il Mac sia attivo e che cloudflared sia in esecuzione."
+            "state" : "translated",
+            "value" : "Assicurati che l'host del server sia attivo e che hermes-webui sia raggiungibile."
           }
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Macがスリープしていないこと、cloudflaredが実行中であることを確認してください。"
+            "state" : "translated",
+            "value" : "サーバのホストがスリープしていないこと、hermes-webuiに接続できることを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Mac이 깨어 있고 cloudflared가 실행 중인지 확인하세요."
+            "state" : "translated",
+            "value" : "서버 호스트가 깨어 있고 hermes-webui에 연결할 수 있는지 확인하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Controleer of uw Mac actief is en of cloudflared draait."
+            "state" : "translated",
+            "value" : "Controleer of de serverhost wakker is en of hermes-webui bereikbaar is."
           }
         },
         "pl" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Sprawdź, czy Mac jest aktywny i czy cloudflared działa."
+            "state" : "translated",
+            "value" : "Sprawdź, czy host serwera jest aktywny i czy hermes-webui jest osiągalny."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Verifique se o seu Mac está ativo e se o cloudflared está em execução."
+            "state" : "translated",
+            "value" : "Verifique se o host do servidor está ativo e se o hermes-webui está acessível."
           }
         },
         "ru" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Убедитесь, что ваш Mac не спит и cloudflared запущен."
+            "state" : "translated",
+            "value" : "Убедитесь, что хост сервера не спит и hermes-webui доступен."
           }
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Mac'inizin uyanık olduğundan ve cloudflared'in çalıştığından emin olun."
+            "state" : "translated",
+            "value" : "Sunucu makinesinin uyanık olduğundan ve hermes-webui'ye erişilebildiğinden emin olun."
           }
         },
         "ur" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "یقینی بنائیں کہ آپ کا Mac جاگ رہا ہے اور cloudflared چل رہا ہے۔"
+            "state" : "translated",
+            "value" : "یقینی بنائیں کہ سرور ہوسٹ جاگ رہا ہے اور hermes-webui تک رسائی ممکن ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "请检查你的 Mac 是否已唤醒，且 cloudflared 正在运行。"
+            "state" : "translated",
+            "value" : "请检查服务器主机是否已唤醒，且可连接到 hermes-webui。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "請檢查你的 Mac 是否已喚醒，且 cloudflared 正在執行。"
+            "state" : "translated",
+            "value" : "請檢查伺服器主機是否已喚醒，且可連線至 hermes-webui。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "請檢查你的 Mac 是否已喚醒，且 cloudflared 正在執行。"
+            "state" : "translated",
+            "value" : "請檢查伺服器主機是否已喚醒，且可連線至 hermes-webui。"
           }
         }
       }
@@ -118907,108 +118907,108 @@
         }
       }
     },
-    "The server did not respond in time. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected." : {
+    "The server did not respond in time. Check that the server host is awake, hermes-webui is running, and the connection is available." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "لم يستجب الخادم في الوقت المحدد. تأكد من أن جهاز Mac نشط، وأن hermes-webui قيد التشغيل، وأن النفق متصل."
+            "state" : "translated",
+            "value" : "لم يستجب الخادم في الوقت المحدد. تأكد من أن مضيف الخادم نشط، وأن hermes-webui قيد التشغيل، وأن الاتصال متاح."
           }
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Der Server hat nicht rechtzeitig geantwortet. Prüfe, ob der Mac wach ist, hermes-webui läuft und der Tunnel verbunden ist."
+            "state" : "translated",
+            "value" : "Der Server hat nicht rechtzeitig geantwortet. Prüfe, ob der Server-Host aktiv ist, hermes-webui läuft und die Verbindung verfügbar ist."
           }
         },
         "es" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "El servidor no respondió a tiempo. Verifica que el Mac esté activo, que hermes-webui esté en ejecución y que el túnel esté conectado."
+            "state" : "translated",
+            "value" : "El servidor no respondió a tiempo. Verifica que el host del servidor esté activo, que hermes-webui esté en ejecución y que la conexión esté disponible."
           }
         },
         "fr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Le serveur n'a pas répondu à temps. Vérifiez que le Mac est éveillé, que hermes-webui est en cours d'exécution et que le tunnel est connecté."
+            "state" : "translated",
+            "value" : "Le serveur n'a pas répondu à temps. Vérifiez que l'hôte du serveur est actif, que hermes-webui est en cours d'exécution et que la connexion est disponible."
           }
         },
         "he" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "השרת לא הגיב בזמן. ודא שה-Mac ער, ש-hermes-webui פועל, ושהמנהרה מחוברת."
+            "state" : "translated",
+            "value" : "השרת לא הגיב בזמן. ודא שמארח השרת ער, ש-hermes-webui פועל, ושהחיבור זמין."
           }
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Il server non ha risposto in tempo. Verifica che il Mac sia attivo, che hermes-webui sia in esecuzione e che il tunnel sia connesso."
+            "state" : "translated",
+            "value" : "Il server non ha risposto in tempo. Verifica che l'host del server sia attivo, che hermes-webui sia in esecuzione e che la connessione sia disponibile."
           }
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "サーバが時間内に応答しませんでした。Macがスリープしていないこと、hermes-webuiが実行中であること、トンネルが接続されていることを確認してください。"
+            "state" : "translated",
+            "value" : "サーバが時間内に応答しませんでした。サーバのホストがスリープしていないこと、hermes-webuiが実行中であること、接続が利用できることを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "서버가 제때 응답하지 않았어요. Mac이 켜져 있고, hermes-webui가 실행 중이며, 터널이 연결되어 있는지 확인하세요."
+            "state" : "translated",
+            "value" : "서버가 제때 응답하지 않았어요. 서버 호스트가 켜져 있고, hermes-webui가 실행 중이며, 연결이 가능한지 확인하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "De server reageerde niet op tijd. Controleer of de Mac wakker is, hermes-webui actief is en de tunnel is verbonden."
+            "state" : "translated",
+            "value" : "De server reageerde niet op tijd. Controleer of de serverhost wakker is, hermes-webui actief is en de verbinding beschikbaar is."
           }
         },
         "pl" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Serwer nie odpowiedział na czas. Sprawdź, czy Mac jest aktywny, hermes-webui działa, a tunel jest połączony."
+            "state" : "translated",
+            "value" : "Serwer nie odpowiedział na czas. Sprawdź, czy host serwera jest aktywny, hermes-webui działa, a połączenie jest dostępne."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "O servidor não respondeu a tempo. Verifique se o Mac está ativo, se o hermes-webui está em execução e se o túnel está conectado."
+            "state" : "translated",
+            "value" : "O servidor não respondeu a tempo. Verifique se o host do servidor está ativo, se o hermes-webui está em execução e se a conexão está disponível."
           }
         },
         "ru" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Сервер не ответил вовремя. Убедитесь, что Mac не спит, hermes-webui запущен, а туннель подключён."
+            "state" : "translated",
+            "value" : "Сервер не ответил вовремя. Убедитесь, что хост сервера не спит, hermes-webui запущен, а соединение доступно."
           }
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Sunucu zamanında yanıt vermedi. Mac'in uyanık olduğunu, hermes-webui'nin çalıştığını ve tünelin bağlı olduğunu kontrol edin."
+            "state" : "translated",
+            "value" : "Sunucu zamanında yanıt vermedi. Sunucu makinesinin uyanık olduğunu, hermes-webui'nin çalıştığını ve bağlantının kullanılabilir olduğunu kontrol edin."
           }
         },
         "ur" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "سرور نے بروقت جواب نہیں دیا۔ یقینی بنائیں کہ Mac بیدار ہے، hermes-webui چل رہا ہے، اور ٹنل منسلک ہے۔"
+            "state" : "translated",
+            "value" : "سرور نے وقت پر جواب نہیں دیا۔ یقینی بنائیں کہ سرور ہوسٹ بیدار ہے، hermes-webui چل رہا ہے، اور کنکشن دستیاب ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "服务器未及时响应。请检查 Mac 是否已唤醒、hermes-webui 是否正在运行以及隧道是否已连接。"
+            "state" : "translated",
+            "value" : "服务器未及时响应。请检查服务器主机是否已唤醒、hermes-webui 是否正在运行以及连接是否可用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器未及時回應。請檢查 Mac 是否已喚醒、hermes-webui 是否正在執行，以及通道是否已連線。"
+            "state" : "translated",
+            "value" : "伺服器未及時回應。請檢查伺服器主機是否已喚醒、hermes-webui 是否正在執行，以及連線是否可用。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器未及時回應。請檢查 Mac 是否已喚醒、hermes-webui 是否正在執行以及通道是否已連線。"
+            "state" : "translated",
+            "value" : "伺服器未及時回應。請檢查伺服器主機是否已喚醒、hermes-webui 是否正在執行以及連線是否可用。"
           }
         }
       }
@@ -121663,108 +121663,108 @@
         }
       }
     },
-    "The server or Cloudflare tunnel is unavailable. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected." : {
+    "The server or tunnel is unavailable. Check that the server host is awake, hermes-webui is running, and the tunnel is connected." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "الخادم أو نفق Cloudflare غير متاح. تأكد من أن جهاز Mac نشط، وأن hermes-webui قيد التشغيل، وأن النفق متصل."
+            "state" : "translated",
+            "value" : "الخادم أو النفق غير متاح. تأكد من أن مضيف الخادم نشط، وأن hermes-webui قيد التشغيل، وأن النفق متصل."
           }
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Der Server oder der Cloudflare-Tunnel ist nicht verfügbar. Überprüfe, ob der Mac aktiv ist, hermes-webui läuft und der Tunnel verbunden ist."
+            "state" : "translated",
+            "value" : "Der Server oder der Tunnel ist nicht verfügbar. Überprüfe, ob der Server-Host aktiv ist, hermes-webui läuft und der Tunnel verbunden ist."
           }
         },
         "es" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "El servidor o el túnel de Cloudflare no está disponible. Verifica que el Mac esté activo, que hermes-webui esté en ejecución y que el túnel esté conectado."
+            "state" : "translated",
+            "value" : "El servidor o el túnel no está disponible. Verifica que el host del servidor esté activo, que hermes-webui esté en ejecución y que el túnel esté conectado."
           }
         },
         "fr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Le serveur ou le tunnel Cloudflare est indisponible. Vérifiez que le Mac est éveillé, que hermes-webui est en cours d'exécution et que le tunnel est connecté."
+            "state" : "translated",
+            "value" : "Le serveur ou le tunnel est indisponible. Vérifiez que l'hôte du serveur est actif, que hermes-webui est en cours d'exécution et que le tunnel est connecté."
           }
         },
         "he" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "השרת או מנהרת Cloudflare אינם זמינים. ודא שה-Mac ער, ש-hermes-webui פועל, ושהמנהרה מחוברת."
+            "state" : "translated",
+            "value" : "השרת או המנהרה אינם זמינים. ודא שמארח השרת ער, ש-hermes-webui פועל, ושהמנהרה מחוברת."
           }
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Il server o il tunnel Cloudflare non è disponibile. Verifica che il Mac sia attivo, che hermes-webui sia in esecuzione e che il tunnel sia connesso."
+            "state" : "translated",
+            "value" : "Il server o il tunnel non è disponibile. Verifica che l'host del server sia attivo, che hermes-webui sia in esecuzione e che il tunnel sia connesso."
           }
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "サーバまたはCloudflareトンネルを利用できません。Macがスリープしていないこと、hermes-webuiが実行中であること、トンネルが接続されていることを確認してください。"
+            "state" : "translated",
+            "value" : "サーバまたはトンネルを利用できません。サーバのホストがスリープしていないこと、hermes-webuiが実行中であること、トンネルが接続されていることを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "서버 또는 Cloudflare 터널을 사용할 수 없어요. Mac이 켜져 있고, hermes-webui가 실행 중이며, 터널이 연결되어 있는지 확인하세요."
+            "state" : "translated",
+            "value" : "서버 또는 터널을 사용할 수 없어요. 서버 호스트가 켜져 있고, hermes-webui가 실행 중이며, 터널이 연결되어 있는지 확인하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "De server of Cloudflare-tunnel is niet beschikbaar. Controleer of de Mac wakker is, hermes-webui actief is en de tunnel is verbonden."
+            "state" : "translated",
+            "value" : "De server of de tunnel is niet beschikbaar. Controleer of de serverhost wakker is, hermes-webui actief is en de tunnel is verbonden."
           }
         },
         "pl" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Serwer lub tunel Cloudflare jest niedostępny. Sprawdź, czy Mac jest aktywny, hermes-webui działa, a tunel jest połączony."
+            "state" : "translated",
+            "value" : "Serwer lub tunel jest niedostępny. Sprawdź, czy host serwera jest aktywny, hermes-webui działa, a tunel jest połączony."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "O servidor ou o túnel da Cloudflare está indisponível. Verifique se o Mac está ativo, se o hermes-webui está em execução e se o túnel está conectado."
+            "state" : "translated",
+            "value" : "O servidor ou o túnel está indisponível. Verifique se o host do servidor está ativo, se o hermes-webui está em execução e se o túnel está conectado."
           }
         },
         "ru" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Сервер или туннель Cloudflare недоступен. Убедитесь, что Mac не спит, hermes-webui запущен, а туннель подключён."
+            "state" : "translated",
+            "value" : "Сервер или туннель недоступен. Убедитесь, что хост сервера не спит, hermes-webui запущен, а туннель подключён."
           }
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Sunucu veya Cloudflare tüneli kullanılamıyor. Mac'in uyanık olduğunu, hermes-webui'nin çalıştığını ve tünelin bağlı olduğunu kontrol edin."
+            "state" : "translated",
+            "value" : "Sunucu veya tünel kullanılamıyor. Sunucu makinesinin uyanık olduğunu, hermes-webui'nin çalıştığını ve tünelin bağlı olduğunu kontrol edin."
           }
         },
         "ur" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "سرور یا Cloudflare ٹنل دستیاب نہیں ہے۔ یقینی بنائیں کہ Mac بیدار ہے، hermes-webui چل رہا ہے، اور ٹنل منسلک ہے۔"
+            "state" : "translated",
+            "value" : "سرور یا ٹنل دستیاب نہیں ہے۔ یقینی بنائیں کہ سرور ہوسٹ بیدار ہے، hermes-webui چل رہا ہے، اور ٹنل منسلک ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "服务器或 Cloudflare 隧道不可用。请检查 Mac 是否已唤醒、hermes-webui 是否正在运行以及隧道是否已连接。"
+            "state" : "translated",
+            "value" : "服务器或隧道不可用。请检查服务器主机是否已唤醒、hermes-webui 是否正在运行以及隧道是否已连接。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器或 Cloudflare 通道無法使用。請檢查 Mac 是否已喚醒、hermes-webui 是否正在執行，以及通道是否已連線。"
+            "state" : "translated",
+            "value" : "伺服器或通道無法使用。請檢查伺服器主機是否已喚醒、hermes-webui 是否正在執行，以及通道是否已連線。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器或 Cloudflare 通道無法使用。請檢查 Mac 是否已喚醒、hermes-webui 是否正在執行以及通道是否已連線。"
+            "state" : "translated",
+            "value" : "伺服器或通道無法使用。請檢查伺服器主機是否已喚醒、hermes-webui 是否正在執行以及通道是否已連線。"
           }
         }
       }
@@ -122511,108 +122511,108 @@
         }
       }
     },
-    "The server took too long to respond. Check that the Mac is awake and the server is running." : {
+    "The server took too long to respond. Check that the server host is awake and the server is running." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "استغرق الخادم وقتًا طويلًا جدًا للاستجابة. تأكد من أن جهاز Mac نشط وأن الخادم قيد التشغيل."
+            "state" : "translated",
+            "value" : "استغرق الخادم وقتًا طويلًا جدًا للاستجابة. تأكد من أن مضيف الخادم نشط وأن الخادم قيد التشغيل."
           }
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Der Server hat zu lange für eine Antwort gebraucht. Stelle sicher, dass der Mac aktiv ist und der Server läuft."
+            "state" : "translated",
+            "value" : "Der Server hat zu lange für eine Antwort gebraucht. Stelle sicher, dass der Server-Host aktiv ist und der Server läuft."
           }
         },
         "es" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "El servidor tardó demasiado en responder. Verifica que el Mac esté activo y que el servidor esté en ejecución."
+            "state" : "translated",
+            "value" : "El servidor tardó demasiado en responder. Verifica que el host del servidor esté activo y que el servidor esté en ejecución."
           }
         },
         "fr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Le serveur a mis trop de temps à répondre. Vérifiez que le Mac est éveillé et que le serveur est en cours d'exécution."
+            "state" : "translated",
+            "value" : "Le serveur a mis trop de temps à répondre. Vérifiez que l'hôte du serveur est actif et que le serveur est en cours d'exécution."
           }
         },
         "he" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "השרת לקח יותר מדי זמן להגיב. ודא שה-Mac ער ושהשרת פועל."
+            "state" : "translated",
+            "value" : "השרת לקח יותר מדי זמן להגיב. ודא שמארח השרת ער ושהשרת פועל."
           }
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Il server ha impiegato troppo tempo a rispondere. Verifica che il Mac sia attivo e che il server sia in esecuzione."
+            "state" : "translated",
+            "value" : "Il server ha impiegato troppo tempo a rispondere. Verifica che l'host del server sia attivo e che il server sia in esecuzione."
           }
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "サーバの応答に時間がかかりすぎました。Macがスリープしていないこと、サーバが実行中であることを確認してください。"
+            "state" : "translated",
+            "value" : "サーバの応答に時間がかかりすぎました。サーバのホストがスリープしていないこと、サーバが実行中であることを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "서버 응답에 너무 오래 걸렸어요. Mac이 켜져 있고 서버가 실행 중인지 확인하세요."
+            "state" : "translated",
+            "value" : "서버 응답에 너무 오래 걸렸어요. 서버 호스트가 켜져 있고 서버가 실행 중인지 확인하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "De server deed er te lang over om te reageren. Controleer of de Mac wakker is en de server actief is."
+            "state" : "translated",
+            "value" : "De server deed er te lang over om te reageren. Controleer of de serverhost wakker is en de server actief is."
           }
         },
         "pl" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Serwer zbyt długo nie odpowiadał. Sprawdź, czy Mac jest aktywny, a serwer działa."
+            "state" : "translated",
+            "value" : "Serwer zbyt długo nie odpowiadał. Sprawdź, czy host serwera jest aktywny, a serwer działa."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "O servidor demorou demais para responder. Verifique se o Mac está ativo e se o servidor está em execução."
+            "state" : "translated",
+            "value" : "O servidor demorou demais para responder. Verifique se o host do servidor está ativo e se o servidor está em execução."
           }
         },
         "ru" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Сервер слишком долго отвечал. Убедитесь, что Mac не спит, а сервер запущен."
+            "state" : "translated",
+            "value" : "Сервер слишком долго отвечал. Убедитесь, что хост сервера не спит, а сервер запущен."
           }
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Sunucu yanıt vermek için çok uzun süre aldı. Mac'in uyanık olduğunu ve sunucunun çalıştığını kontrol edin."
+            "state" : "translated",
+            "value" : "Sunucu yanıt vermek için çok uzun süre aldı. Sunucu makinesinin uyanık olduğunu ve sunucunun çalıştığını kontrol edin."
           }
         },
         "ur" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "سرور کو جواب دینے میں بہت دیر لگی۔ یقینی بنائیں کہ Mac بیدار ہے اور سرور چل رہا ہے۔"
+            "state" : "translated",
+            "value" : "سرور کو جواب دینے میں بہت دیر لگی۔ یقینی بنائیں کہ سرور ہوسٹ بیدار ہے اور سرور چل رہا ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "服务器响应耗时过长。请检查 Mac 是否已唤醒以及服务器是否正在运行。"
+            "state" : "translated",
+            "value" : "服务器响应耗时过长。请检查服务器主机是否已唤醒以及服务器是否正在运行。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器回應耗時過長。請檢查 Mac 是否已喚醒，以及伺服器是否正在執行。"
+            "state" : "translated",
+            "value" : "伺服器回應耗時過長。請檢查伺服器主機是否已喚醒，以及伺服器是否正在執行。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器回應耗時過長。請檢查 Mac 是否已喚醒以及伺服器是否正在執行。"
+            "state" : "translated",
+            "value" : "伺服器回應耗時過長。請檢查伺服器主機是否已喚醒以及伺服器是否正在執行。"
           }
         }
       }

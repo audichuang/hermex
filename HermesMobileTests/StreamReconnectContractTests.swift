@@ -383,6 +383,79 @@ final class StreamReconnectContractTests: APIClientTestCase {
         XCTAssertNil(viewModel.sendErrorMessage)
     }
 
+    // MARK: - Scenario 5: a recovered connection retracts its own warning (#207)
+
+    @MainActor
+    func testRecoveryWarningClearsOnceTheServerAnswersAgain() async throws {
+        let streamClient = ScriptedSSEStreamingClient(connectionScripts: [
+            [
+                .init(.token("Alpha "), lastEventID: "stream-123:1"),
+                .init(.transportError("The network connection was lost."))
+            ],
+            [
+                .init(.token("bravo."), lastEventID: "stream-123:2"),
+                .init(.done(DoneStreamEvent())),
+                .init(.streamEnd)
+            ]
+        ])
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/chat/stream/status":
+                // The transient failure the user reported: the status probe
+                // times out while the server is still working on the response.
+                throw URLError(.timedOut)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        streamClient.playArmedConnectionScript()
+
+        try await waitUntil { viewModel.sendErrorMessage != nil }
+        XCTAssertTrue(viewModel.isActiveStreamConnectionSuspended)
+
+        // The server recovers: the very next status call succeeds.
+        MockURLProtocol.requestHandler = { request in
+            switch request.url?.path {
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(#"{"active":true,"stream_id":"stream-123"}"#, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session":{"session_id":"session-abc","title":"Planning"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.reconnectStreamIfNeeded()
+
+        XCTAssertNil(viewModel.sendErrorMessage, "A recovered connection must retract its stale warning.")
+        XCTAssertFalse(viewModel.isActiveStreamConnectionSuspended)
+    }
+
+    /// The retraction is scoped to the recovery warning: an error raised after it
+    /// describes something the reconnect did not fix, so it stays on screen.
+    @MainActor
+    func testUnrelatedErrorSurvivesLaterHealthConfirmation() throws {
+        let viewModel = try makeViewModel(streamClient: ScriptedSSEStreamingClient()) { request in
+            XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+            throw URLError(.badURL)
+        }
+
+        viewModel.streamCoordinatorDidReceiveRecoveryError(URLError(.timedOut))
+        XCTAssertNotNil(viewModel.sendErrorMessage)
+
+        viewModel.streamCoordinatorDidReceiveErrorMessage("The model provider rejected the request.")
+        viewModel.streamCoordinatorDidConfirmConnectionHealth()
+
+        XCTAssertEqual(viewModel.sendErrorMessage, "The model provider rejected the request.")
+    }
+
     private func jsonResponse(
         _ json: String,
         statusCode: Int,

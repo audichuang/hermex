@@ -227,6 +227,9 @@ final class ChatViewModel {
     private(set) var messageActionErrorMessage: String?
     private(set) var cacheErrorMessage: String?
     private(set) var lastError: Error?
+    /// The warning text last shown for a stream-recovery failure, so a recovered
+    /// connection can retract exactly that message and nothing else (#207).
+    private var recoveryWarningMessage: String?
     private(set) var displayTitle: String
     private(set) var listeningMessageID: String?
     private(set) var streamingScrollTrigger = 0
@@ -5000,6 +5003,21 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {
         lastError = error
         sendErrorMessage = error.localizedDescription
+        recoveryWarningMessage = sendErrorMessage
+    }
+
+    /// #207: a recovery warning ("The server did not respond in time…") used to
+    /// outlive the recovery it described — the stream resumed but the banner
+    /// stayed until the next send. Retract it once the connection proves itself,
+    /// and only then: the comparison keeps a newer, genuinely unrecovered error
+    /// on screen because it no longer matches the recovery text.
+    func streamCoordinatorDidConfirmConnectionHealth() {
+        guard let recoveryWarningMessage else { return }
+        if sendErrorMessage == recoveryWarningMessage {
+            sendErrorMessage = nil
+            lastError = nil
+        }
+        self.recoveryWarningMessage = nil
     }
 
     func streamCoordinatorDidStartConnection(isReplay: Bool) {

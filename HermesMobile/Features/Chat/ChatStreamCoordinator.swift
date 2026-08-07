@@ -55,6 +55,10 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorDidFinishStream()
     func streamCoordinatorDidReceiveErrorMessage(_ message: String)
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error)
+    /// The live connection just proved itself healthy — real stream progress, or
+    /// a status call the server answered. Retracts a stale recovery warning
+    /// without waiting for another send (#207).
+    func streamCoordinatorDidConfirmConnectionHealth()
     func streamCoordinatorDidStartConnection(isReplay: Bool)
     func streamCoordinatorDidResetRecoveryState()
 
@@ -253,6 +257,9 @@ final class ChatStreamCoordinator {
 
         do {
             let response = try await client.chatStreamStatus(streamID: activeStreamID)
+            // The server answered, so whatever recovery warning is on screen is
+            // stale even if this run turns out to be over (#207).
+            delegate?.streamCoordinatorDidConfirmConnectionHealth()
             guard self.activeStreamID == activeStreamID, isConnectionSuspended else { return }
 
             if response.active == true {
@@ -405,6 +412,7 @@ final class ChatStreamCoordinator {
         lastTransportActivityDate = now
         lastRecoveryStatusCheckDate = nil
         recoveryState = .idle
+        delegate?.streamCoordinatorDidConfirmConnectionHealth()
     }
 
     func clearReplayConnection() {
@@ -561,6 +569,7 @@ final class ChatStreamCoordinator {
 
         do {
             let response = try await client.chatStreamStatus(streamID: expectedStreamID)
+            delegate?.streamCoordinatorDidConfirmConnectionHealth()
             guard activeStreamID == expectedStreamID, !isConnectionSuspended else { return }
 
             if response.active == false {

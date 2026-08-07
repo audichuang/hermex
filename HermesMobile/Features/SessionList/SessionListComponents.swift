@@ -495,7 +495,7 @@ struct SessionListRowsSection: View {
            CacheFallbackPolicy.shouldUseCache(for: sessionLoadError) {
             return (
                 String(localized: "Cannot reach server"),
-                String(localized: "Check that your Mac is awake and cloudflared is running.")
+                String(localized: "Check that the server host is awake and hermes-webui is reachable.")
             )
         }
 
