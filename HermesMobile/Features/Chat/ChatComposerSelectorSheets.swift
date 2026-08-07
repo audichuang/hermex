@@ -15,6 +15,10 @@ struct ComposerModelPickerSheet: View {
     @State private var customModelID = ""
     @State private var customProviderID = ""
     @State private var sectionExpansion = ComposerModelPickerSectionExpansionState()
+    /// Groups whose `extra_models` overflow the user revealed with "Show all
+    /// models" (#179). Search bypasses this — a matching overflow model is
+    /// always listed.
+    @State private var expandedOverflowGroupIDs: Set<String> = []
 
     private let currentCustomGroupID = "current-custom-model"
     private let savedCustomGroupID = "saved-custom-models"
@@ -152,8 +156,23 @@ struct ComposerModelPickerSheet: View {
                     .padding(.leading, 10)
 
                 LazyVStack(spacing: 1) {
-                    ForEach(group.allModels, id: \.self) { option in
+                    ForEach(visibleModels(in: group), id: \.self) { option in
                         modelOptionRow(option, allowsDelete: group.id == savedCustomGroupID)
+                    }
+
+                    if !isOverflowExpanded(group), !group.overflowModels.isEmpty {
+                        Button {
+                            expandedOverflowGroupIDs.insert(group.id)
+                        } label: {
+                            Text("Show all models")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Color.accentColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 29)
+                                .padding(.vertical, 7)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -245,6 +264,16 @@ struct ComposerModelPickerSheet: View {
         }
         .padding(.leading, 2)
         .padding(.vertical, 3)
+    }
+
+    private func isOverflowExpanded(_ group: ModelCatalogGroup) -> Bool {
+        // A selected overflow model stays visible without a tap, so reopening the
+        // picker still shows what is in use.
+        expandedOverflowGroupIDs.contains(group.id) || group.overflowModels.contains(where: isSelected)
+    }
+
+    private func visibleModels(in group: ModelCatalogGroup) -> [ModelCatalogOption] {
+        isOverflowExpanded(group) ? group.allModels : group.featuredModels
     }
 
     private func isFavorite(_ option: ModelCatalogOption) -> Bool {

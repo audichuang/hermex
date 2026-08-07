@@ -133,6 +133,44 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(group.allModels.map(\.id), ["z-ai/glm-5.2", "deepseek/deepseek-v4-flash"])
     }
 
+    /// #179: a collapsed provider section shows only the curated list, and
+    /// "Show all models" reveals exactly the remainder — a model duplicated
+    /// across both arrays counts as featured, never as overflow.
+    func testFeaturedAndOverflowSplitTheCatalogWithoutOverlap() {
+        let group = ModelCatalogGroup(
+            id: "openrouter",
+            name: "OpenRouter",
+            providerID: "openrouter",
+            models: [
+                ModelCatalogOption(id: "z-ai/glm-5.2", displayName: "GLM 5.2", providerID: "openrouter")
+            ],
+            extraModels: [
+                ModelCatalogOption(id: "z-ai/glm-5.2", displayName: "GLM 5.2", providerID: "openrouter"),
+                ModelCatalogOption(id: "deepseek/deepseek-v4-flash", displayName: "DeepSeek V4 Flash", providerID: "openrouter")
+            ]
+        )
+
+        XCTAssertEqual(group.featuredModels.map(\.id), ["z-ai/glm-5.2"])
+        XCTAssertEqual(group.overflowModels.map(\.id), ["deepseek/deepseek-v4-flash"])
+        XCTAssertEqual(group.featuredModels.map(\.id) + group.overflowModels.map(\.id), group.allModels.map(\.id))
+    }
+
+    /// Providers without an overflow keep their sections exactly as they were:
+    /// no "Show all models" action, because there is nothing hidden.
+    func testProviderWithoutOverflowHasNothingToReveal() {
+        let group = ModelCatalogGroup(
+            id: "deepseek",
+            name: "DeepSeek",
+            providerID: "deepseek",
+            models: [
+                ModelCatalogOption(id: "deepseek-chat", displayName: "DeepSeek Chat", providerID: "deepseek")
+            ]
+        )
+
+        XCTAssertTrue(group.overflowModels.isEmpty)
+        XCTAssertEqual(group.featuredModels.map(\.id), group.allModels.map(\.id))
+    }
+
     func testMergingLiveModelsReplacesOnlyTheMatchingProviderGroup() {
         let groups = [
             ModelCatalogGroup(
