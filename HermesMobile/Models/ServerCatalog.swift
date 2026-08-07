@@ -681,7 +681,11 @@ struct ModelCatalogGroup: Identifiable, Equatable, Sendable {
 }
 
 extension ModelCatalogGroup {
-    var slashAutocompleteModels: [ModelCatalogOption] {
+    /// The provider's full selectable catalog. The webui splits a provider into a
+    /// featured `models` list plus an `extra_models` overflow, and only exposes the
+    /// overflow through search/show-all — so anything that lets the user pick or
+    /// resolve a model must read both (#242), deduped by ID.
+    var allModels: [ModelCatalogOption] {
         var seen = Set<String>()
         return (models + extraModels).filter { seen.insert($0.id).inserted }
     }
@@ -721,7 +725,7 @@ extension ModelsResponse {
     func displayName(for modelID: String?) -> String? {
         guard let modelID else { return nil }
         return catalogGroups
-            .flatMap(\.slashAutocompleteModels)
+            .flatMap(\.allModels)
             .first(where: { $0.id == modelID })?
             .displayName
     }
