@@ -352,6 +352,10 @@ final class ChatViewModel {
     var uploadAttachmentErrorMessage: String? { attachmentCoordinator.uploadAttachmentErrorMessage }
     var localAttachmentPreviews: [String: [String: Data]] { attachmentCoordinator.localAttachmentPreviews }
     private(set) var pinnedLocalNotices: [String] = []
+    /// Overridable so tests don't have to wait out the real 3-second card.
+    static var steeringNoticeDismissDelay: Duration = .seconds(3)
+    private var steeringNotice: String?
+    private var steeringNoticeDismissTask: Task<Void, Never>?
     var approvalPrompt: ApprovalPromptState? { pendingActionCoordinator.approvalPrompt }
     var isRespondingToApproval: Bool { pendingActionCoordinator.isRespondingToApproval }
     var approvalErrorMessage: String? { pendingActionCoordinator.approvalErrorMessage }
@@ -585,7 +589,7 @@ final class ChatViewModel {
         }
 
         let catalogName = modelCatalogGroups
-            .flatMap(\.models)
+            .flatMap(\.allModels)
             .firstMatchingSelection(modelID: currentModel, providerID: currentModelProvider)?
             .displayName
 
@@ -2413,7 +2417,8 @@ final class ChatViewModel {
         do {
             let response = try await client.steerChat(sessionID: sessionID, text: message)
             if response.accepted == true {
-                return .executed(message: String(localized: "Steering hint delivered."))
+                showSteeringNotice(String(localized: "Steering hint delivered."))
+                return .executed(message: nil)
             }
         } catch {
             lastError = error
@@ -3155,7 +3160,7 @@ final class ChatViewModel {
 
     private func modelOption(matching query: String) -> ModelCatalogOption? {
         let normalizedQuery = query.lowercased()
-        let options = modelCatalogGroups.flatMap(\.slashAutocompleteModels)
+        let options = modelCatalogGroups.flatMap(\.allModels)
 
         if let exact = options.first(where: { $0.id.lowercased() == normalizedQuery }) {
             return exact
@@ -3198,6 +3203,36 @@ final class ChatViewModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         pinnedLocalNotices.append(trimmed)
+    }
+
+    /// #183: the steering confirmation is transient feedback, not conversation.
+    /// At most one card is shown, each hint restarts the timer, and the card is
+    /// dropped — never flushed into the transcript — when it expires or the
+    /// response ends first.
+    func showSteeringNotice(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        dismissSteeringNotice()
+        steeringNotice = trimmed
+        pinnedLocalNotices.append(trimmed)
+
+        steeringNoticeDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.steeringNoticeDismissDelay)
+            guard !Task.isCancelled else { return }
+            self?.dismissSteeringNotice()
+        }
+    }
+
+    func dismissSteeringNotice() {
+        steeringNoticeDismissTask?.cancel()
+        steeringNoticeDismissTask = nil
+
+        guard let notice = steeringNotice else { return }
+        steeringNotice = nil
+        if let index = pinnedLocalNotices.lastIndex(of: notice) {
+            pinnedLocalNotices.remove(at: index)
+        }
     }
 
     private func appendLocalMessage(_ text: String, role: String, idPrefix: String) -> String? {
@@ -4463,6 +4498,7 @@ final class ChatViewModel {
     }
 
     private func flushPinnedLocalNoticesToTranscript() {
+        dismissSteeringNotice()
         let notices = pinnedLocalNotices
         pinnedLocalNotices.removeAll()
         for notice in notices {
