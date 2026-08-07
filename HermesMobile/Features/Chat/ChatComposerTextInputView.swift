@@ -57,7 +57,7 @@ struct ComposerTextInputView: View {
     }
 }
 
-private struct ComposerTextView: UIViewRepresentable {
+struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
     let isDisabled: Bool
@@ -74,24 +74,10 @@ private struct ComposerTextView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> PastingTextView {
-        let textView = PastingTextView()
+        let textView = PastingTextView.configuredForComposer()
         textView.delegate = context.coordinator
-        textView.backgroundColor = .clear
-        textView.font = .preferredFont(forTextStyle: .body)
-        textView.adjustsFontForContentSizeCategory = true
-        textView.isScrollEnabled = true
-        textView.textContainerInset = .zero
-        textView.textContainer.lineFragmentPadding = 0
-        textView.textContentType = .none
         textView.isKeyboardSendEnabled = isKeyboardSendEnabled
         textView.onKeyboardSend = onKeyboardSend
-        textView.pasteConfiguration = UIPasteConfiguration(
-            acceptableTypeIdentifiers: [
-                UTType.fileURL.identifier,
-                UTType.image.identifier,
-                UTType.text.identifier
-            ]
-        )
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders
@@ -204,6 +190,31 @@ private struct ComposerTextView: UIViewRepresentable {
     }
 
     final class PastingTextView: UITextView {
+        /// Appearance/input configuration that does not depend on the SwiftUI
+        /// bindings, factored out so it can be asserted in tests.
+        static func configuredForComposer() -> PastingTextView {
+            let textView = PastingTextView()
+            textView.backgroundColor = .clear
+            textView.font = .preferredFont(forTextStyle: .body)
+            textView.adjustsFontForContentSizeCategory = true
+            textView.isScrollEnabled = true
+            textView.textContainerInset = .zero
+            textView.textContainer.lineFragmentPadding = 0
+            textView.textContentType = .none
+            // #209: Chinese Pinyin composes candidates from lowercase Latin
+            // letters, and the default `.sentences` capitalization rewrites the
+            // first one, breaking the candidate list (`nihao` → `Nihao`).
+            textView.autocapitalizationType = .none
+            textView.pasteConfiguration = UIPasteConfiguration(
+                acceptableTypeIdentifiers: [
+                    UTType.fileURL.identifier,
+                    UTType.image.identifier,
+                    UTType.text.identifier
+                ]
+            )
+            return textView
+        }
+
         var isKeyboardSendEnabled = false
         var onKeyboardSend: () -> Void = {}
         var onPasteFileProviders: ([NSItemProvider]) -> Void = { _ in }
