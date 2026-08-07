@@ -51,6 +51,10 @@ final class ComposerChipTextView: UITextView {
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
+        // #209: Chinese Pinyin composes candidates from lowercase Latin
+        // letters; default `.sentences` rewrites `nihao` → `Nihao`.
+        autocapitalizationType = .none
+
 
         // Rides alongside the text view's own tap rather than replacing it, so
         // the caret still lands where the finger did and only a tap that
