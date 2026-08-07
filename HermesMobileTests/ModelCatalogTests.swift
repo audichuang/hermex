@@ -114,6 +114,25 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertTrue(response.liveOptions.isEmpty)
     }
 
+    /// #242: the pickers read `allModels`, so a model listed in both the featured
+    /// and the overflow array must still appear exactly once, featured order first.
+    func testAllModelsDedupesIDsSharedBetweenFeaturedAndOverflow() {
+        let group = ModelCatalogGroup(
+            id: "openrouter",
+            name: "OpenRouter",
+            providerID: "openrouter",
+            models: [
+                ModelCatalogOption(id: "z-ai/glm-5.2", displayName: "GLM 5.2", providerID: "openrouter")
+            ],
+            extraModels: [
+                ModelCatalogOption(id: "z-ai/glm-5.2", displayName: "GLM 5.2", providerID: "openrouter"),
+                ModelCatalogOption(id: "deepseek/deepseek-v4-flash", displayName: "DeepSeek V4 Flash", providerID: "openrouter")
+            ]
+        )
+
+        XCTAssertEqual(group.allModels.map(\.id), ["z-ai/glm-5.2", "deepseek/deepseek-v4-flash"])
+    }
+
     func testMergingLiveModelsReplacesOnlyTheMatchingProviderGroup() {
         let groups = [
             ModelCatalogGroup(
