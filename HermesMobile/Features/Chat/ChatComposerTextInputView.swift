@@ -213,6 +213,10 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.textContentType = .none
+        // #209: Chinese Pinyin composes candidates from lowercase Latin
+        // letters, and the default `.sentences` capitalization rewrites the
+        // first one, breaking the candidate list (`nihao` → `Nihao`).
+        textView.autocapitalizationType = .none
         // The editor draws its own attachments and reads them back as draft
         // text. Rich-text editing would let UIKit insert one it cannot read,
         // which would reach the server as an object-replacement character.
