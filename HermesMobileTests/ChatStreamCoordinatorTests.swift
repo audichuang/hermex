@@ -58,6 +58,22 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(liveActivityManager.markStaleCount, 1)
     }
 
+    /// #207: real stream progress is the strongest proof the connection came
+    /// back, so it must reach the delegate that owns the recovery warning.
+    @MainActor
+    func testStreamProgressConfirmsConnectionHealth() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-123")
+        XCTAssertEqual(delegate.confirmedConnectionHealthCount, 0)
+
+        streamClient.emit(.token("Alpha "), lastEventID: "stream-123:1")
+
+        XCTAssertEqual(delegate.confirmedConnectionHealthCount, 1)
+    }
+
     @MainActor
     func testForegroundReconnectActiveStreamReloadsAndRestartsWithoutReplay() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
@@ -919,6 +935,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var finishCount = 0
     private(set) var errorMessages: [String] = []
     private(set) var recoveryErrors: [String] = []
+    private(set) var confirmedConnectionHealthCount = 0
     private(set) var startConnectionReplayValues: [Bool] = []
     private(set) var resetRecoveryCount = 0
     private(set) var tokens: [String] = []
@@ -986,6 +1003,10 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {
         recoveryErrors.append(error.localizedDescription)
+    }
+
+    func streamCoordinatorDidConfirmConnectionHealth() {
+        confirmedConnectionHealthCount += 1
     }
 
     func streamCoordinatorDidStartConnection(isReplay: Bool) {
