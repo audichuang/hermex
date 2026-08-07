@@ -60,6 +60,13 @@ product/API source of truth. If a request conflicts with it, stop and ask.
 - Run focused tests while iterating. Rerun the full XCTest suite after rebasing app code
   and before review/PR handoff. For UI/runtime changes, also build and launch the app
   and give the human a short manual test plan.
+- A build rewrites `HermesMobile/Resources/Localizable.xcstrings` with Xcode's string
+  extraction, sometimes only after `xcodebuild` has exited. Re-read `git status` in the
+  same command that stages, stage the files you edited by path, and never `git add -A`
+  or `git commit -a` after validating.
+- The project has no file-system synchronized group. Register every new test file in
+  `HermesMobile.xcodeproj/project.pbxproj` by hand; an unregistered file never runs and
+  the suite still reports success.
 
 ## Special command meaning
 
