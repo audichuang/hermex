@@ -18,6 +18,9 @@ struct DefaultModelPickerView: View {
     @State private var isSaving = false
     @State private var isSavingCustom = false
     @State private var saveError: String?
+    /// Groups whose `extra_models` overflow the user revealed with "Show all
+    /// models" (#179); search lists matching overflow models regardless.
+    @State private var expandedOverflowGroupIDs: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -108,12 +111,29 @@ struct DefaultModelPickerView: View {
             ForEach(filteredGroups) { group in
                 ModelPickerCard(title: group.name) {
                     VStack(spacing: 0) {
-                        ForEach(Array(group.allModels.enumerated()), id: \.element.id) { index, model in
+                        let visibleModels = visibleModels(in: group)
+                        ForEach(Array(visibleModels.enumerated()), id: \.element.id) { index, model in
                             modelRow(model)
 
-                            if index < group.allModels.count - 1 {
+                            if index < visibleModels.count - 1 {
                                 Divider()
                             }
+                        }
+
+                        if !isOverflowExpanded(group), !group.overflowModels.isEmpty {
+                            Divider()
+
+                            Button {
+                                expandedOverflowGroupIDs.insert(group.id)
+                            } label: {
+                                Text("Show all models")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(Color.accentColor)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 10)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -140,6 +160,17 @@ struct DefaultModelPickerView: View {
                 models: matchingModels
             )
         }
+    }
+
+    private func isOverflowExpanded(_ group: ModelCatalogGroup) -> Bool {
+        // Keep a selected overflow model visible without a tap, so reopening the
+        // picker still shows the current default.
+        expandedOverflowGroupIDs.contains(group.id)
+            || group.overflowModels.contains { $0.id == defaultModel || $0.id == selectedModel }
+    }
+
+    private func visibleModels(in group: ModelCatalogGroup) -> [ModelCatalogOption] {
+        isOverflowExpanded(group) ? group.allModels : group.featuredModels
     }
 
     private func modelRow(_ model: ModelCatalogOption) -> some View {
