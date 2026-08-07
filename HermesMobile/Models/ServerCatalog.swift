@@ -689,6 +689,20 @@ extension ModelCatalogGroup {
         var seen = Set<String>()
         return (models + extraModels).filter { seen.insert($0.id).inserted }
     }
+
+    /// The curated list a picker shows before the user asks for more (#179).
+    var featuredModels: [ModelCatalogOption] {
+        var seen = Set<String>()
+        return models.filter { seen.insert($0.id).inserted }
+    }
+
+    /// Everything `featuredModels` leaves out — the `extra_models` overflow the
+    /// "Show all models" action reveals. Empty for providers without one, which
+    /// keeps their sections exactly as they were (#179).
+    var overflowModels: [ModelCatalogOption] {
+        let featured = Set(models.map(\.id))
+        return allModels.filter { !featured.contains($0.id) }
+    }
 }
 
 struct ModelCatalogOption: Identifiable, Equatable, Hashable, Sendable {
