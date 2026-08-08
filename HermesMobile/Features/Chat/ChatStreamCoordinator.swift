@@ -71,6 +71,9 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: Bool)
     func streamCoordinatorDidFinishStream()
     func streamCoordinatorDidReceiveErrorMessage(_ message: String)
+    /// Re-read the transcript from the server. Used on the error path, where
+    /// the server has already stored the explanation the stream did not show.
+    func streamCoordinatorRequestTranscriptReload()
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error)
     func streamCoordinatorDidConfirmRecovery()
     func streamCoordinatorDidStartConnection(isReplay: Bool)
@@ -774,12 +777,8 @@ final class ChatStreamCoordinator {
         case .cancelled:
             liveActivityManager.end(status: .cancelled, activity: String(localized: "Response cancelled"), errorSummary: nil)
             finishStream(ending: .cancelled)
-        case .error(let message):
-            if !hasCompletedCurrentResponse {
-                delegate?.streamCoordinatorDidReceiveErrorMessage(message)
-            }
-            liveActivityManager.end(status: .failed, activity: String(localized: "Response failed"), errorSummary: nil)
-            finishStream(ending: .failed)
+        case .error(let payload):
+            handleErrorEvent(payload)
         case .transportError(let message):
             handleTransportError(message)
         case .heartbeat:
@@ -794,6 +793,47 @@ final class ChatStreamCoordinator {
         case .ignored:
             break
         }
+    }
+
+    /// Handles an `error` / `apperror` frame.
+    ///
+    /// Two parts of the payload used to be thrown away with the rest of it.
+    ///
+    /// `recovery_control` marks a frame that is not an error report at all: it
+    /// exists to make the client rebuild its transcript (`api/run_journal.py:760`
+    /// and `api/routes.py:17461` @ 399cd7ab), and the reference client answers
+    /// it by reloading and showing nothing. Rendering it as a red line told the
+    /// user something had gone wrong when nothing had.
+    ///
+    /// And every error frame's text is appended to the stored session before it
+    /// is sent (`api/streaming.py:10195`), so reloading is what actually puts
+    /// the explanation in the transcript. Without it the view kept whatever
+    /// half-streamed content was on screen and the real message stayed
+    /// invisible until the user happened to pull to refresh (#6).
+    private func handleErrorEvent(_ payload: ErrorStreamEvent) {
+        // The error path carries a compression rotation too, so follow it here
+        // as well or the retry after the failure writes to the archived parent.
+        if let rotatedSessionID = payload.session?.sessionId {
+            delegate?.streamCoordinatorApplySessionCompressed(
+                SessionCompressedStreamEvent(newSessionId: rotatedSessionID)
+            )
+        }
+
+        if payload.isRecoveryControl {
+            liveActivityManager.end(status: .complete, activity: String(localized: "Response complete"), errorSummary: nil)
+            delegate?.streamCoordinatorRequestTranscriptReload()
+            finishStream()
+            return
+        }
+
+        if !hasCompletedCurrentResponse {
+            delegate?.streamCoordinatorDidReceiveErrorMessage(
+                payload.displayMessage(fallback: String(localized: "The stream returned an error."))
+            )
+        }
+        liveActivityManager.end(status: .failed, activity: String(localized: "Response failed"), errorSummary: nil)
+        delegate?.streamCoordinatorRequestTranscriptReload()
+        finishStream(ending: .failed)
     }
 
     private func handleTransportError(_ message: String) {

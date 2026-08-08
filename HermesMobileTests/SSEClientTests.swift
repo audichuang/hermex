@@ -692,17 +692,28 @@ final class SSEClientTests: XCTestCase {
     func testMalformedErrorPayloadSurfacesExplicitError() {
         let event = SSEEventDecoder.decode(eventType: "error", data: "{")
 
-        XCTAssertEqual(event, .error("The stream returned a malformed error event."))
+        XCTAssertEqual(event, .error(ErrorStreamEvent(error: "The stream returned a malformed error event.")))
     }
 
+    /// Pinned upstream `_provider_error_payload`: {message, type, hint, details,
+    /// session, …}. Everything past `message` used to be dropped, which cost the
+    /// user the server's own remediation hint (#6).
     func testAppErrorEventDecodesPinnedUpstreamMessageShape() {
-        // Pinned upstream `_provider_error_payload`: {message, type, hint, details, session, …}.
         let event = SSEEventDecoder.decode(
             eventType: "apperror",
             data: #"{"message": "Provider exploded", "type": "no_response", "hint": "Check the provider keys.", "details": "Provider exploded", "session_id": "session-abc", "session": {"session_id": "session-abc"}}"#
         )
 
-        XCTAssertEqual(event, .error("Provider exploded"))
+        guard case .error(let payload) = event else { return XCTFail("Expected an error event, got \(event)") }
+        XCTAssertEqual(payload.message, "Provider exploded")
+        XCTAssertEqual(payload.type, "no_response")
+        XCTAssertEqual(payload.hint, "Check the provider keys.")
+        XCTAssertEqual(payload.session?.sessionId, "session-abc")
+        XCTAssertFalse(payload.isRecoveryControl)
+        XCTAssertEqual(
+            payload.displayMessage(fallback: "unused"),
+            "Provider exploded\nCheck the provider keys."
+        )
     }
 
     func testAppErrorEventDecodesDocsErrorShape() {
@@ -712,19 +723,36 @@ final class SSEClientTests: XCTestCase {
             data: #"{"error": "Terminal failure", "type": "tool_limit_reached", "terminal_state": "tool_limit_reached"}"#
         )
 
-        XCTAssertEqual(event, .error("Terminal failure"))
+        guard case .error(let payload) = event else { return XCTFail("Expected an error event, got \(event)") }
+        XCTAssertEqual(payload.displayMessage(fallback: "unused"), "Terminal failure")
+        XCTAssertEqual(payload.terminalState, "tool_limit_reached")
+    }
+
+    /// `recovery_control` marks a frame that exists to make the client rebuild
+    /// its transcript, not one to show. Rendering it told the user something had
+    /// failed when nothing had (#6).
+    func testAppErrorEventDecodesRecoveryControlFlag() {
+        let event = SSEEventDecoder.decode(
+            eventType: "apperror",
+            data: #"{"message": "Run recovered", "recovery_control": true, "session": {"session_id": "session-new"}}"#
+        )
+
+        guard case .error(let payload) = event else { return XCTFail("Expected an error event, got \(event)") }
+        XCTAssertTrue(payload.isRecoveryControl)
+        XCTAssertEqual(payload.session?.sessionId, "session-new")
     }
 
     func testAppErrorEventWithoutMessageFallsBackToGenericError() {
         let event = SSEEventDecoder.decode(eventType: "apperror", data: "{}")
 
-        XCTAssertEqual(event, .error("The stream returned an error."))
+        guard case .error(let payload) = event else { return XCTFail("Expected an error event, got \(event)") }
+        XCTAssertEqual(payload.displayMessage(fallback: "The stream returned an error."), "The stream returned an error.")
     }
 
     func testMalformedAppErrorPayloadSurfacesExplicitError() {
         let event = SSEEventDecoder.decode(eventType: "apperror", data: "{")
 
-        XCTAssertEqual(event, .error("The stream returned a malformed error event."))
+        XCTAssertEqual(event, .error(ErrorStreamEvent(error: "The stream returned a malformed error event.")))
     }
 
     func testUnknownStreamEventTypeIsIgnored() {
