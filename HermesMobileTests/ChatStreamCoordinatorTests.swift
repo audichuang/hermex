@@ -2251,6 +2251,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var donePayloads: [DoneStreamEvent] = []
     private(set) var pendingSteerLeftovers: [String] = []
     private(set) var goalContinuations: [String] = []
+    private(set) var compressionRebinds: [String?] = []
     private(set) var goalStatuses: [GoalStreamEvent] = []
     var latestAssistantMessageID: String? = "assistant-latest"
     var restoresSnapshot = false
@@ -2394,6 +2395,10 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         guard let prompt = payload.continuationPromptText else { return false }
         goalContinuations.append(prompt)
         return true
+    }
+
+    func streamCoordinatorApplySessionCompressed(_ payload: SessionCompressedStreamEvent) {
+        compressionRebinds.append(payload.continuedSessionID)
     }
 }
 
