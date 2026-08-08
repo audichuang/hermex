@@ -279,29 +279,6 @@ final class ModelCatalogTests: XCTestCase {
             groups
         )
     }
-}
-
-final class PersonalityAutocompleteTests: XCTestCase {
-    func testSlashAutocompleteNamesPrependsNoneAndDeduplicates() throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let response = try decoder.decode(
-            PersonalitiesResponse.self,
-            from: Data("""
-            {
-              "personalities": [
-                {"name": "mentor", "description": "Patient technical coach"},
-                {"name": "none", "description": "Should not duplicate the clear option"},
-                {"name": "critic"},
-                {"name": "   "}
-              ]
-            }
-            """.utf8)
-        )
-
-        XCTAssertEqual(response.slashAutocompleteNames, ["none", "mentor", "critic"])
-    }
-
     /// The server prefixes every model of a non-active provider with
     /// `@provider:`, so the same model is spelled two different ways depending
     /// on which provider is active. Comparing raw ids left the picker unable to
@@ -315,9 +292,12 @@ final class PersonalityAutocompleteTests: XCTestCase {
             providerID: "gemini"
         )
 
-        XCTAssertTrue(prefixed.matchesSelection(modelID: "gemini-3.5-flash", providerID: nil))
         XCTAssertTrue(prefixed.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
         XCTAssertTrue(prefixed.matchesSelection(modelID: "gemini-3.5-flash", providerID: "gemini"))
+        XCTAssertFalse(
+            prefixed.matchesSelection(modelID: "gemini-3.5-flash", providerID: nil),
+            "A bare selection belongs to the active provider, whose models are the unprefixed ones."
+        )
 
         let bare = ModelCatalogOption(id: "gemini-3.5-flash", displayName: "Gemini 3.5 Flash", providerID: "gemini")
         XCTAssertTrue(bare.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
@@ -421,5 +401,27 @@ final class PersonalityAutocompleteTests: XCTestCase {
 
         XCTAssertEqual(response.supportsThinkingToggle, true)
         XCTAssertEqual(response.supportsReasoningEffort, false)
+    }
+}
+
+final class PersonalityAutocompleteTests: XCTestCase {
+    func testSlashAutocompleteNamesPrependsNoneAndDeduplicates() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(
+            PersonalitiesResponse.self,
+            from: Data("""
+            {
+              "personalities": [
+                {"name": "mentor", "description": "Patient technical coach"},
+                {"name": "none", "description": "Should not duplicate the clear option"},
+                {"name": "critic"},
+                {"name": "   "}
+              ]
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(response.slashAutocompleteNames, ["none", "mentor", "critic"])
     }
 }
