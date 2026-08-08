@@ -292,6 +292,66 @@ final class CronManagementViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    /// `POST /api/crons/run` refuses a double-run with HTTP 200,
+    /// `{"ok": false, "status": "already_running", "elapsed": …}` and **no**
+    /// `error` key, so reading only `error` reported a generic failure for a
+    /// benign "already working on it".
+    @MainActor
+    func testTaskDetailViewModelExplainsAnAlreadyRunningRefusal() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/crons/run")
+
+            return apiTestJSONResponse("""
+            {"ok": false, "job_id": "job123", "status": "already_running", "elapsed": 45.4}
+            """, for: request)
+        }
+        let viewModel = TaskDetailViewModel(
+            job: try decodeCronJob("""
+            {
+              "id": "job123",
+              "name": "Digest",
+              "prompt": "Run it",
+              "schedule": {"kind": "cron", "expr": "0 7 * * *"},
+              "enabled": true,
+              "state": "scheduled"
+            }
+            """),
+            runningElapsed: nil,
+            server: try XCTUnwrap(URL(string: "https://example.test")),
+            client: client
+        )
+
+        let didRun = await viewModel.runNow()
+
+        XCTAssertFalse(didRun)
+        XCTAssertEqual(viewModel.actionErrorMessage, "This task is already running.")
+        XCTAssertNil(viewModel.lastMutation)
+        // The refusal must not be mistaken for "started": no optimistic timer.
+        XCTAssertNil(viewModel.runningElapsed)
+    }
+
+    func testCronMutationResponseSurfacesStatusOnlyForKnownRefusals() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let running = try decoder.decode(
+            CronMutationResponse.self,
+            from: Data(#"{"ok": false, "status": "already_running", "elapsed": 45.4}"#.utf8)
+        )
+        XCTAssertEqual(running.statusExplanation, "This task is already running.")
+        XCTAssertEqual(running.elapsed, 45.4)
+        XCTAssertEqual(running.ok, false)
+        XCTAssertNil(running.error)
+
+        // An ordinary failure still routes through `error`.
+        let failed = try decoder.decode(
+            CronMutationResponse.self,
+            from: Data(#"{"ok": false, "error": "Job not found"}"#.utf8)
+        )
+        XCTAssertNil(failed.statusExplanation)
+        XCTAssertEqual(failed.error, "Job not found")
+    }
+
     @MainActor
     func testTaskDetailViewModelPauseUpdatesJobAndPublishesMutation() async throws {
         let client = makeClient { request in

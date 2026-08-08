@@ -937,6 +937,256 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.filter { $0.role == "user" && $0.content == "Keep working" }.count, 1)
     }
 
+    /// A goal continuation must be the very next `/api/chat/start`, even when an
+    /// ordinary message is already queued.
+    ///
+    /// The server marks the session (`PENDING_GOAL_CONTINUATION`) and then counts
+    /// whichever `chat/start` arrives next as the goal turn without checking the
+    /// prompt. So if the already-queued message went first it would consume the
+    /// marker, the real continuation would be treated as an ordinary turn, and the
+    /// goal would trail one turn behind for the rest of the run.
+    @MainActor
+    func testGoalContinuationPreemptsAnAlreadyQueuedMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startedMessages: [String] = []
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startedMessages.append(try XCTUnwrap(body["message"] as? String))
+                return apiTestJSONResponse("""
+                {"session_id": "session-abc", "stream_id": "stream-\(startedMessages.count)"}
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start the goal")
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(startedMessages, ["Start the goal"])
+
+        // An ordinary message lands in the queue first — the exact ordering that
+        // used to steal the goal marker.
+        viewModel.streamCoordinatorEnqueuePendingSteerLeftover("Unrelated queued message")
+
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: #"{"session_id": "session-abc", "continuation_prompt": "Continue the goal."}"#
+        ))
+        // Still mid-stream: nothing may be sent yet.
+        XCTAssertEqual(startedMessages, ["Start the goal"])
+
+        // A matching `done` is what arms the continuation (fail-closed).
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"session": {"session_id": "session-abc"}}"#
+        ))
+        streamClient.emit(.streamEnd)
+        try await waitUntil { startedMessages.count >= 2 }
+
+        XCTAssertEqual(
+            startedMessages,
+            ["Start the goal", "Continue the goal."],
+            "The continuation must precede the queued message."
+        )
+    }
+
+    /// The reservation makes the ordering deterministic: a manual send that arrives
+    /// while a continuation's `chat/start` is committed is declined outright rather
+    /// than claiming the server's goal marker.
+    ///
+    /// Without this, the manual message would be counted as the goal turn, the real
+    /// continuation would take a 409, and the stale prompt could be replayed later —
+    /// re-running whatever tools it implies. Declining (rather than queueing) also
+    /// keeps the draft in the composer, so the UI does not report it as sent.
+    @MainActor
+    func testManualSendCannotOvertakeACommittedGoalContinuation() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startedMessages: [String] = []
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startedMessages.append(try XCTUnwrap(body["message"] as? String))
+                return apiTestJSONResponse("""
+                {"session_id": "session-abc", "stream_id": "stream-\(startedMessages.count)"}
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start the goal")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: #"{"session_id": "session-abc", "continuation_prompt": "Continue the goal."}"#
+        ))
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"session": {"session_id": "session-abc"}}"#
+        ))
+        // `stream_end` commits the continuation and takes the reservation
+        // synchronously, before its own send Task runs.
+        streamClient.emit(.streamEnd)
+
+        // A manual send racing that window must be declined, never sent ahead of the
+        // continuation.
+        let manualAccepted = await viewModel.sendMessage("A manual message")
+        XCTAssertFalse(manualAccepted, "Declined so the composer keeps the draft.")
+        XCTAssertNotNil(viewModel.sendErrorMessage, "The user has to see why it was declined.")
+
+        try await waitUntil { startedMessages.count >= 2 }
+        // `waitUntil` times out silently, so assert the count before indexing —
+        // otherwise a regression crashes the test process instead of failing.
+        XCTAssertGreaterThanOrEqual(startedMessages.count, 2, "The continuation was never sent.")
+        XCTAssertEqual(
+            Array(startedMessages.prefix(2)),
+            ["Start the goal", "Continue the goal."],
+            "The continuation must win the race against the manual send."
+        )
+    }
+
+    /// Compression rotates the session id mid-stream, and the real frame order is
+    /// `goal_continue(old id)` → `done(new id)`: the continuation frame is built
+    /// from a variable captured *before* the rotation, so its id always matches the
+    /// client's and can never reveal the move. Only `done` carries the new id.
+    ///
+    /// The continuation must be dropped, not sent — the old id is by then the
+    /// archived parent.
+    @MainActor
+    func testGoalContinuationIsDroppedWhenDoneReportsARotatedSession() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startedMessages: [String] = []
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startedMessages.append(try XCTUnwrap(body["message"] as? String))
+                return apiTestJSONResponse("""
+                {"session_id": "session-abc", "stream_id": "stream-\(startedMessages.count)"}
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start the goal")
+        XCTAssertTrue(didStart)
+
+        // Old id — exactly what upstream sends.
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: #"{"session_id": "session-abc", "continuation_prompt": "Continue the goal."}"#
+        ))
+        // New id: the compression happened.
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"session": {"session_id": "session-compressed"}}"#
+        ))
+        streamClient.emit(.streamEnd)
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(startedMessages, ["Start the goal"], "Must not post into the archived parent.")
+        XCTAssertTrue(
+            viewModel.messages.contains { ($0.content ?? "").contains("compressed") },
+            "The user has to be told why the goal stopped."
+        )
+    }
+
+    /// Fail-closed: a stream that ends without a matching `done` never arms the
+    /// continuation, so it is dropped rather than sent on an unverified session.
+    /// `apperror`, a cancel, and a replay opening straight onto `stream_end` all
+    /// reach the drain this way.
+    @MainActor
+    func testGoalContinuationIsDroppedWhenStreamEndsWithoutDone() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startedMessages: [String] = []
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startedMessages.append(try XCTUnwrap(body["message"] as? String))
+                return apiTestJSONResponse("""
+                {"session_id": "session-abc", "stream_id": "stream-\(startedMessages.count)"}
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start the goal")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: #"{"session_id": "session-abc", "continuation_prompt": "Continue the goal."}"#
+        ))
+        // Terminal error instead of `done` — nothing armed the continuation.
+        streamClient.emit(.error("Provider exploded"))
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(startedMessages, ["Start the goal"])
+    }
+
+    /// A continuation whose frame names a different session is rejected outright, at
+    /// the point the frame arrives.
+    @MainActor
+    func testGoalContinuationForAnotherSessionIsNotSent() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startedMessages: [String] = []
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startedMessages.append(try XCTUnwrap(body["message"] as? String))
+                return apiTestJSONResponse("""
+                {"session_id": "session-abc", "stream_id": "stream-\(startedMessages.count)"}
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start the goal")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: #"{"session_id": "session-rotated", "continuation_prompt": "Continue the goal."}"#
+        ))
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"session": {"session_id": "session-abc"}}"#
+        ))
+        streamClient.emit(.streamEnd)
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(startedMessages, ["Start the goal"])
+    }
+
     @MainActor
     func testSendVoiceNoteSendsBareTranscriptWithoutAttachedFilesSuffix() async throws {
         let streamClient = SpySSEStreamingClient()
