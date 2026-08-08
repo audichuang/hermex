@@ -653,7 +653,7 @@ final class SessionListViewModel {
             let file = try await client.exportSession(
                 id: sessionId,
                 format: format,
-                fallbackTitle: session.title
+                fallbackTitle: session.preferredTitle
             )
 
             let directory = Self.exportsRootDirectory
@@ -973,6 +973,7 @@ final class SessionListViewModel {
 
     private static func searchableText(for session: SessionSummary) -> String {
         [
+            session.preferredTitle,
             session.title,
             session.workspace,
             session.model,
@@ -1038,7 +1039,7 @@ final class SessionListViewModel {
     }
 
     private func duplicateTitle(for session: SessionSummary) -> String {
-        let baseTitle = Self.nonEmpty(session.title) ?? String(localized: "Untitled Session")
+        let baseTitle = Self.nonEmpty(session.preferredTitle) ?? String(localized: "Untitled Session")
         return String(localized: "\(baseTitle) (copy)")
     }
 

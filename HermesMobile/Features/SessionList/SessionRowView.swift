@@ -28,7 +28,9 @@ struct SessionRowView: View {
     }
 
     static func displayTitle(for session: SessionSummary) -> String {
-        let title = session.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // `preferredTitle` first: CLI and subagent rows store a placeholder in
+        // `title` and carry the readable one in `display_title` (#23).
+        let title = session.preferredTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let title, !title.isEmpty else {
             return String(localized: "Untitled Session")
         }
