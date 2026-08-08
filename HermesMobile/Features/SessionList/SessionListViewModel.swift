@@ -659,7 +659,7 @@ final class SessionListViewModel {
             let file = try await client.exportSession(
                 id: sessionId,
                 format: format,
-                fallbackTitle: session.title
+                fallbackTitle: session.preferredTitle
             )
 
             let directory = Self.exportsRootDirectory
@@ -979,6 +979,7 @@ final class SessionListViewModel {
 
     private static func searchableText(for session: SessionSummary) -> String {
         [
+            session.preferredTitle,
             session.title,
             session.workspace,
             session.model,
@@ -1042,6 +1043,7 @@ final class SessionListViewModel {
         guard value > 0 else { return nil }
         return Date(timeIntervalSince1970: value)
     }
+
 
     private func beginSessionMutation(_ sessionId: String) -> Bool {
         mutatingSessionIDs.insert(sessionId).inserted

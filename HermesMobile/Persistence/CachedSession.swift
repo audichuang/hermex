@@ -59,7 +59,11 @@ final class CachedSession {
     }
 
     func apply(_ session: SessionSummary, cachedAt: Date = Date()) {
-        title = session.title
+        // Store what the row actually shows, so a CLI or subagent session read
+        // back from the cache keeps its readable title instead of reverting to
+        // the "Hermes WebUI #N" placeholder (#23). Keeping this in the existing
+        // column avoids a store migration for a derived value.
+        title = session.preferredTitle ?? session.title
         workspace = session.workspace
         model = session.model
         modelProvider = session.modelProvider
