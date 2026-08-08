@@ -324,6 +324,9 @@ final class PersonalityAutocompleteTests: XCTestCase {
     }
 
     /// Normalizing must not merge two providers that offer the same bare id.
+    /// The live deployment really does list `@gemini:gemini-2.5-flash` and
+    /// `@google:gemini-2.5-flash` side by side, and an earlier version of this
+    /// fix ticked both.
     func testModelSelectionStillSeparatesProvidersSharingABareID() {
         let other = ModelCatalogOption(
             id: "@deepseek:gemini-3.5-flash",
@@ -333,6 +336,27 @@ final class PersonalityAutocompleteTests: XCTestCase {
 
         XCTAssertFalse(other.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
         XCTAssertFalse(other.matchesSelection(modelID: "gemini-3.5-flash", providerID: "gemini"))
+
+        // A bare selection is the ACTIVE provider's spelling — the prefix is
+        // precisely what the server adds to everyone else — so it must not tick
+        // a prefixed look-alike.
+        let prefixedLookAlike = ModelCatalogOption(
+            id: "@google:gemini-2.5-flash",
+            displayName: "Gemini 2.5 Flash",
+            providerID: "google"
+        )
+        let activeProviderOption = ModelCatalogOption(
+            id: "gemini-2.5-flash",
+            displayName: "Gemini 2.5 Flash",
+            providerID: "gemini"
+        )
+
+        XCTAssertFalse(prefixedLookAlike.matchesSelection(modelID: "gemini-2.5-flash", providerID: nil))
+        XCTAssertTrue(activeProviderOption.matchesSelection(modelID: "gemini-2.5-flash", providerID: nil))
+        XCTAssertTrue(
+            activeProviderOption.matchesSelection(modelID: "@gemini:gemini-2.5-flash", providerID: nil),
+            "Saving through the app leaves the prefixed spelling while the server stores the bare one."
+        )
     }
 
     /// An exact spelling wins over a normalized one so a same-named model from

@@ -748,9 +748,16 @@ extension ModelCatalogOption {
         guard let modelID, id.bareModelID == modelID.bareModelID else { return false }
 
         // A provider named on either side has to agree, so two providers
-        // offering the same bare id can't be confused. The `@provider:` prefix
-        // counts as naming one.
-        guard let selectionProvider = providerID ?? modelID.modelIDProviderPrefix else { return true }
+        // offering the same bare id can't be confused — this deployment really
+        // does serve `@gemini:gemini-2.5-flash` and `@google:gemini-2.5-flash`
+        // side by side. The `@provider:` prefix counts as naming one.
+        guard let selectionProvider = providerID ?? modelID.modelIDProviderPrefix else {
+            // A selection that names no provider is the active provider's
+            // spelling, because the prefix is exactly what the server adds to
+            // everyone else. Matching it against a prefixed option would tick
+            // every provider that happens to offer the same bare id.
+            return id.modelIDProviderPrefix == nil
+        }
         guard let optionProvider = self.providerID ?? id.modelIDProviderPrefix else { return true }
         return optionProvider == selectionProvider
     }
