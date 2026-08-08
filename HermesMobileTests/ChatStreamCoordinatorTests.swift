@@ -1592,6 +1592,30 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(delegate.compressionRebinds, ["session-rotated"])
     }
 
+    /// A `warning` is non-fatal by contract — the stream keeps producing tokens.
+    /// Routing it through the error path would have ended a live run (#7).
+    @MainActor
+    func testWarningFrameNotifiesWithoutEndingTheStream() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-warn")
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "warning",
+            data: #"{"type": "fallback", "message": "Switched to the fallback model."}"#
+        ))
+
+        XCTAssertEqual(delegate.warningMessages, ["Switched to the fallback model."])
+        XCTAssertEqual(coordinator.activeStreamID, "stream-warn", "The run is still going.")
+        XCTAssertEqual(delegate.errorMessages, [])
+        XCTAssertTrue(liveActivityManager.ends.isEmpty)
+    }
 
     @MainActor
     func testRunEndingRecordsEachRunAndNeverLeaksAStopIntoTheNextCompletion() async throws {
@@ -2462,6 +2486,10 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorApplySessionCompressed(_ payload: SessionCompressedStreamEvent) {
         compressionRebinds.append(payload.continuedSessionID)
+    }
+
+    func streamCoordinatorDidReceiveWarningMessage(_ message: String) {
+        warningMessages.append(message)
     }
 
     func streamCoordinatorRequestTranscriptReload() {

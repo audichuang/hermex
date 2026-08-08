@@ -71,6 +71,9 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: Bool)
     func streamCoordinatorDidFinishStream()
     func streamCoordinatorDidReceiveErrorMessage(_ message: String)
+    /// A non-fatal `warning` frame — the model was swapped for a fallback, or
+    /// approvals aren't available on this run. Inline notice, not an error (#7).
+    func streamCoordinatorDidReceiveWarningMessage(_ message: String)
     /// Re-read the transcript from the server. Used on the error path, where
     /// the server has already stored the explanation the stream did not show.
     func streamCoordinatorRequestTranscriptReload()
@@ -779,6 +782,16 @@ final class ChatStreamCoordinator {
             finishStream(ending: .cancelled)
         case .error(let payload):
             handleErrorEvent(payload)
+        case .warning(let payload):
+            // Non-fatal by contract: the stream keeps producing tokens, so this
+            // must not finish it. It does prove the transport is alive, so it
+            // clears a "checking" chip the same way a heartbeat does.
+            if recoveryState == .checking {
+                recoveryState = .idle
+            }
+            if let message = payload.displayMessage {
+                delegate?.streamCoordinatorDidReceiveWarningMessage(message)
+            }
         case .transportError(let message):
             handleTransportError(message)
         case .heartbeat:
