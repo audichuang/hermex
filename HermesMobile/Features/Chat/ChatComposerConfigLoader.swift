@@ -13,6 +13,7 @@ struct ChatComposerConfigState: Equatable, Sendable {
     /// `supports_reasoning_effort`; `false` hides the effort control, `nil`
     /// (older servers) keeps it visible.
     var supportsReasoningEffort: Bool?
+    var supportsThinkingToggle: Bool?
     var modelCatalogGroups: [ModelCatalogGroup]
     var agentCommands: [AgentCommand]
     var workspaceRoots: [WorkspaceRoot]
@@ -29,6 +30,7 @@ struct ChatComposerConfigState: Equatable, Sendable {
         selectedReasoningEffort: String? = nil,
         supportedReasoningEfforts: [String]? = nil,
         supportsReasoningEffort: Bool? = nil,
+        supportsThinkingToggle: Bool? = nil,
         modelCatalogGroups: [ModelCatalogGroup] = [],
         agentCommands: [AgentCommand] = [],
         workspaceRoots: [WorkspaceRoot] = [],
@@ -44,6 +46,7 @@ struct ChatComposerConfigState: Equatable, Sendable {
         self.selectedReasoningEffort = selectedReasoningEffort
         self.supportedReasoningEfforts = supportedReasoningEfforts
         self.supportsReasoningEffort = supportsReasoningEffort
+        self.supportsThinkingToggle = supportsThinkingToggle
         self.modelCatalogGroups = modelCatalogGroups
         self.agentCommands = agentCommands
         self.workspaceRoots = workspaceRoots
@@ -121,6 +124,7 @@ struct ChatComposerConfigLoader {
             state.selectedReasoningEffort = reasoningResponse.effectiveEffort
             state.supportedReasoningEfforts = reasoningResponse.normalizedSupportedEfforts
             state.supportsReasoningEffort = reasoningResponse.supportsReasoningEffort
+            state.supportsThinkingToggle = reasoningResponse.supportsThinkingToggle
 
             let workspaceResponse = try await client.workspaces()
             state.workspaceRoots = workspaceResponse.workspaces ?? []

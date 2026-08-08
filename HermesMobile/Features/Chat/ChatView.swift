@@ -388,6 +388,7 @@ struct ChatView: View {
             isLoadingModels: viewModel.isLoadingComposerConfiguration,
             selectedReasoningEffort: viewModel.selectedReasoningEffort,
             supportedReasoningEfforts: viewModel.supportedReasoningEfforts,
+            supportsThinkingToggle: viewModel.supportsThinkingToggle,
             showsReasoningControl: viewModel.showsReasoningEffortControl,
             isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration,
             pendingAttachments: viewModel.pendingAttachments,

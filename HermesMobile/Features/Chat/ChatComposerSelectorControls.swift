@@ -244,6 +244,7 @@ struct ComposerReasoningMenu: View {
     /// Server-provided effort vocabulary for the current model; `nil` falls
     /// back to the full static list (older servers, issue #18).
     let supportedEfforts: [String]?
+    var supportsThinkingToggle: Bool?
     let reasoningTitle: String
     let isDisabled: Bool
     let width: CGFloat
@@ -275,7 +276,10 @@ struct ComposerReasoningMenu: View {
         UIMenu(
             title: String(localized: "Reasoning"),
             options: [.displayInline],
-            children: ReasoningEffortOption.options(forSupportedEfforts: supportedEfforts).map { option in
+            children: ReasoningEffortOption.options(
+                forSupportedEfforts: supportedEfforts,
+                supportsThinkingToggle: supportsThinkingToggle
+            ).map { option in
                 UIAction(
                     title: option.title,
                     state: selectedReasoningEffort == option.id ? .on : .off
@@ -451,11 +455,25 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
     }
 
     /// Menu options for a server-provided effort vocabulary (issue #18).
-    /// `nil` or empty → the full static list (older servers / defensive fallback;
-    /// an empty list also means `supports_reasoning_effort == false`, which hides
-    /// the control before this is ever rendered). Unknown ids are kept with a
-    /// capitalized title so a newer server's vocabulary still works.
-    static func options(forSupportedEfforts supportedEfforts: [String]?) -> [ReasoningEffortOption] {
+    /// `nil` → the full static list (older servers / defensive fallback).
+    /// Empty with a thinking toggle means the model takes no effort ladder but
+    /// still switches thinking on and off, so it gets the two meta-options the
+    /// reference client always keeps: "None" (off) and "Default" (the provider's
+    /// own setting, i.e. on). Without "Default" the control would be one-way:
+    /// thinking could be turned off and never back on (#26).
+    /// Unknown ids are kept with a capitalized title so a newer server's
+    /// vocabulary still works.
+    static func options(
+        forSupportedEfforts supportedEfforts: [String]?,
+        supportsThinkingToggle: Bool? = nil
+    ) -> [ReasoningEffortOption] {
+        if supportedEfforts?.isEmpty == true, supportsThinkingToggle == true {
+            return [
+                ReasoningEffortOption(id: "", title: String(localized: "Default")),
+                ReasoningEffortOption(id: "none", title: String(localized: "None"))
+            ]
+        }
+
         guard let supportedEfforts, !supportedEfforts.isEmpty else { return allCases }
 
         var seen = Set<String>()
@@ -468,13 +486,24 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
             }
     }
 
-    /// Whether the composer should show the effort control at all (issue #18).
-    /// `supports_reasoning_effort == false` hides it; older servers (both fields
-    /// absent) keep today's behavior and show it.
+    /// Whether the composer should show the reasoning control at all (issue #18).
+    ///
+    /// `supports_reasoning_effort == false` alone is not enough to hide it. ZAI
+    /// GLM-4.5–5.1 accept `thinking: {"type": …}` but not the `reasoning_effort`
+    /// ladder, so upstream reports an empty ladder *and*
+    /// `supports_thinking_toggle: true` — and says so in its own comment at
+    /// `api/config.py:4179` @ 399cd7ab: hiding on the empty ladder "would hide
+    /// the entire reasoning chip and silently regress the working thinking
+    /// on/off control". That is exactly what happened here, leaving those models
+    /// with no way to switch thinking off except a browser (#26).
+    ///
+    /// Older servers (all fields absent) keep today's behaviour and show it.
     static func showsEffortControl(
         supportsReasoningEffort: Bool?,
-        supportedEfforts: [String]?
+        supportedEfforts: [String]?,
+        supportsThinkingToggle: Bool? = nil
     ) -> Bool {
+        if supportsThinkingToggle == true { return true }
         if let supportsReasoningEffort { return supportsReasoningEffort }
         if let supportedEfforts { return !supportedEfforts.isEmpty }
         return true
