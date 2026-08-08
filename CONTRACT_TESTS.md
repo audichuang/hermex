@@ -217,3 +217,45 @@ it as an artifact, and creates or updates the standing
 `Upstream Hermes-WebUI watch digest` issue. It can be run manually and also
 runs weekly on Monday at 14:00 UTC. Scheduled runs post the digest issue by
 default; manual runs can disable issue posting with the `post_issue` input.
+
+## Live wire capture — 2026-08-08
+
+Recorded against the maintainer's own deployment while fixing the
+contract-audit issues #2–#13 and #23–#29. Raw JSON was captured for `/api/auth/status`,
+`/api/onboarding/status`, `/api/sessions` (74 rows), `/api/models`,
+`/api/crons`, `/api/kanban/stats`, `/api/projects` and `/api/reasoning`.
+
+**The pin was NOT advanced.** The deployment does not report a build SHA, so
+what it runs cannot be identified; the source cross-checks below were made
+against upstream `399cd7ab` (exp-v0.52.149) in a local read-only checkout. Per
+the Advance Policy this capture is a read-only smoke, not the full mutating
+smoke, so `UPSTREAM_TESTED_SHA` stays at `f1d399b4`.
+
+What the capture settled:
+
+- **`/api/auth/status` reports capabilities separately.** `oidc_enabled` and
+  `logged_in` are distinct keys, confirming that "auth on, password auth off"
+  never implied passkeys (#3). `trusted_auth_enabled` appears only in
+  trusted-header mode, which this deployment is not in.
+- **No type drift in `/api/sessions`.** All 74 rows were type-consistent, so
+  #10's lossy decoding is hardening rather than a reproduced failure. `attention`
+  is present on every row (always null here); `display_title` and
+  `supports_thinking_toggle` were absent from this deployment's responses.
+- **`supports_thinking_toggle` lives on `GET /api/reasoning`, not
+  `/api/models`.** Issue #26 states otherwise; the endpoint returns
+  `supports_reasoning_effort` and `supports_thinking_toggle` together there.
+- **The `@provider:` prefix is real and load-bearing.** With `openai-codex`
+  active its ids are bare and `@deepseek:` / `@gemini:` / `@google:` carry the
+  prefix. Switching the default model to a prefixed id makes that provider
+  active and the server then stores the *bare* id — which is precisely the
+  spelling mismatch #27 describes. The same deployment serves
+  `@gemini:gemini-2.5-flash` and `@google:gemini-2.5-flash` side by side, so
+  normalizing the prefix must not merge providers.
+- **`KanbanStats.by_assignee` remains undecided.** The response was
+  `{"by_status": {}, "by_assignee": {}}` with no cards to populate it. It also
+  carried `oldest_ready_age_seconds` and `now`, which the in-repo fallback query
+  does not return — so this deployment takes the `kb.board_stats(conn)` branch,
+  whose shape is defined outside `hermes-webui`. The client accepts both the
+  flat and the nested shape.
+- **Not settled:** `list_events()` payload type, and `unblock_task()`'s
+  resulting status. Both need Kanban cards to exist first.
