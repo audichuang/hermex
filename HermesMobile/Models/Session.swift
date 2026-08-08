@@ -751,6 +751,14 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
     let compressionAnchorVisibleIdx: Int?
     let compressionAnchorMessageKey: CompressionAnchorMessageKey?
     let compressionAnchorSummary: String?
+    /// Where the conversation went after this session was archived as a
+    /// pre-compression snapshot. Present only on such a snapshot, and upstream
+    /// documents it as the recovery hint for exactly this client's situation —
+    /// a mobile app that missed the final `done` handoff while backgrounded
+    /// (`_pre_compression_continuation_session_id`, `api/routes.py:9446`
+    /// @ 399cd7ab). It already follows repeated compressions to the newest
+    /// visible descendant, so one hop is enough.
+    let continuationSessionId: String?
 
     enum CodingKeys: String, CodingKey {
         case sessionId
@@ -800,6 +808,8 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         case snakeCasedCompressionAnchorVisibleIdx = "compression_anchor_visible_idx"
         case snakeCasedCompressionAnchorMessageKey = "compression_anchor_message_key"
         case snakeCasedCompressionAnchorSummary = "compression_anchor_summary"
+        case continuationSessionId
+        case snakeCasedContinuationSessionId = "continuation_session_id"
     }
 
     init(from decoder: Decoder) throws {
@@ -857,6 +867,8 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
             )) ?? nil)
         compressionAnchorSummary = container.decodeLossyStringIfPresent(forKey: .compressionAnchorSummary)
             ?? container.decodeLossyStringIfPresent(forKey: .snakeCasedCompressionAnchorSummary)
+        continuationSessionId = container.decodeLossyStringIfPresent(forKey: .continuationSessionId)
+            ?? container.decodeLossyStringIfPresent(forKey: .snakeCasedContinuationSessionId)
     }
 
     private static func decodeMessagesTolerantly(

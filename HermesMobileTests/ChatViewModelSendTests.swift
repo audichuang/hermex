@@ -1144,6 +1144,174 @@ final class ChatViewModelSendTests: XCTestCase {
         )
     }
 
+    /// A `done` whose session id has rotated belongs to *this* conversation — an
+    /// auto-compression turn moved it — so the client has to follow the id and
+    /// apply the payload. Discarding it froze the transcript on screen and left
+    /// every later send addressed to the archived parent snapshot (#2).
+    @MainActor
+    func testDoneWithARotatedSessionRebindsAndAppliesTheTranscript() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startedSessionIDs: [String] = []
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startedSessionIDs.append(try XCTUnwrap(body["session_id"] as? String))
+                return apiTestJSONResponse("""
+                {"session_id": "session-abc", "stream_id": "stream-\(startedSessionIDs.count)"}
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStartFirst = await viewModel.sendMessage("First")
+        XCTAssertTrue(didStartFirst)
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "done",
+            data: """
+            {"session": {"session_id": "session-compressed",
+             "messages": [{"role": "assistant", "content": "Compacted answer."}]}}
+            """
+        ))
+        streamClient.emit(.streamEnd)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertTrue(
+            viewModel.messages.contains { ($0.content ?? "").contains("Compacted answer.") },
+            "The rotated payload is this conversation's transcript and must be applied."
+        )
+
+        let didStartSecond = await viewModel.sendMessage("Second")
+        XCTAssertTrue(didStartSecond)
+        XCTAssertEqual(
+            startedSessionIDs,
+            ["session-abc", "session-compressed"],
+            "The next send must address the continuation, not the archived parent."
+        )
+    }
+
+    /// The `compressed` frame names the rotation before `done` does. Acting on it
+    /// is what keeps a stream that never reaches `done` (backgrounded, dropped)
+    /// from leaving the client pinned to the archived id.
+    @MainActor
+    func testCompressedFrameRebindsToTheContinuationSession() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startedSessionIDs: [String] = []
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startedSessionIDs.append(try XCTUnwrap(body["session_id"] as? String))
+                return apiTestJSONResponse("""
+                {"session_id": "session-abc", "stream_id": "stream-\(startedSessionIDs.count)"}
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStartFirst = await viewModel.sendMessage("First")
+        XCTAssertTrue(didStartFirst)
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "compressed",
+            data: """
+            {"session_id": "session-abc", "old_session_id": "session-abc",
+             "new_session_id": "session-compressed",
+             "continuation_session_id": "session-compressed",
+             "message": "Compression finished"}
+            """
+        ))
+        streamClient.emit(.streamEnd)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let didStartSecond = await viewModel.sendMessage("Second")
+        XCTAssertTrue(didStartSecond)
+        XCTAssertEqual(startedSessionIDs, ["session-abc", "session-compressed"])
+    }
+
+    /// A `compressed` frame naming another session must not retarget this one.
+    @MainActor
+    func testCompressedFrameForAnotherSessionIsIgnored() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startedSessionIDs: [String] = []
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startedSessionIDs.append(try XCTUnwrap(body["session_id"] as? String))
+                return apiTestJSONResponse("""
+                {"session_id": "session-abc", "stream_id": "stream-\(startedSessionIDs.count)"}
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStartFirst = await viewModel.sendMessage("First")
+        XCTAssertTrue(didStartFirst)
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "compressed",
+            data: #"{"old_session_id": "session-other", "new_session_id": "session-elsewhere"}"#
+        ))
+        streamClient.emit(.streamEnd)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let didStartSecond = await viewModel.sendMessage("Second")
+        XCTAssertTrue(didStartSecond)
+        XCTAssertEqual(startedSessionIDs, ["session-abc", "session-abc"])
+    }
+
+    /// Opening a stale id loads the archived snapshot, which still answers and
+    /// still looks like a normal transcript. Upstream publishes
+    /// `continuation_session_id` for exactly this recovery, so the load follows
+    /// it once and reloads the session the conversation actually continues in.
+    @MainActor
+    func testLoadMessagesFollowsTheCompressionContinuationOnce() async throws {
+        var requestedSessionIDs: [String] = []
+
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session":
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let requested = components?.queryItems?.first { $0.name == "session_id" }?.value ?? ""
+                requestedSessionIDs.append(requested)
+                if requested == "session-abc" {
+                    return apiTestJSONResponse("""
+                    {"session": {"session_id": "session-abc",
+                     "continuation_session_id": "session-compressed",
+                     "messages": [{"role": "assistant", "content": "Archived snapshot."}]}}
+                    """, for: request)
+                }
+                return apiTestJSONResponse("""
+                {"session": {"session_id": "session-compressed",
+                 "messages": [{"role": "assistant", "content": "Live continuation."}]}}
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(requestedSessionIDs, ["session-abc", "session-compressed"])
+        XCTAssertTrue(viewModel.messages.contains { ($0.content ?? "").contains("Live continuation.") })
+        XCTAssertFalse(viewModel.messages.contains { ($0.content ?? "").contains("Archived snapshot.") })
+    }
+
     /// Fail-closed: a stream that ends without a matching `done` never arms the
     /// continuation, so it is dropped rather than sent on an unverified session.
     /// `apperror`, a cancel, and a replay opening straight onto `stream_end` all
