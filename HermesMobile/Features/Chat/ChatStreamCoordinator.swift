@@ -83,6 +83,9 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorApplyGoalStatus(_ payload: GoalStreamEvent)
     @discardableResult
     func streamCoordinatorEnqueueGoalContinuation(_ payload: GoalStreamEvent) -> Bool
+    /// Auto-compression moved the conversation onto a new session id; rebind to
+    /// it so later writes don't land in the archived parent snapshot (#2).
+    func streamCoordinatorApplySessionCompressed(_ payload: SessionCompressedStreamEvent)
 }
 
 @MainActor
@@ -512,6 +515,11 @@ final class ChatStreamCoordinator {
             if delegate?.streamCoordinatorEnqueueGoalContinuation(payload) == true {
                 markProgress()
             }
+        case .sessionCompressed(let payload):
+            delegate?.streamCoordinatorApplySessionCompressed(payload)
+            // Compressing a long transcript takes a while and emits no tokens;
+            // treat the frame as progress so stale-stream recovery holds off.
+            markProgress()
         case .streamEnd:
             if !hasCompletedCurrentResponse {
                 liveActivityManager.end(status: .complete, activity: String(localized: "Response complete"), errorSummary: nil)

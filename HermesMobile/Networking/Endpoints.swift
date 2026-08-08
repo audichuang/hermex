@@ -16,6 +16,12 @@ enum Endpoint {
     case archiveSession
     case branchSession
     case compressSession
+    /// Asynchronous compression, which is what the web client uses. The
+    /// synchronous `compressSession` holds the connection open for the whole
+    /// job, so a long transcript reliably outlives the request timeout while
+    /// the server keeps compressing (#24).
+    case compressSessionStart
+    case compressSessionStatus(sessionID: String)
     case undoSession
     case retrySession
     case truncateSession
@@ -157,6 +163,10 @@ enum Endpoint {
             return "/api/session/branch"
         case .compressSession:
             return "/api/session/compress"
+        case .compressSessionStart:
+            return "/api/session/compress/start"
+        case .compressSessionStatus:
+            return "/api/session/compress/status"
         case .undoSession:
             return "/api/session/undo"
         case .retrySession:
@@ -388,6 +398,8 @@ enum Endpoint {
                 items.append(URLQueryItem(name: "archived_limit", value: "\(archivedLimit)"))
             }
             return items
+        case let .compressSessionStatus(sessionID):
+            return [URLQueryItem(name: "session_id", value: sessionID)]
         case let .sessionsSearch(query, content, depth):
             return [
                 URLQueryItem(name: "q", value: query),
