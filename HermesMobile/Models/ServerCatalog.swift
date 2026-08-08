@@ -482,9 +482,17 @@ struct ReasoningStatusResponse: Decodable, Equatable {
     /// `nil` on older servers that don't send the field — callers must fall back
     /// to the static effort list (issue #18).
     let supportedEfforts: [String]?
-    /// `supports_reasoning_effort` — `false` means the resolved model has no
-    /// effort control at all (hide the picker). `nil` on older servers.
+    /// `supports_reasoning_effort` — `false` means the resolved model takes no
+    /// effort ladder. On its own it does NOT mean "no reasoning control": see
+    /// `supportsThinkingToggle`. `nil` on older servers.
     let supportsReasoningEffort: Bool?
+    /// `supports_thinking_toggle` — whether the composer should render ANY
+    /// reasoning control. True for effort-capable models *and* for ZAI GLM
+    /// models that accept the thinking on/off switch but not the ladder
+    /// (`api/config.py:4189` @ 399cd7ab). Verified on the live deployment: this
+    /// field is on `GET /api/reasoning`, not on `/api/models`. `nil` on older
+    /// servers (#26).
+    let supportsThinkingToggle: Bool?
     let error: String?
 
     var effectiveEffort: String? {

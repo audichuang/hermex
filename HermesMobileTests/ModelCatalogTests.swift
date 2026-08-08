@@ -582,6 +582,84 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertFalse(gamma.matchesSelection(modelID: "model-a", providerID: "custom:beta"))
     }
 
+    /// ZAI GLM-4.5–5.1 take the thinking on/off switch but not the effort
+    /// ladder, so upstream reports an empty ladder alongside
+    /// `supports_thinking_toggle: true`. Hiding on the empty ladder removed the
+    /// only way to turn thinking off from the phone (#26). Verified on the live
+    /// deployment that this field is on `GET /api/reasoning`.
+    func testThinkingToggleKeepsTheReasoningControlWithoutAnEffortLadder() {
+        XCTAssertTrue(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: false,
+            supportedEfforts: [],
+            supportsThinkingToggle: true
+        ))
+
+        XCTAssertFalse(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: false,
+            supportedEfforts: [],
+            supportsThinkingToggle: false
+        ))
+
+        // Older servers report none of it and keep today's behaviour.
+        XCTAssertTrue(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: nil,
+            supportedEfforts: nil,
+            supportsThinkingToggle: nil
+        ))
+    }
+
+    /// The toggle-only control needs both states. Without "Default" it would be
+    /// one-way: thinking could be switched off and never back on.
+    func testThinkingToggleOnlyModelOffersBothStates() {
+        let options = ReasoningEffortOption.options(
+            forSupportedEfforts: [],
+            supportsThinkingToggle: true
+        )
+
+        XCTAssertEqual(options.map(\.id), ["", "none"])
+    }
+
+    /// Selecting "Default" sends `effort: ""`, which upstream reads as "clear
+    /// the override so the provider default applies" and documents as the
+    /// re-enable path for thinking-toggle-only models
+    /// (`set_reasoning_effort`, `api/config.py:4307` @ 399cd7ab). The client
+    /// used to reject an empty effort before sending it, which would have made
+    /// the toggle one-way — off, and never back on.
+    @MainActor
+    func testSelectingTheDefaultEffortIsSentRatherThanSwallowed() async throws {
+        nonisolated(unsafe) var sentEfforts: [String] = []
+        MockURLProtocol.requestHandler = { request in
+            if request.url?.path == "/api/reasoning", request.httpMethod == "POST" {
+                let body = try XCTUnwrap(apiTestBodyData(from: request))
+                let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+                sentEfforts.append(try XCTUnwrap(json?["effort"] as? String))
+            }
+            return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": ""}"#, for: request)
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let client = APIClient(
+            baseURL: try XCTUnwrap(URL(string: "https://example.test")),
+            session: URLSession(configuration: configuration)
+        )
+
+        _ = try await client.saveReasoningEffort("", sessionID: "session-abc")
+
+        XCTAssertEqual(sentEfforts, [""], "The empty effort is the whole re-enable path.")
+    }
+
+    func testReasoningStatusDecodesTheThinkingToggleFlag() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(ReasoningStatusResponse.self, from: Data("""
+        {"show_reasoning": false, "reasoning_effort": "", "supported_efforts": [],
+         "supports_reasoning_effort": false, "supports_thinking_toggle": true}
+        """.utf8))
+
+        XCTAssertEqual(response.supportsThinkingToggle, true)
+        XCTAssertEqual(response.supportsReasoningEffort, false)
+    }
 }
 
 final class PersonalityAutocompleteTests: XCTestCase {
