@@ -2,6 +2,12 @@ import Foundation
 
 struct CronJobsResponse: Decodable, Equatable {
     let jobs: [CronJob]?
+    /// The server has no scheduling capability at all — the cron package isn't
+    /// importable there, which happens in split Docker deployments
+    /// (`api/routes.py:13569` @ 399cd7ab). Dropping this rendered "this server
+    /// can't schedule anything" as "you have no scheduled tasks", so creating
+    /// one appeared to succeed and the list stayed empty forever (#11).
+    let cronUnavailable: Bool?
 }
 
 struct CronMutationResponse: Decodable, Equatable {
