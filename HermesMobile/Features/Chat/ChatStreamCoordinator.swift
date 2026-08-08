@@ -80,6 +80,9 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorApplyClarificationUpdate(_ update: ClarificationPendingResponse)
     @discardableResult
     func streamCoordinatorEnqueuePendingSteerLeftover(_ text: String) -> Bool
+    func streamCoordinatorApplyGoalStatus(_ payload: GoalStreamEvent)
+    @discardableResult
+    func streamCoordinatorEnqueueGoalContinuation(_ payload: GoalStreamEvent) -> Bool
 }
 
 @MainActor
@@ -498,6 +501,15 @@ final class ChatStreamCoordinator {
             markProgress()
         case .pendingSteerLeftover(let text):
             if delegate?.streamCoordinatorEnqueuePendingSteerLeftover(text) == true {
+                markProgress()
+            }
+        case .goalStatus(let payload):
+            delegate?.streamCoordinatorApplyGoalStatus(payload)
+            // Evaluating a goal can take a while; count it as progress so the
+            // stale-stream recovery doesn't fire mid-evaluation.
+            markProgress()
+        case .goalContinue(let payload):
+            if delegate?.streamCoordinatorEnqueueGoalContinuation(payload) == true {
                 markProgress()
             }
         case .streamEnd:
