@@ -24,7 +24,7 @@ struct TasksView: View {
                     } label: {
                         Label("New Task", systemImage: "plus")
                     }
-                    .disabled(viewModel.isMutating)
+                    .disabled(viewModel.isMutating || viewModel.isCronUnavailable)
 
                     Button {
                         Task { await loadTasks() }
@@ -72,6 +72,12 @@ struct TasksView: View {
                 Button("Try Again") {
                     Task { await loadTasks() }
                 }
+            }
+        } else if viewModel.isCronUnavailable {
+            ContentUnavailableView {
+                Label("Scheduling Unavailable", systemImage: "calendar.badge.exclamationmark")
+            } description: {
+                Text("This server doesn't have scheduling enabled, so tasks can't run here.")
             }
         } else if viewModel.jobs.isEmpty {
             ContentUnavailableView {

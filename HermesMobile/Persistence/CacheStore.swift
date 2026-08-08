@@ -289,6 +289,9 @@ private extension SessionSummary {
     init(cachedSession: CachedSession) {
         sessionId = cachedSession.sessionID
         title = cachedSession.title
+        // The cache already stores the resolved title in `title` (see
+        // `CachedSession.apply`), so there is nothing separate to restore.
+        displayTitle = nil
         workspace = cachedSession.workspace
         model = cachedSession.model
         modelProvider = cachedSession.modelProvider

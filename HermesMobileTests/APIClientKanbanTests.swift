@@ -991,4 +991,20 @@ private func XCTAssertThrowsErrorAsync<T>(
     } catch {
         errorHandler(error)
     }
+
+    /// The `runID` key had no raw value, so it spelled "runID" while the decoder
+    /// runs `.convertFromSnakeCase` and turns the server's `run_id` into
+    /// "runId". They could never match and the value was always nil (#13).
+    func testKanbanDetailEventDecodesTheRunID() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let event = try decoder.decode(KanbanDetailEvent.self, from: Data("""
+        {"id": 8, "task_id": "CARD-1", "run_id": "run-17", "kind": "status",
+         "created_at": 1700000000, "payload": {"status": "ready"}}
+        """.utf8))
+
+        XCTAssertEqual(event.runID, "run-17")
+        XCTAssertEqual(event.cardID, "CARD-1")
+    }
 }

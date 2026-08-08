@@ -594,10 +594,7 @@ final class SessionListViewModel {
         lastError = nil
 
         do {
-            let result = try await sessionMutator.duplicate(
-                sessionID: sessionId,
-                title: duplicateTitle(for: session)
-            )
+            let result = try await sessionMutator.duplicate(sessionID: sessionId)
 
             guard let duplicatedSession = result.session else {
                 actionErrorMessage = result.errorMessage
@@ -653,7 +650,7 @@ final class SessionListViewModel {
             let file = try await client.exportSession(
                 id: sessionId,
                 format: format,
-                fallbackTitle: session.title
+                fallbackTitle: session.preferredTitle
             )
 
             let directory = Self.exportsRootDirectory
@@ -973,6 +970,7 @@ final class SessionListViewModel {
 
     private static func searchableText(for session: SessionSummary) -> String {
         [
+            session.preferredTitle,
             session.title,
             session.workspace,
             session.model,
@@ -1035,11 +1033,6 @@ final class SessionListViewModel {
         let value = timestamp(for: session)
         guard value > 0 else { return nil }
         return Date(timeIntervalSince1970: value)
-    }
-
-    private func duplicateTitle(for session: SessionSummary) -> String {
-        let baseTitle = Self.nonEmpty(session.title) ?? String(localized: "Untitled Session")
-        return String(localized: "\(baseTitle) (copy)")
     }
 
     private func beginSessionMutation(_ sessionId: String) -> Bool {

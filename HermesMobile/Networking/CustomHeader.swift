@@ -62,7 +62,41 @@ extension CustomHeader {
         let name = sanitizedName
         guard !name.isEmpty else { return false }
         guard name.unicodeScalars.allSatisfy({ Self.headerNameAllowed.contains($0) }) else { return false }
+        guard !Self.reservedNames.contains(name.lowercased()) else { return false }
         return value.rangeOfCharacter(from: .newlines) == nil
+    }
+
+    /// Header names the app must never set, whatever the user types.
+    ///
+    /// `Origin` and `Referer` are the dangerous ones: the server enters its CSRF
+    /// gate the moment it sees either (`api/routes.py:5386` @ 399cd7ab), and the
+    /// app never sends `X-CSRF-Token`. A user following a reverse-proxy guide
+    /// that says to add `Origin` would find the connection test passing, sign-in
+    /// working and the session list loading — and then every POST failing with a
+    /// bare 403 that points nowhere near the header they added (#12).
+    ///
+    /// The rest are hop-by-hop or transport-owned: overriding them corrupts the
+    /// request rather than authenticating it.
+    static let reservedNames: Set<String> = [
+        "origin", "referer", "cookie", "host", "content-length", "x-csrf-token"
+    ]
+
+    /// Why this row was rejected, for the header editor to show. Nil when the
+    /// row is usable or merely incomplete — a half-typed name is not an error.
+    var rejectionReason: String? {
+        let name = sanitizedName
+        guard !name.isEmpty else { return nil }
+
+        if Self.reservedNames.contains(name.lowercased()) {
+            return String(localized: "\(name) is set by the connection itself. Setting it here makes the server reject every request that changes anything.")
+        }
+        if !name.unicodeScalars.allSatisfy({ Self.headerNameAllowed.contains($0) }) {
+            return String(localized: "A header name can't contain spaces, colons, or other punctuation.")
+        }
+        if value.rangeOfCharacter(from: .newlines) != nil {
+            return String(localized: "A header value can't contain line breaks.")
+        }
+        return nil
     }
 
     /// RFC 7230 `token` characters allowed in a header field name.

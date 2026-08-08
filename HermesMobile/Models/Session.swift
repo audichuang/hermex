@@ -9,12 +9,50 @@ struct SessionsResponse: Decodable {
     let archivedCount: Int?
     let serverTime: Double?
     let serverTz: String?
+
+    enum CodingKeys: String, CodingKey {
+        case sessions, cliCount, archivedCount, serverTime, serverTz
+    }
+
+    init(
+        sessions: [SessionSummary]? = nil,
+        cliCount: Int? = nil,
+        archivedCount: Int? = nil,
+        serverTime: Double? = nil,
+        serverTz: String? = nil
+    ) {
+        self.sessions = sessions
+        self.cliCount = cliCount
+        self.archivedCount = archivedCount
+        self.serverTime = serverTime
+        self.serverTz = serverTz
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessions = SessionSummary.decodingRowsIndependently(from: container, forKey: .sessions)
+        cliCount = container.decodeLossyIntIfPresent(forKey: .cliCount)
+        archivedCount = container.decodeLossyIntIfPresent(forKey: .archivedCount)
+        serverTime = container.decodeLossyDoubleIfPresent(forKey: .serverTime)
+        serverTz = container.decodeLossyStringIfPresent(forKey: .serverTz)
+    }
 }
 
 struct SessionSearchResponse: Decodable, Equatable {
     let sessions: [SessionSummary]?
     let query: String?
     let count: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case sessions, query, count
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessions = SessionSummary.decodingRowsIndependently(from: container, forKey: .sessions)
+        query = container.decodeLossyStringIfPresent(forKey: .query)
+        count = container.decodeLossyIntIfPresent(forKey: .count)
+    }
 }
 
 struct SessionResponse: Decodable {
@@ -162,6 +200,11 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
 
     let sessionId: String?
     let title: String?
+    /// Human-readable title the server derives for rows whose stored `title` is
+    /// a placeholder — CLI sessions and subagent sessions
+    /// (`api/models.py:6111` @ 399cd7ab). Without it those rows all render as
+    /// "Hermes WebUI #N" and become impossible to tell apart (#23).
+    let displayTitle: String?
     let workspace: String?
     let model: String?
     let modelProvider: String?
@@ -193,9 +236,15 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let isReadOnly: Bool?
     let matchType: String?
 
+    /// The title to show: the server's derived one first, then the stored one.
+    var preferredTitle: String? {
+        Self.nonEmpty(displayTitle) ?? Self.nonEmpty(title)
+    }
+
     init(
         sessionId: String? = nil,
         title: String? = nil,
+        displayTitle: String? = nil,
         workspace: String? = nil,
         model: String? = nil,
         modelProvider: String? = nil,
@@ -229,6 +278,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     ) {
         self.sessionId = sessionId
         self.title = title
+        self.displayTitle = displayTitle
         self.workspace = workspace
         self.model = model
         self.modelProvider = modelProvider
@@ -261,9 +311,91 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         self.matchType = matchType
     }
 
+    enum CodingKeys: String, CodingKey {
+        case sessionId, title, displayTitle, workspace, model, modelProvider
+        case messageCount, createdAt, updatedAt, lastMessageAt
+        case pinned, archived, projectId, profile
+        case inputTokens, outputTokens, estimatedCost
+        case activeStreamId, isStreaming, isCliSession
+        case userMessageCount, hasPendingUserMessage, pendingStartedAt, worktreePath
+        case sourceTag, rawSource, sessionSource, sourceLabel
+        case parentSessionId, relationshipType, readOnly, isReadOnly, matchType
+    }
+
+    /// Lossy field by field, like `SessionDetail` and `ProjectSummary` already
+    /// are (`AGENTS.md` hard rule 3).
+    ///
+    /// The synthesized `Decodable` this replaces failed the whole value on one
+    /// mistyped field, and `SessionsResponse` decoded the array as a unit — so a
+    /// single malformed row emptied the entire session list, with pull-to-refresh
+    /// unable to recover it. The rows come from three different sources (sidecar
+    /// JSON, the state.db overlay, `get_cli_sessions()`), and upstream coerces
+    /// these same fields with `_numeric_count` / `_safe_first` on its way out,
+    /// which is the server conceding the inputs are not uniform (#10).
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
+        title = container.decodeLossyStringIfPresent(forKey: .title)
+        displayTitle = container.decodeLossyStringIfPresent(forKey: .displayTitle)
+        workspace = container.decodeLossyStringIfPresent(forKey: .workspace)
+        model = container.decodeLossyStringIfPresent(forKey: .model)
+        modelProvider = container.decodeLossyStringIfPresent(forKey: .modelProvider)
+        messageCount = container.decodeLossyIntIfPresent(forKey: .messageCount)
+        createdAt = container.decodeLossyDoubleIfPresent(forKey: .createdAt)
+        updatedAt = container.decodeLossyDoubleIfPresent(forKey: .updatedAt)
+        lastMessageAt = container.decodeLossyDoubleIfPresent(forKey: .lastMessageAt)
+        pinned = container.decodeLossyBoolIfPresent(forKey: .pinned)
+        archived = container.decodeLossyBoolIfPresent(forKey: .archived)
+        projectId = container.decodeLossyStringIfPresent(forKey: .projectId)
+        profile = container.decodeLossyStringIfPresent(forKey: .profile)
+        inputTokens = container.decodeLossyIntIfPresent(forKey: .inputTokens)
+        outputTokens = container.decodeLossyIntIfPresent(forKey: .outputTokens)
+        estimatedCost = container.decodeLossyDoubleIfPresent(forKey: .estimatedCost)
+        activeStreamId = container.decodeLossyStringIfPresent(forKey: .activeStreamId)
+        isStreaming = container.decodeLossyBoolIfPresent(forKey: .isStreaming)
+        isCliSession = container.decodeLossyBoolIfPresent(forKey: .isCliSession)
+        userMessageCount = container.decodeLossyIntIfPresent(forKey: .userMessageCount)
+        hasPendingUserMessage = container.decodeLossyBoolIfPresent(forKey: .hasPendingUserMessage)
+        pendingStartedAt = container.decodeLossyDoubleIfPresent(forKey: .pendingStartedAt)
+        worktreePath = container.decodeLossyStringIfPresent(forKey: .worktreePath)
+        sourceTag = container.decodeLossyStringIfPresent(forKey: .sourceTag)
+        rawSource = container.decodeLossyStringIfPresent(forKey: .rawSource)
+        sessionSource = container.decodeLossyStringIfPresent(forKey: .sessionSource)
+        sourceLabel = container.decodeLossyStringIfPresent(forKey: .sourceLabel)
+        parentSessionId = container.decodeLossyStringIfPresent(forKey: .parentSessionId)
+        relationshipType = container.decodeLossyStringIfPresent(forKey: .relationshipType)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+        isReadOnly = container.decodeLossyBoolIfPresent(forKey: .isReadOnly)
+        matchType = container.decodeLossyStringIfPresent(forKey: .matchType)
+    }
+
+    /// Decodes a session array a row at a time, so one unreadable row costs that
+    /// row instead of the whole list. Returns nil only when the key is absent
+    /// or is not an array at all.
+    static func decodingRowsIndependently<Key: CodingKey>(
+        from container: KeyedDecodingContainer<Key>,
+        forKey key: Key
+    ) -> [SessionSummary]? {
+        if let rows = try? container.decodeIfPresent([SessionSummary].self, forKey: key) {
+            return rows
+        }
+
+        guard let values = try? container.decodeIfPresent([JSONValue].self, forKey: key) else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return values.compactMap { value in
+            guard let data = try? JSONEncoder().encode(value) else { return nil }
+            return try? decoder.decode(SessionSummary.self, from: data)
+        }
+    }
+
     init(from detail: SessionDetail) {
         sessionId = detail.sessionId
         title = detail.title
+        displayTitle = nil
         workspace = detail.workspace
         model = detail.model
         modelProvider = detail.modelProvider
