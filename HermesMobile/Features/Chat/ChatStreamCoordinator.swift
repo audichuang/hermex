@@ -230,9 +230,15 @@ final class ChatStreamCoordinator {
     /// server's `pending_started_at` from `/api/chat/start`, else the local send
     /// time. Reconnects and replays pass nil: they rejoin the same stream, whose
     /// start is already recorded.
+    ///
+    /// `resumesFromLastEvent` lets a caller reuse this connection's own cursor
+    /// when it has one and the caller has no explicit `replayAfterSeq`. Only the
+    /// rejoin-an-active-run path opts in: elsewhere the server has already said
+    /// there is no journal to replay, and asking anyway is a wasted request.
     func start(
         streamID: String,
         replayAfterSeq: Int? = nil,
+        resumesFromLastEvent: Bool = false,
         recoveryState: ActiveStreamRecoveryState = .idle,
         runStartedAt: Date? = nil
     ) {
@@ -242,23 +248,44 @@ final class ChatStreamCoordinator {
         setLiveTokensPerSecondIfChanged(nil)
         runGeneration &+= 1
         invalidateReconnectTask()
+        // A cursor only means something within its own run, so moving to a
+        // different stream drops it. Staying on the same one keeps it: that is
+        // what lets a resume pick up where this client stopped instead of
+        // re-reading the whole journal.
+        let isSameRun = activeStreamID == streamID
         activeStreamID = streamID
         seedActiveRunStart(runStartedAt)
         hasInMemorySnapshotForActiveStream = false
         isConnectionSuspended = false
-        if replayAfterSeq == nil {
+        if !isSameRun, replayAfterSeq == nil {
             lastEventID = nil
         }
 
+        // Resume from this connection's own cursor when it has one. Rejoining a
+        // run that is still going used to drop it and attach bare, so the server
+        // pushed only what happened from that moment on and everything produced
+        // while the app was backgrounded never arrived (#8).
+        //
+        // No cursor means no replay at all. Asking the server to replay a run
+        // this client never streamed would rebuild it on top of a transcript
+        // that has no in-flight assistant message to merge into, which
+        // duplicates content — the reference client only gets away with it by
+        // rendering the run-journal snapshot first. That is a larger change than
+        // this one and is deliberately left out.
+        let resumeEventID = (replayAfterSeq != nil || resumesFromLastEvent) ? lastEventID : nil
+        let resumeAfterSeq = replayAfterSeq
+            ?? (resumesFromLastEvent ? Self.runJournalReplayAfterSeq(from: resumeEventID) : nil)
+
         markConnectionStarted(
-            isReplay: replayAfterSeq != nil,
+            isReplay: resumeAfterSeq != nil,
             recoveryState: recoveryState
         )
         startLiveActivity(streamID: streamID)
         streamClient.start(
             url: client.chatStreamURL(
                 streamID: streamID,
-                replayAfterSeq: replayAfterSeq
+                replayAfterSeq: resumeAfterSeq,
+                replayAfterEventID: resumeEventID
             )
         ) { [weak self] event in
             self?.handle(event)
@@ -467,7 +494,7 @@ final class ChatStreamCoordinator {
                     ? 0
                     : nil
                 isConnectionSuspended = false
-                start(streamID: streamID, replayAfterSeq: replayAfterSeq)
+                start(streamID: streamID, replayAfterSeq: replayAfterSeq, resumesFromLastEvent: true)
             } else if response.replayAvailable == true {
                 guard reconnectTaskIsCurrent(
                     reconnectTaskID: reconnectTaskID,
