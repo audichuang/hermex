@@ -371,7 +371,12 @@ final class ChatViewModel {
     private(set) var goalErrorMessage: String?
     private(set) var hasActivatedGoalCommand = false
 
-    private let sessionID: String?
+    /// Mutable because an auto-compression turn rotates the id mid-conversation:
+    /// the server archives the old session as a `pre_compression_snapshot` and
+    /// continues under a new one. Pinning this to the id the view opened with
+    /// meant every later send wrote into the archived parent (#2). Only
+    /// `rebindSessionID(to:)` may change it.
+    private var sessionID: String?
     private var currentWorkspace: String?
     private var currentModel: String?
     private var currentModelProvider: String?
@@ -1180,7 +1185,10 @@ final class ChatViewModel {
         await attachmentCoordinator.transcriptMediaData(for: reference)
     }
 
-    func loadMessages(modelContext: ModelContext? = nil) async {
+    /// `followsCompressionContinuation` is cleared for the one retry this makes
+    /// after a rotation, so a server that ever answered with a self-referential
+    /// continuation could not spin the load.
+    func loadMessages(modelContext: ModelContext? = nil, followsCompressionContinuation: Bool = true) async {
         guard let sessionID else {
             errorMessage = String(localized: "The server did not provide a session ID.")
             return
@@ -1226,6 +1234,20 @@ final class ChatViewModel {
                 expandRenderable: true
             )
             let session = response.session
+
+            // The archived pre-compression snapshot still answers `GET
+            // /api/session`, so a stale id loads a transcript that looks fine
+            // and then silently diverges from the one the conversation actually
+            // continues in. Following the hint the server publishes for exactly
+            // this case is what stops that (#2).
+            if followsCompressionContinuation,
+               let continuation = Self.nonEmptySessionID(session?.continuationSessionId),
+               continuation != sessionID {
+                rebindSessionID(to: continuation)
+                await loadMessages(modelContext: modelContext, followsCompressionContinuation: false)
+                return
+            }
+
             let loadedMessages = session?.messages ?? []
             let loadedActiveStreamID = session?.activeStreamId?.trimmingCharacters(in: .whitespacesAndNewlines)
             let reloadedMessages: [ChatMessage]
@@ -3075,6 +3097,13 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: String(localized: "The server did not return the compressed session."))
             }
 
+            // A manual compression rotates the session id just as an automatic
+            // one does, so follow it here too or the next send lands in the
+            // archived snapshot (#2).
+            if let compressedSessionID = Self.nonEmptySessionID(session.sessionId) {
+                rebindSessionID(to: compressedSessionID)
+            }
+
             applyCompressionAnchorMetadata(from: session)
             messages = session.messages ?? []
             updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
@@ -4020,9 +4049,10 @@ final class ChatViewModel {
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
         case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .pendingSteerLeftover,
-             .goalStatus, .goalContinue:
+             .goalStatus, .goalContinue, .sessionCompressed:
             // A `btw` side-question never drives the session's goal, so goal
-            // frames on this stream carry nothing for it to act on.
+            // frames on this stream carry nothing for it to act on. It also runs
+            // on its own throwaway stream, which never compresses.
             break
         }
     }
@@ -4154,32 +4184,31 @@ final class ChatViewModel {
     }
 
     private func applyCompletedStreamSession(_ completedSession: SessionDetail) {
-        if let completedSessionID = completedSession.sessionId,
-           let sessionID,
-           completedSessionID != sessionID {
-            // The server moved this conversation onto a new session id — an
-            // auto-compression turn rotates it mid-stream — so this payload
-            // belongs to a session this view model is not pinned to.
-            //
-            // A held goal continuation has to be dropped here, not at drain time.
-            // The `goal_continue` frame carries the PRE-rotation id (upstream
-            // builds it from a local variable captured before the rotation), and
-            // this view model's `sessionID` is a `let`, so the drain-time check
-            // compares old-to-old, passes, and would POST the next goal turn into
-            // what is now the archived parent session.
-            dropGoalContinuation(reason: .sessionCompressed)
-            return
-        }
+        let completedSessionID = Self.nonEmptySessionID(completedSession.sessionId)
+        let currentSessionID = Self.nonEmptySessionID(sessionID)
+        let didRotate = completedSessionID != nil
+            && currentSessionID != nil
+            && completedSessionID != currentSessionID
 
-        // Positive confirmation that the session did not move: this is the only
-        // place a held goal continuation becomes sendable. See
-        // `PendingGoalContinuation.isArmed`.
-        //
-        // Requires two non-empty ids that match. A blank or absent id proves
-        // nothing, and arming on it would defeat the fail-closed design.
-        if let completedSessionID = Self.nonEmptySessionID(completedSession.sessionId),
-           let currentSessionID = Self.nonEmptySessionID(sessionID),
-           completedSessionID == currentSessionID {
+        if didRotate, let completedSessionID {
+            // The server moved this conversation onto a new session id — an
+            // auto-compression turn rotates it mid-stream. The payload is this
+            // conversation's, so follow the id and apply it; discarding it left
+            // the transcript on screen frozen while every later send went to the
+            // now-archived parent snapshot (#2).
+            //
+            // A held goal continuation still has to be dropped. The
+            // `goal_continue` frame carries the PRE-rotation id (upstream builds
+            // it from a local variable captured before the rotation), so the
+            // drain-time check would compare old-to-old and pass.
+            rebindSessionID(to: completedSessionID)
+        } else if let completedSessionID, let currentSessionID, completedSessionID == currentSessionID {
+            // Positive confirmation that the session did not move: this is the
+            // only place a held goal continuation becomes sendable. See
+            // `PendingGoalContinuation.isArmed`.
+            //
+            // Requires two non-empty ids that match. A blank or absent id proves
+            // nothing, and arming on it would defeat the fail-closed design.
             pendingGoalContinuation?.isArmed = true
         }
 
@@ -4697,6 +4726,26 @@ final class ChatViewModel {
     private static func nonEmptySessionID(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Follows an auto-compression session-id rotation (#2).
+    ///
+    /// Upstream archives the pre-compression session as a
+    /// `pre_compression_snapshot` — hidden from the session list but still
+    /// writable — and continues under a new id. Staying on the old id therefore
+    /// fails silently: sends keep succeeding, and the transcript quietly forks
+    /// away from the one the desktop client shows.
+    ///
+    /// The held goal continuation is always dropped, never retargeted: its
+    /// prompt was chosen for the pre-rotation turn and upstream hands the
+    /// `PENDING_GOAL_CONTINUATION` marker to whichever `chat/start` arrives next
+    /// without checking the prompt, so re-aiming it is a guess this cannot make
+    /// safely.
+    private func rebindSessionID(to newSessionID: String) {
+        guard let target = Self.nonEmptySessionID(newSessionID), target != sessionID else { return }
+
+        dropGoalContinuation(reason: .sessionCompressed)
+        sessionID = target
     }
 
     /// True when the goal owns the next `chat/start` and the caller is not its holder.
@@ -5535,6 +5584,17 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
         pendingGoalContinuation = PendingGoalContinuation(text: prompt, sessionID: boundSessionID)
         return true
+    }
+
+    func streamCoordinatorApplySessionCompressed(_ payload: SessionCompressedStreamEvent) {
+        // A frame naming a different origin belongs to another conversation.
+        // Frames that name none are trusted: they can only arrive on this
+        // session's own stream connection.
+        let origin = Self.nonEmptySessionID(payload.oldSessionId ?? payload.sessionId)
+        if let origin, let sessionID, origin != sessionID { return }
+
+        guard let continued = payload.continuedSessionID else { return }
+        rebindSessionID(to: continued)
     }
 }
 
