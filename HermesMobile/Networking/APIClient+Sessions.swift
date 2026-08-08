@@ -59,7 +59,22 @@ extension APIClient {
         )
     }
 
-    func createSession(workspace: String?, model: String?, modelProvider: String?, profile: String?) async throws -> SessionResponse {
+    /// Creates a session.
+    ///
+    /// `previousSessionID` is the session the user is coming *from*, when there
+    /// is one. Upstream uses it to commit that session's memory before the new
+    /// one starts (`prev_session_id` in `api/routes.py`); omitting it skips that
+    /// step entirely, so a chat started from another chat loses the handoff.
+    ///
+    /// `worktree` is always sent explicitly — see `NewSessionRequest.worktree`.
+    func createSession(
+        workspace: String?,
+        model: String?,
+        modelProvider: String?,
+        profile: String?,
+        previousSessionID: String? = nil,
+        worktree: Bool = false
+    ) async throws -> SessionResponse {
         try await send(
             endpoint: .newSession,
             method: "POST",
@@ -67,7 +82,9 @@ extension APIClient {
                 workspace: workspace,
                 model: model,
                 modelProvider: modelProvider,
-                profile: profile
+                profile: profile,
+                prevSessionId: previousSessionID,
+                worktree: worktree
             )
         )
     }
@@ -210,6 +227,17 @@ private struct NewSessionRequest: Encodable {
     let model: String?
     let modelProvider: String?
     let profile: String?
+    let prevSessionId: String?
+    /// Non-optional on purpose, so it is always on the wire.
+    ///
+    /// Upstream reads this key by *presence*, not truthiness: an absent
+    /// `worktree` means "inherit the profile's config-level `worktree:`
+    /// default" (`worktree_explicit` in `api/routes.py`). A server configured
+    /// with `worktree: true` would therefore create a git worktree for every
+    /// session the app opens and silently replace the session's workspace with
+    /// the worktree path. Upstream's own comment says a client that must not
+    /// create one has to send `false` explicitly — so Hermex always states it.
+    let worktree: Bool
 }
 
 private struct RenameSessionRequest: Encodable {

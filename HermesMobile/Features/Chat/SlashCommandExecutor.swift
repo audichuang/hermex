@@ -13,6 +13,13 @@ enum SlashCommandExecutionResult: Equatable {
     case sendAsMessage
     case unsupported(friendlyMessage: String)
     case needsSubArg
+    /// The command was understood but the send was refused — a turn is already
+    /// running, or a goal continuation owns the next one.
+    ///
+    /// Distinct from `.unsupported` because the caller must **keep the draft**: the
+    /// text is valid and the user only has to try again in a moment. `.unsupported`
+    /// clears it, which would silently discard what they typed.
+    case sendDeclined(friendlyMessage: String)
 }
 
 enum SlashCommandExecutor {

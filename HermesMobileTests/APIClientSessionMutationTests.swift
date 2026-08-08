@@ -7,6 +7,76 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class APIClientSessionMutationTests: APIClientTestCase {
+    /// Upstream reads `worktree` by PRESENCE: an absent key means "inherit the
+    /// profile's config-level `worktree:` default", so a server configured with
+    /// `worktree: true` would silently give every app-created session a git
+    /// worktree and swap its workspace for the worktree path. The key must
+    /// therefore always be on the wire.
+    func testCreateSessionAlwaysStatesWorktreeExplicitly() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/session/new")
+
+            let body = try apiTestJSONBody(from: request)
+            XCTAssertEqual(body["worktree"] as? Bool, false)
+            XCTAssertTrue(body.keys.contains("worktree"), "An absent key means 'inherit the server default'.")
+            // No previous session in this flow, so the key stays off the wire.
+            XCTAssertNil(body["prev_session_id"])
+
+            return apiTestJSONResponse("""
+            {"session": {"session_id": "new-1", "workspace": "/repo"}}
+            """, for: request)
+        }
+
+        let response = try await client.createSession(
+            workspace: "/repo",
+            model: nil,
+            modelProvider: nil,
+            profile: nil
+        )
+
+        XCTAssertEqual(response.session?.sessionId, "new-1")
+    }
+
+    /// `prev_session_id` is what lets the server commit the previous session's
+    /// memory before the new one starts; omitting it skipped that entirely.
+    func testCreateSessionForwardsPreviousSessionIDForMemoryHandoff() async throws {
+        let client = makeClient { request in
+            let body = try apiTestJSONBody(from: request)
+            XCTAssertEqual(body["prev_session_id"] as? String, "session-old")
+            XCTAssertNil(body["prevSessionId"])
+            XCTAssertEqual(body["worktree"] as? Bool, false)
+
+            return apiTestJSONResponse(#"{"session": {"session_id": "new-2"}}"#, for: request)
+        }
+
+        let response = try await client.createSession(
+            workspace: "/repo",
+            model: nil,
+            modelProvider: nil,
+            profile: nil,
+            previousSessionID: "session-old"
+        )
+
+        XCTAssertEqual(response.session?.sessionId, "new-2")
+    }
+
+    func testCreateSessionCanRequestAWorktreeExplicitly() async throws {
+        let client = makeClient { request in
+            let body = try apiTestJSONBody(from: request)
+            XCTAssertEqual(body["worktree"] as? Bool, true)
+
+            return apiTestJSONResponse(#"{"session": {"session_id": "new-3"}}"#, for: request)
+        }
+
+        _ = try await client.createSession(
+            workspace: "/repo",
+            model: nil,
+            modelProvider: nil,
+            profile: nil,
+            worktree: true
+        )
+    }
+
     func testPostRequestsEncodeSnakeCaseBody() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/session/pin")

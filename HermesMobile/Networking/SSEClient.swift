@@ -14,15 +14,30 @@ protocol SSEStreamingClient: AnyObject {
 final class SSEClient: SSEStreamingClient {
     private let baseConfiguration: URLSessionConfiguration
     private var eventSource: EventSource?
+    /// Bumped on every `start` and `stop`, so a close callback can tell whether it
+    /// belongs to the connection currently in use.
+    private var connectionGeneration = 0
+    private let reportsUnexpectedClose: Bool
     private(set) var lastEventID: String?
     /// Read at stream start so a new stream picks up the latest headers (#255).
     private let customHeaderProvider: @MainActor () -> [CustomHeader]
 
+    /// `reportsUnexpectedClose` opts this client into surfacing a close it did not
+    /// ask for as a `.transportError`.
+    ///
+    /// Off by default, and deliberately so. `LDSwiftEventSource` reconnects a clean
+    /// EOF on its own, so reporting every close would turn that transparent recovery
+    /// into an app-level error — which for the approval and clarification streams
+    /// means dropping from SSE to fallback polling. Only the chat stream needs it,
+    /// because only that stream's completion releases a held goal continuation: a
+    /// lost terminal frame there would otherwise leave the composer wedged.
     init(
         urlSessionConfiguration: URLSessionConfiguration = .default,
+        reportsUnexpectedClose: Bool = false,
         customHeaderProvider: @escaping @MainActor () -> [CustomHeader] = { CustomHeaderStore.shared.snapshot() }
     ) {
         baseConfiguration = urlSessionConfiguration
+        self.reportsUnexpectedClose = reportsUnexpectedClose
         self.customHeaderProvider = customHeaderProvider
     }
 
@@ -30,11 +45,29 @@ final class SSEClient: SSEStreamingClient {
         stop()
         lastEventID = nil
 
+        // Identifies this connection so a close callback from a previous one — or
+        // from our own `stop()` — cannot be mistaken for this connection dropping.
+        connectionGeneration += 1
+        let generation = connectionGeneration
+
         let handler = SSEEventHandler(
             onEventID: { [weak self] eventID in
                 self?.lastEventID = eventID
             },
-            onEvent: onEvent
+            onEvent: onEvent,
+            onUnexpectedClose: { [weak self] in
+                // A close we did not ask for. Ignored unless this client opted in —
+                // see `reportsUnexpectedClose`. For the chat stream a lost terminal
+                // frame leaves a held goal continuation with nothing to release it,
+                // so it has to hear about the close; routing it as a transport error
+                // reuses the existing reconnect/finish handling rather than adding a
+                // second recovery path.
+                guard let self,
+                      self.reportsUnexpectedClose,
+                      self.connectionGeneration == generation
+                else { return }
+                onEvent(.transportError(String(localized: "The connection to the server closed unexpectedly.")))
+            }
         )
         var config = EventSource.Config(handler: handler, url: url)
         config.connectionErrorHandler = { _ in .shutdown }
@@ -59,6 +92,8 @@ final class SSEClient: SSEStreamingClient {
     }
 
     func stop() {
+        // Invalidate first: `stop()` triggers `onClosed`, and that close is expected.
+        connectionGeneration += 1
         eventSource?.stop()
         eventSource = nil
     }
@@ -73,6 +108,14 @@ enum SSEEvent: Equatable {
     case title(TitleStreamEvent)
     case metering(MeteringStreamEvent)
     case done(DoneStreamEvent)
+    /// Progress frame while a goal evaluates the turn just finished. Carries no
+    /// action — it exists so a long evaluation counts as stream progress
+    /// instead of looking stale.
+    case goalStatus(GoalStreamEvent)
+    /// The server decided the goal needs another turn and handed back the
+    /// prompt for it. The client must start that turn; see
+    /// `ChatViewModel.enqueueGoalContinuation`.
+    case goalContinue(GoalStreamEvent)
     case approvalPending(ApprovalPendingResponse)
     case clarificationPending(ClarificationPendingResponse)
     case pendingSteerLeftover(String)
@@ -267,6 +310,17 @@ struct SSEEventDecoder {
                 return .transportError("The stream returned a malformed completion event.")
             }
             return .done(payload.event)
+        case "goal":
+            let payload = decodePayload(GoalStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
+            return .goalStatus(payload ?? GoalStreamEvent())
+        case "goal_continue":
+            // Goal continuation is CLIENT-driven upstream: the server emits this
+            // frame with the next prompt and marks the session pending, but never
+            // starts the turn itself (see `static/messages.js`, which re-POSTs
+            // /api/chat/start). A dropped frame therefore ends a multi-turn goal
+            // after one turn, silently.
+            let payload = decodePayload(GoalStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
+            return .goalContinue(payload ?? GoalStreamEvent())
         case "initial":
             logInvalidJSONIfNeeded(eventType: eventType, payloadName: "pending stream payload", data: eventData)
             if ClarificationPendingResponse.containsClarificationMarkers(in: eventData) {
@@ -369,18 +423,25 @@ private extension String {
 private final class SSEEventHandler: EventHandler {
     private let onEventID: @MainActor (String) -> Void
     private let onEvent: @MainActor (SSEEvent) -> Void
+    private let onUnexpectedClose: @MainActor () -> Void
 
     init(
         onEventID: @escaping @MainActor (String) -> Void,
-        onEvent: @escaping @MainActor (SSEEvent) -> Void
+        onEvent: @escaping @MainActor (SSEEvent) -> Void,
+        onUnexpectedClose: @escaping @MainActor () -> Void = {}
     ) {
         self.onEventID = onEventID
         self.onEvent = onEvent
+        self.onUnexpectedClose = onUnexpectedClose
     }
 
     func onOpened() {}
 
-    func onClosed() {}
+    func onClosed() {
+        Task { @MainActor in
+            onUnexpectedClose()
+        }
+    }
 
     func onMessage(eventType: String, messageEvent: MessageEvent) {
         let event = SSEEventDecoder.decode(eventType: eventType, data: messageEvent.data)
