@@ -124,7 +124,9 @@ enum SSEEvent: Equatable {
     case pendingSteerLeftover(String)
     case streamEnd
     case cancelled
-    case error(String)
+    case error(ErrorStreamEvent)
+    /// Non-fatal: the stream continues. Never route this to `finishStream`.
+    case warning(WarningStreamEvent)
     case transportError(String)
     case heartbeat
     case ignored
@@ -356,17 +358,23 @@ struct SSEEventDecoder {
             return .streamEnd
         case "cancel":
             return .cancelled
+        case "warning":
+            let payload = decodePayload(
+                WarningStreamEvent.self,
+                eventType: eventType,
+                from: eventData,
+                decoder: decoder
+            )
+            return .warning(payload ?? WarningStreamEvent())
         case "error", "apperror":
             // "apperror" is one of the four socket-closing frames (stream_end, cancel,
             // error, apperror). The docs describe its payload as {error, type, session,
             // terminal_state?} while the pinned upstream emits {message, type, hint,
-            // details, …}; decoding both `error` and `message` covers either shape.
-            // Mapping it onto `.error` reuses the existing terminal error path
-            // (surface the message, finish the stream) unchanged.
-            guard let payload = decodePayload(ErrorPayload.self, eventType: eventType, from: eventData, decoder: decoder) else {
-                return .error(String(localized: "The stream returned a malformed error event."))
+            // details, …}; `ErrorStreamEvent` decodes the union of both.
+            guard let payload = decodePayload(ErrorStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder) else {
+                return .error(ErrorStreamEvent(error: String(localized: "The stream returned a malformed error event.")))
             }
-            return .error(payload.error ?? payload.message ?? String(localized: "The stream returned an error."))
+            return .error(payload)
         default:
             logger.debug("Ignoring unknown SSE event type '\(eventType, privacy: .public)'.")
             return .ignored
@@ -487,9 +495,117 @@ private struct ReasoningPayload: Decodable {
     let text: String?
 }
 
-private struct ErrorPayload: Decodable {
+/// The `error` / `apperror` payload.
+///
+/// Upstream sends far more than a message. `recovery_control` in particular is
+/// not a user-facing error at all: it marks a frame whose only job is to make
+/// the client rebuild its transcript (`api/run_journal.py:760`,
+/// `api/routes.py:17461` @ 399cd7ab), and the web client answers it by
+/// reloading without showing anything. `session` rides along because the error
+/// path can also carry a compression rotation, and the error text has already
+/// been appended to the stored transcript (`api/streaming.py:10195`), so a
+/// reload is what actually surfaces it. Everything optional (#6).
+struct ErrorStreamEvent: Decodable, Equatable {
     let error: String?
     let message: String?
+    let type: String?
+    let hint: String?
+    let terminalState: String?
+    let recoveryControl: Bool?
+    let session: SessionDetail?
+
+    enum CodingKeys: String, CodingKey {
+        case error, message, type, hint, session
+        case terminalState = "terminal_state"
+        case recoveryControl = "recovery_control"
+    }
+
+    init(
+        error: String? = nil,
+        message: String? = nil,
+        type: String? = nil,
+        hint: String? = nil,
+        terminalState: String? = nil,
+        recoveryControl: Bool? = nil,
+        session: SessionDetail? = nil
+    ) {
+        self.error = error
+        self.message = message
+        self.type = type
+        self.hint = hint
+        self.terminalState = terminalState
+        self.recoveryControl = recoveryControl
+        self.session = session
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        error = try? container.decodeIfPresent(String.self, forKey: .error)
+        message = try? container.decodeIfPresent(String.self, forKey: .message)
+        type = try? container.decodeIfPresent(String.self, forKey: .type)
+        hint = try? container.decodeIfPresent(String.self, forKey: .hint)
+        terminalState = try? container.decodeIfPresent(String.self, forKey: .terminalState)
+        recoveryControl = try? container.decodeIfPresent(Bool.self, forKey: .recoveryControl)
+        session = Self.decodeSession(from: container)
+    }
+
+    private static func decodeSession(from container: KeyedDecodingContainer<CodingKeys>) -> SessionDetail? {
+        guard let value = try? container.decodeIfPresent(JSONValue.self, forKey: .session),
+              let data = try? JSONEncoder().encode(value)
+        else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try? decoder.decode(SessionDetail.self, from: data)
+    }
+
+    /// True when the frame exists to rebuild the transcript rather than to
+    /// report something to the user.
+    var isRecoveryControl: Bool { recoveryControl == true }
+
+    /// The text to show, with the server's remediation hint appended when there
+    /// is one — dropping it left the user a red line with no next step.
+    func displayMessage(fallback: String) -> String {
+        let body = [error, message].compactMap(Self.nonEmpty).first ?? fallback
+        guard let hint = Self.nonEmpty(hint) else { return body }
+        return "\(body)\n\(hint)"
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// A non-fatal `warning` frame. The stream keeps running, so this must never
+/// reach `finishStream`. Upstream's main case is a rate-limited model being
+/// swapped for a fallback (`api/streaming.py:8059` @ 399cd7ab), which the user
+/// otherwise cannot see at all — they would judge the wrong model's quality and
+/// cost (#7).
+struct WarningStreamEvent: Decodable, Equatable {
+    let type: String?
+    let message: String?
+
+    init(type: String? = nil, message: String? = nil) {
+        self.type = type
+        self.message = message
+    }
+
+    var displayMessage: String? {
+        let trimmed = message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty { return trimmed }
+
+        switch type {
+        case "fallback":
+            return String(localized: "The model was busy, so the server answered with its fallback model.")
+        case "approval_gateway_unsupported", "approval_gateway_offline":
+            return String(localized: "Approvals aren't available on this run, so the agent may act without asking.")
+        default:
+            return nil
+        }
+    }
 }
 
 /// The `compressed` frame an auto-compression turn emits

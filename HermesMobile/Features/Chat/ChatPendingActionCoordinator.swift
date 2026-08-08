@@ -113,11 +113,28 @@ final class ChatPendingActionCoordinator {
         defer { isRespondingToApproval = false }
 
         do {
-            _ = try await client.respondApproval(
+            let response = try await client.respondApproval(
                 sessionID: prompt.sessionID,
                 choice: choice,
                 approvalID: prompt.pending.approvalId
             )
+
+            // The protective refusals answer HTTP 200 with `{"ok": false}`
+            // (`_handle_approval_respond` → `j(handler, {"ok": ok, …})`,
+            // `api/routes.py:24549` @ 399cd7ab, and `j()` defaults to 200), so
+            // only a non-2xx status threw and a deliberate refusal read as
+            // success: the card was cleared, the user was told nothing, and the
+            // agent stayed blocked. `stale_cleared` is the one false that still
+            // means "this card is finished" (#5).
+            //
+            // Only an explicit false counts: a server that omits `ok` is an
+            // unknown, not a refusal, and must keep today's behaviour.
+            guard response.ok != false || response.staleCleared == true else {
+                approvalErrorMessage = String(localized: "The server did not accept that response. The request is still waiting.")
+                await refreshApprovalPending(sessionID: prompt.sessionID)
+                return false
+            }
+
             approvalPendingBySession[prompt.sessionID] = nil
             approvalPrompt = nil
             await refreshApprovalPending(sessionID: prompt.sessionID)
@@ -284,7 +301,7 @@ final class ChatPendingActionCoordinator {
         case .transportError, .error:
             startApprovalFallbackPolling(sessionID: sessionID)
         case .token, .interimAssistant, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .done, .clarificationPending,
-             .pendingSteerLeftover, .goalStatus, .goalContinue, .sessionCompressed, .streamEnd, .cancelled, .heartbeat, .ignored:
+             .pendingSteerLeftover, .goalStatus, .goalContinue, .sessionCompressed, .warning, .streamEnd, .cancelled, .heartbeat, .ignored:
             break
         }
     }
@@ -390,7 +407,7 @@ final class ChatPendingActionCoordinator {
         case .transportError, .error:
             startClarificationFallbackPolling(sessionID: sessionID)
         case .token, .interimAssistant, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .done,
-             .pendingSteerLeftover, .goalStatus, .goalContinue, .sessionCompressed, .streamEnd, .cancelled, .heartbeat, .ignored:
+             .pendingSteerLeftover, .goalStatus, .goalContinue, .sessionCompressed, .warning, .streamEnd, .cancelled, .heartbeat, .ignored:
             break
         }
     }

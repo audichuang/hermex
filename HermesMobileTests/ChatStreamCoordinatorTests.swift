@@ -734,7 +734,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             sessionId: "session-abc"
         )))
         XCTAssertEqual(coordinator.liveTokensPerSecond, 12.25)
-        streamClient.emit(.error("server failed"))
+        streamClient.emit(.error(ErrorStreamEvent(error: "server failed")))
         XCTAssertNil(coordinator.activeStreamID)
         XCTAssertNil(coordinator.liveTokensPerSecond)
         XCTAssertEqual(delegate.errorMessages, ["server failed"])
@@ -753,6 +753,91 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertNil(coordinator.activeStreamID)
         XCTAssertNil(coordinator.liveTokensPerSecond)
         XCTAssertEqual(liveActivityManager.ends.last?.status, .cancelled)
+    }
+
+    /// The server appends an error's text to the stored session before sending
+    /// the frame, so a reload is what actually surfaces the explanation. Without
+    /// one the view kept whatever half-streamed content was on screen and the
+    /// real message stayed invisible until a manual pull-to-refresh (#6).
+    @MainActor
+    func testErrorFrameAsksForATranscriptReloadAndShowsTheServerHint() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-err")
+        streamClient.emit(.error(ErrorStreamEvent(
+            message: "Provider exploded",
+            hint: "Check the provider keys."
+        )))
+
+        XCTAssertEqual(delegate.errorMessages, ["Provider exploded\nCheck the provider keys."])
+        XCTAssertEqual(delegate.transcriptReloadRequests, 1)
+        XCTAssertNil(coordinator.activeStreamID)
+    }
+
+    /// `recovery_control` is not an error report: it exists to make the client
+    /// rebuild its transcript, and the reference client shows nothing for it.
+    @MainActor
+    func testRecoveryControlFrameReloadsInsteadOfShowingAnError() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-recover")
+        streamClient.emit(.error(ErrorStreamEvent(message: "Run recovered", recoveryControl: true)))
+
+        XCTAssertEqual(delegate.errorMessages, [], "Nothing here went wrong for the user.")
+        XCTAssertEqual(delegate.transcriptReloadRequests, 1)
+        XCTAssertNotEqual(liveActivityManager.ends.last?.status, .failed)
+        XCTAssertNil(coordinator.activeStreamID)
+    }
+
+    /// An error frame can also carry a compression rotation, so the retry after
+    /// the failure must not go to the archived parent (#2 on the error path).
+    @MainActor
+    func testErrorFrameCarryingASessionRebindsIt() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-err")
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "apperror",
+            data: #"{"message": "Worker died", "session": {"session_id": "session-rotated"}}"#
+        ))
+
+        XCTAssertEqual(delegate.compressionRebinds, ["session-rotated"])
+    }
+
+    /// A `warning` is non-fatal by contract — the stream keeps producing tokens.
+    /// Routing it through the error path would have ended a live run (#7).
+    @MainActor
+    func testWarningFrameNotifiesWithoutEndingTheStream() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-warn")
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "warning",
+            data: #"{"type": "fallback", "message": "Switched to the fallback model."}"#
+        ))
+
+        XCTAssertEqual(delegate.warningMessages, ["Switched to the fallback model."])
+        XCTAssertEqual(coordinator.activeStreamID, "stream-warn", "The run is still going.")
+        XCTAssertEqual(delegate.errorMessages, [])
+        XCTAssertTrue(liveActivityManager.ends.isEmpty)
     }
 
     @MainActor
@@ -1001,6 +1086,8 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var pendingSteerLeftovers: [String] = []
     private(set) var goalContinuations: [String] = []
     private(set) var compressionRebinds: [String?] = []
+    private(set) var warningMessages: [String] = []
+    private(set) var transcriptReloadRequests = 0
     private(set) var goalStatuses: [GoalStreamEvent] = []
     var latestAssistantMessageID: String? = "assistant-latest"
     var restoredSnapshotEventID: String?
@@ -1131,6 +1218,14 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorApplySessionCompressed(_ payload: SessionCompressedStreamEvent) {
         compressionRebinds.append(payload.continuedSessionID)
+    }
+
+    func streamCoordinatorDidReceiveWarningMessage(_ message: String) {
+        warningMessages.append(message)
+    }
+
+    func streamCoordinatorRequestTranscriptReload() {
+        transcriptReloadRequests += 1
     }
 }
 

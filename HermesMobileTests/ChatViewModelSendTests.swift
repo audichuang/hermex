@@ -1309,7 +1309,7 @@ final class ChatViewModelSendTests: XCTestCase {
             data: #"{"session_id": "session-abc", "continuation_prompt": "Continue the goal."}"#
         ))
         // Terminal error instead of `done` — nothing armed the continuation.
-        streamClient.emit(.error("Provider exploded"))
+        streamClient.emit(.error(ErrorStreamEvent(error: "Provider exploded")))
 
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(startedMessages, ["Start the goal"])
@@ -1931,6 +1931,101 @@ final class ChatViewModelSendTests: XCTestCase {
         )
         XCTAssertTrue(didRefreshPendingAfterStale)
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+    }
+
+    /// The protective refusals answer HTTP 200 with `{"ok": false}` — `j()`
+    /// defaults to 200 — so only a non-2xx threw and a deliberate refusal read
+    /// as success. The card was cleared with no explanation while the agent
+    /// stayed blocked, and the next pending refresh made it reappear (#5).
+    @MainActor
+    func testApprovalRespondRejectedWithOkFalseKeepsTheCardAndExplains() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient,
+            clarifyStreamClient: SpySSEStreamingClient()
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/approval/respond":
+                // 200, not an error status — that is the whole trap.
+                return apiTestJSONResponse(#"{"ok": false, "choice": "once"}"#, for: request)
+            case "/api/approval/pending":
+                return apiTestJSONResponse("""
+                {"pending": {"approval_id": "approval-1", "command": "make install",
+                 "description": "Install command", "pattern_key": "install"},
+                 "pending_count": 1}
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run the installer")
+        XCTAssertTrue(didStart)
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(
+                approvalId: "approval-1",
+                command: "make install",
+                description: "Install command",
+                patternKey: "install"
+            ),
+            pendingCount: 1
+        )))
+
+        let didRespond = await viewModel.respondToApproval(.once)
+
+        XCTAssertFalse(didRespond, "A refusal is not a success.")
+        XCTAssertNotNil(viewModel.approvalPrompt, "The agent is still waiting, so the card stays.")
+        XCTAssertNotNil(viewModel.approvalErrorMessage, "Silence here is what made this untraceable.")
+    }
+
+    /// A server that omits `ok` is an unknown, not a refusal — it must keep
+    /// working exactly as before.
+    @MainActor
+    func testApprovalRespondWithoutAnOkFieldStillClearsTheCard() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient,
+            clarifyStreamClient: SpySSEStreamingClient()
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/approval/respond":
+                return apiTestJSONResponse(#"{"choice": "once"}"#, for: request)
+            case "/api/approval/pending":
+                return apiTestJSONResponse(#"{"pending": null}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run the installer")
+        XCTAssertTrue(didStart)
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(
+                approvalId: "approval-1",
+                command: "make install",
+                description: "Install command",
+                patternKey: "install"
+            ),
+            pendingCount: 1
+        )))
+
+        let didRespond = await viewModel.respondToApproval(.once)
+
+        XCTAssertTrue(didRespond)
+        XCTAssertNil(viewModel.approvalPrompt)
+        XCTAssertNil(viewModel.approvalErrorMessage)
     }
 
     @MainActor

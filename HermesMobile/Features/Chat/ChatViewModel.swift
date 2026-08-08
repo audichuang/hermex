@@ -4040,8 +4040,8 @@ final class ChatViewModel {
             break
         case .streamEnd, .cancelled:
             finishBtwStream()
-        case .error(let message):
-            activeBtwAnswer = "Error: \(message)"
+        case .error(let payload):
+            activeBtwAnswer = "Error: \(payload.displayMessage(fallback: String(localized: "The stream returned an error.")))"
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
         case .transportError(let message):
@@ -4049,10 +4049,11 @@ final class ChatViewModel {
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
         case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .pendingSteerLeftover,
-             .goalStatus, .goalContinue, .sessionCompressed:
+             .goalStatus, .goalContinue, .sessionCompressed, .warning:
             // A `btw` side-question never drives the session's goal, so goal
             // frames on this stream carry nothing for it to act on. It also runs
-            // on its own throwaway stream, which never compresses.
+            // on its own throwaway stream, which never compresses, and a warning
+            // about the session's model has no bearing on this side answer.
             break
         }
     }
@@ -5384,6 +5385,23 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorDidReceiveErrorMessage(_ message: String) {
         sendErrorMessage = message
+    }
+
+    func streamCoordinatorDidReceiveWarningMessage(_ message: String) {
+        // An inline notice, not `sendErrorMessage`: the run is still going and
+        // an error banner would say otherwise. Being told the model was swapped
+        // is the whole point — without it the answer gets judged as the model
+        // the user picked (#7).
+        appendLocalNoticeMessage(message)
+    }
+
+    func streamCoordinatorRequestTranscriptReload() {
+        // No `modelContext` reaches the stream event path, so this reload skips
+        // the cache merge. It is a recovery read of the server's own copy; the
+        // next context-carrying load re-caches it.
+        Task { @MainActor [weak self] in
+            await self?.loadMessages()
+        }
     }
 
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {
