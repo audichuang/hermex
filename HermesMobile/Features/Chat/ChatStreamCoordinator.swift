@@ -152,29 +152,55 @@ final class ChatStreamCoordinator {
         liveTokensPerSecond = nil
     }
 
+    /// `resumesFromLastEvent` lets a caller reuse this connection's own cursor
+    /// when it has one and the caller has no explicit `replayAfterSeq`. Only the
+    /// rejoin-an-active-run path opts in: elsewhere the server has already said
+    /// there is no journal to replay, and asking anyway is a wasted request.
     func start(
         streamID: String,
         replayAfterSeq: Int? = nil,
+        resumesFromLastEvent: Bool = false,
         recoveryState: ActiveStreamRecoveryState = .idle
     ) {
         hasCompletedCurrentResponse = false
         liveTokensPerSecond = nil
         runGeneration &+= 1
+        // A cursor only means something within its own run, so moving to a
+        // different stream drops it. Staying on the same one keeps it: that is
+        // what lets a resume pick up where this client stopped instead of
+        // re-reading the whole journal.
+        let isSameRun = activeStreamID == streamID
         activeStreamID = streamID
         isConnectionSuspended = false
-        if replayAfterSeq == nil {
+        if !isSameRun, replayAfterSeq == nil {
             lastEventID = nil
         }
 
+        // Resume from this connection's own cursor when it has one. Rejoining a
+        // run that is still going used to drop it and attach bare, so the server
+        // pushed only what happened from that moment on and everything produced
+        // while the app was backgrounded never arrived (#8).
+        //
+        // No cursor means no replay at all. Asking the server to replay a run
+        // this client never streamed would rebuild it on top of a transcript
+        // that has no in-flight assistant message to merge into, which
+        // duplicates content — the reference client only gets away with it by
+        // rendering the run-journal snapshot first. That is a larger change than
+        // this one and is deliberately left out.
+        let resumeEventID = (replayAfterSeq != nil || resumesFromLastEvent) ? lastEventID : nil
+        let resumeAfterSeq = replayAfterSeq
+            ?? (resumesFromLastEvent ? Self.runJournalReplayAfterSeq(from: resumeEventID) : nil)
+
         markConnectionStarted(
-            isReplay: replayAfterSeq != nil,
+            isReplay: resumeAfterSeq != nil,
             recoveryState: recoveryState
         )
         startLiveActivity(streamID: streamID)
         streamClient.start(
             url: client.chatStreamURL(
                 streamID: streamID,
-                replayAfterSeq: replayAfterSeq
+                replayAfterSeq: resumeAfterSeq,
+                replayAfterEventID: resumeEventID
             )
         ) { [weak self] event in
             self?.handle(event)
@@ -286,7 +312,7 @@ final class ChatStreamCoordinator {
                     delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 }
                 isConnectionSuspended = false
-                start(streamID: streamIDToResume)
+                start(streamID: streamIDToResume, resumesFromLastEvent: true)
             } else if response.replayAvailable == true {
                 let replayAfterSeq = Self.runJournalReplayAfterSeq(from: lastEventID) ?? 0
                 self.activeStreamID = activeStreamID
