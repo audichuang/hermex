@@ -397,4 +397,29 @@ final class APIClientCronEndpointTests: APIClientTestCase {
         let response = try await client.cronOutput(jobID: "job456", limit: nil)
         XCTAssertEqual(response.outputs?.count, 0)
     }
+
+    /// A server with no cron package answers `{"jobs": [], "cron_unavailable":
+    /// true}`. Dropping the flag rendered "this server can't schedule anything"
+    /// as "you have no scheduled tasks", so creating one looked like it worked
+    /// and the list stayed empty with nothing to explain it (#11).
+    func testCronJobsResponseCarriesTheUnavailableFlag() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse(#"{"jobs": [], "cron_unavailable": true}"#, for: request)
+        }
+
+        let response = try await client.crons()
+
+        XCTAssertEqual(response.cronUnavailable, true)
+        XCTAssertEqual(response.jobs?.isEmpty, true)
+    }
+
+    /// A capable server omits the flag, which must not read as unavailable.
+    func testCronJobsResponseWithoutTheFlagIsNotTreatedAsUnavailable() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse(#"{"jobs": []}"#, for: request)
+        }
+
+        let response = try await client.crons()
+        XCTAssertNil(response.cronUnavailable)
+    }
 }

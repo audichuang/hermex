@@ -10,6 +10,9 @@ enum CronJobListMutation: Equatable {
 @Observable
 final class TasksViewModel {
     private(set) var jobs: [CronJob] = []
+    /// This server has no scheduling capability at all, as opposed to having no
+    /// jobs yet (#11).
+    private(set) var isCronUnavailable = false
     private(set) var runningJobs: [String: Double] = [:]
     /// Server-provided deliver targets; `nil` while unknown or when the
     /// endpoint is unavailable (the editor then falls back to free text).
@@ -59,6 +62,12 @@ final class TasksViewModel {
 
             let (jobsResult, statusResult) = try await (jobsResponse, statusResponse)
             runningJobs = statusResult.runningJobs ?? [:]
+            // The server says "I have no scheduling capability" with this flag
+            // when the cron package isn't importable there (split Docker
+            // deployments). Dropping it rendered that as "you have no scheduled
+            // tasks", so creating one appeared to work and the list stayed empty
+            // forever with nothing to explain why (#11).
+            isCronUnavailable = jobsResult.cronUnavailable == true
             jobs = jobsResult.jobs ?? []
             deliveryOptions = await deliveryOptionsResponse?.platforms
         } catch {
