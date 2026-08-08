@@ -116,6 +116,9 @@ enum SSEEvent: Equatable {
     /// prompt for it. The client must start that turn; see
     /// `ChatViewModel.enqueueGoalContinuation`.
     case goalContinue(GoalStreamEvent)
+    /// Auto-compression rotated the session id mid-stream. The client has to
+    /// follow it or every later write lands in the archived parent snapshot.
+    case sessionCompressed(SessionCompressedStreamEvent)
     case approvalPending(ApprovalPendingResponse)
     case clarificationPending(ClarificationPendingResponse)
     case pendingSteerLeftover(String)
@@ -321,6 +324,14 @@ struct SSEEventDecoder {
             // after one turn, silently.
             let payload = decodePayload(GoalStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
             return .goalContinue(payload ?? GoalStreamEvent())
+        case "compressed":
+            let payload = decodePayload(
+                SessionCompressedStreamEvent.self,
+                eventType: eventType,
+                from: eventData,
+                decoder: decoder
+            )
+            return .sessionCompressed(payload ?? SessionCompressedStreamEvent())
         case "initial":
             logInvalidJSONIfNeeded(eventType: eventType, payloadName: "pending stream payload", data: eventData)
             if ClarificationPendingResponse.containsClarificationMarkers(in: eventData) {
@@ -479,6 +490,54 @@ private struct ReasoningPayload: Decodable {
 private struct ErrorPayload: Decodable {
     let error: String?
     let message: String?
+}
+
+/// The `compressed` frame an auto-compression turn emits
+/// (`api/streaming.py:9781` @ 399cd7ab). Upstream rotates the session id in the
+/// middle of the stream: the old id is archived as a `pre_compression_snapshot`
+/// and the conversation continues under a new one, which `done.session` then
+/// carries. Every field is optional — this frame is informational upstream and
+/// its keys have already been renamed once.
+struct SessionCompressedStreamEvent: Decodable, Equatable {
+    let sessionId: String?
+    let oldSessionId: String?
+    let newSessionId: String?
+    let continuationSessionId: String?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case oldSessionId = "old_session_id"
+        case newSessionId = "new_session_id"
+        case continuationSessionId = "continuation_session_id"
+        case message
+    }
+
+    init(
+        sessionId: String? = nil,
+        oldSessionId: String? = nil,
+        newSessionId: String? = nil,
+        continuationSessionId: String? = nil,
+        message: String? = nil
+    ) {
+        self.sessionId = sessionId
+        self.oldSessionId = oldSessionId
+        self.newSessionId = newSessionId
+        self.continuationSessionId = continuationSessionId
+        self.message = message
+    }
+
+    /// The id the conversation continues under, or nil when the frame names no
+    /// usable one. `continuation_session_id` and `new_session_id` are the same
+    /// value upstream today; preferring the explicit continuation keeps the
+    /// client correct if they ever diverge.
+    var continuedSessionID: String? {
+        for candidate in [continuationSessionId, newSessionId] {
+            let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return nil
+    }
 }
 
 struct DoneStreamEvent: Equatable {
