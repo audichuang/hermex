@@ -271,4 +271,24 @@ final class APIClientSessionListTests: APIClientTestCase {
             "A numeric id is coerced rather than dropped."
         )
     }
+
+    /// The server derives `display_title` for rows whose stored title is a
+    /// placeholder. Without it every CLI and subagent session showed as
+    /// "Hermes WebUI #N" and none could be told from the others (#23).
+    func testSessionListPrefersTheServersDisplayTitle() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {"sessions": [
+              {"session_id": "cli-1", "title": "Hermes WebUI #7", "display_title": "fix the flaky test"},
+              {"session_id": "web-1", "title": "Planning"}
+            ]}
+            """, for: request)
+        }
+
+        let sessions = try await client.sessions().sessions ?? []
+
+        XCTAssertEqual(sessions.first?.displayTitle, "fix the flaky test")
+        XCTAssertEqual(sessions.first?.preferredTitle, "fix the flaky test")
+        XCTAssertEqual(sessions.last?.preferredTitle, "Planning", "Rows without one keep their stored title.")
+    }
 }
