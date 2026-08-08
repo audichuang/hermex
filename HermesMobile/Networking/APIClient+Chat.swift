@@ -27,8 +27,19 @@ extension APIClient {
         )
     }
 
-    nonisolated func chatStreamURL(streamID: String, replayAfterSeq: Int? = nil) -> URL {
-        Endpoint.chatStream(streamID: streamID, replayAfterSeq: replayAfterSeq).url(relativeTo: baseURL)
+    /// Builds the chat-stream URL, carrying a replay cursor when there is one.
+    /// A replay sends the run-journal event id alongside the sequence number so
+    /// the server can reject a cursor from a replaced run (#9).
+    nonisolated func chatStreamURL(
+        streamID: String,
+        replayAfterSeq: Int? = nil,
+        replayAfterEventID: String? = nil
+    ) -> URL {
+        Endpoint.chatStream(
+            streamID: streamID,
+            replayAfterSeq: replayAfterSeq,
+            replayAfterEventID: replayAfterEventID
+        ).url(relativeTo: baseURL)
     }
 
     func cancelChat(streamID: String) async throws -> ChatCancelResponse {

@@ -41,7 +41,7 @@ enum Endpoint {
     case renameProject
     case deleteProject
     case chatStart
-    case chatStream(streamID: String, replayAfterSeq: Int? = nil)
+    case chatStream(streamID: String, replayAfterSeq: Int? = nil, replayAfterEventID: String? = nil)
     case chatCancel(streamID: String)
     case chatStreamStatus(streamID: String)
     case chatSteer
@@ -461,13 +461,19 @@ enum Endpoint {
             return items
         case let .sessionStatus(id):
             return [URLQueryItem(name: "session_id", value: id)]
-        case let .chatStream(streamID, replayAfterSeq):
+        case let .chatStream(streamID, replayAfterSeq, replayAfterEventID):
             var items = [URLQueryItem(name: "stream_id", value: streamID)]
             // Opt-in reconnect: omitted on a live attach so the URL stays
             // byte-identical. Negative cursors clamp to 0.
             if let replayAfterSeq {
                 items.append(URLQueryItem(name: "replay", value: "1"))
                 items.append(URLQueryItem(name: "after_seq", value: "\(max(0, replayAfterSeq))"))
+                // The server checks `after_event_id` against the stream's own run
+                // id and ignores a cursor from a replaced run, while a bare
+                // `after_seq` is taken at face value (#9).
+                if let replayAfterEventID, !replayAfterEventID.isEmpty {
+                    items.append(URLQueryItem(name: "after_event_id", value: replayAfterEventID))
+                }
             }
             return items
         case let .chatCancel(streamID),
