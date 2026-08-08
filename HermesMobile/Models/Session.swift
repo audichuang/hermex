@@ -200,6 +200,11 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
 
     let sessionId: String?
     let title: String?
+    /// Human-readable title the server derives for rows whose stored `title` is
+    /// a placeholder — CLI sessions and subagent sessions
+    /// (`api/models.py:6111` @ 399cd7ab). Without it those rows all render as
+    /// "Hermes WebUI #N" and become impossible to tell apart (#23).
+    let displayTitle: String?
     let workspace: String?
     let model: String?
     let modelProvider: String?
@@ -231,9 +236,15 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let isReadOnly: Bool?
     let matchType: String?
 
+    /// The title to show: the server's derived one first, then the stored one.
+    var preferredTitle: String? {
+        Self.nonEmpty(displayTitle) ?? Self.nonEmpty(title)
+    }
+
     init(
         sessionId: String? = nil,
         title: String? = nil,
+        displayTitle: String? = nil,
         workspace: String? = nil,
         model: String? = nil,
         modelProvider: String? = nil,
@@ -267,6 +278,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     ) {
         self.sessionId = sessionId
         self.title = title
+        self.displayTitle = displayTitle
         self.workspace = workspace
         self.model = model
         self.modelProvider = modelProvider
@@ -300,7 +312,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case sessionId, title, workspace, model, modelProvider
+        case sessionId, title, displayTitle, workspace, model, modelProvider
         case messageCount, createdAt, updatedAt, lastMessageAt
         case pinned, archived, projectId, profile
         case inputTokens, outputTokens, estimatedCost
@@ -324,6 +336,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
         title = container.decodeLossyStringIfPresent(forKey: .title)
+        displayTitle = container.decodeLossyStringIfPresent(forKey: .displayTitle)
         workspace = container.decodeLossyStringIfPresent(forKey: .workspace)
         model = container.decodeLossyStringIfPresent(forKey: .model)
         modelProvider = container.decodeLossyStringIfPresent(forKey: .modelProvider)
@@ -382,6 +395,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     init(from detail: SessionDetail) {
         sessionId = detail.sessionId
         title = detail.title
+        displayTitle = nil
         workspace = detail.workspace
         model = detail.model
         modelProvider = detail.modelProvider
