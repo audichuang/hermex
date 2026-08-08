@@ -134,6 +134,14 @@ struct SessionCompressResponse: Decodable, Equatable {
     let summary: SessionCompressionSummary?
     let focusTopic: String?
     let error: String?
+    /// Job state from the asynchronous endpoints: `running`, `done`, `error`,
+    /// `cancelled`, or `idle` when no job exists. A `done` payload carries the
+    /// synchronous response's own fields alongside it
+    /// (`_manual_compression_status_payload`, `api/routes.py:24320` @ 399cd7ab).
+    /// Absent on the synchronous endpoint.
+    let status: String?
+
+    var isJobRunning: Bool { status == "running" }
 }
 
 struct SessionCompressionSummary: Decodable, Equatable {

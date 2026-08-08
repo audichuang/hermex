@@ -159,9 +159,13 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(response.parentSessionId, "abc123")
     }
 
-    func testCompressSessionBuildsExpectedBodyAndDecodesResponse() async throws {
+    /// Compression goes through the asynchronous job the web client uses. The
+    /// synchronous endpoint ran the whole compaction inside one request, so a
+    /// long transcript reliably outlived the request timeout while the server
+    /// finished anyway and rotated the session id behind the client (#24).
+    func testCompressSessionStartsTheAsynchronousJobAndDecodesAnImmediateResult() async throws {
         let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/session/compress")
+            XCTAssertEqual(request.url?.path, "/api/session/compress/start")
 
             let body = try XCTUnwrap(apiTestBodyData(from: request))
             let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
@@ -173,6 +177,7 @@ final class APIClientSessionMutationTests: APIClientTestCase {
             return apiTestJSONResponse("""
             {
               "ok": true,
+              "status": "done",
               "focus_topic": "architecture notes",
               "summary": {
                 "headline": "Compressed: 8 -> 3 messages",
@@ -196,6 +201,73 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(response.summary?.tokenLine, "Rough transcript estimate: ~1200 -> ~320 tokens")
         XCTAssertEqual(response.summary?.referenceMessage, "[CONTEXT COMPACTION] Compression completed.")
         XCTAssertEqual(response.session?.sessionId, "abc123")
+    }
+
+    /// A `running` start is polled until the job leaves that state, and the
+    /// terminal payload carries the rotated session id.
+    func testCompressSessionPollsAJobThatIsStillRunning() async throws {
+        nonisolated(unsafe) var paths: [String] = []
+        let client = makeClient { request in
+            let path = request.url?.path ?? ""
+            paths.append(path)
+            let count = paths.count
+
+            if path == "/api/session/compress/start" {
+                return apiTestJSONResponse(#"{"ok": true, "status": "running", "session_id": "abc123"}"#, for: request)
+            }
+
+            XCTAssertEqual(path, "/api/session/compress/status")
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(components?.queryItems?.first { $0.name == "session_id" }?.value, "abc123")
+
+            if count == 2 {
+                return apiTestJSONResponse(#"{"ok": true, "status": "running", "session_id": "abc123"}"#, for: request)
+            }
+            return apiTestJSONResponse("""
+            {"ok": true, "status": "done",
+             "session": {"session_id": "abc123-compressed", "messages": []}}
+            """, for: request)
+        }
+
+        let response = try await client.compressSession(
+            id: "abc123",
+            pollInterval: .milliseconds(10),
+            timeout: .seconds(5)
+        )
+
+        XCTAssertEqual(response.status, "done")
+        XCTAssertEqual(response.session?.sessionId, "abc123-compressed")
+        XCTAssertEqual(paths.count, 3)
+    }
+
+    /// A deployment without the asynchronous routes answers the start with 404;
+    /// the synchronous endpoint still has to work there.
+    func testCompressSessionFallsBackToTheSynchronousEndpointOn404() async throws {
+        nonisolated(unsafe) var paths: [String] = []
+        let client = makeClient { request in
+            let path = request.url?.path ?? ""
+            paths.append(path)
+
+            if path == "/api/session/compress/start" {
+                return (
+                    try XCTUnwrap(HTTPURLResponse(
+                        url: try XCTUnwrap(request.url),
+                        statusCode: 404,
+                        httpVersion: nil,
+                        headerFields: nil
+                    )),
+                    Data(#"{"error": "not found"}"#.utf8)
+                )
+            }
+
+            XCTAssertEqual(path, "/api/session/compress")
+            return apiTestJSONResponse(#"{"ok": true, "session": {"session_id": "abc123"}}"#, for: request)
+        }
+
+        let response = try await client.compressSession(id: "abc123")
+
+        XCTAssertEqual(response.session?.sessionId, "abc123")
+        XCTAssertEqual(paths, ["/api/session/compress/start", "/api/session/compress"])
     }
 
     func testCompressionSummaryExtractsCompressedTokenEstimate() {

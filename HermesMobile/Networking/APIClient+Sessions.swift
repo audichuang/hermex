@@ -140,12 +140,44 @@ extension APIClient {
         )
     }
 
-    func compressSession(id: String, focusTopic: String? = nil) async throws -> SessionCompressResponse {
-        try await send(
-            endpoint: .compressSession,
-            method: "POST",
-            body: CompressSessionRequest(sessionId: id, focusTopic: focusTopic)
-        )
+    /// Compresses a session and waits for the result.
+    ///
+    /// Starts the asynchronous job the web client uses and polls it, rather than
+    /// holding one request open for the whole compression. The synchronous
+    /// `/api/session/compress` runs the same work inline, so a long transcript
+    /// reliably exceeded the request timeout — and the compression then finished
+    /// on the server anyway, rotating the session id behind a client that had
+    /// already given up (#24, and #2 for what that rotation costs).
+    ///
+    /// A server without the asynchronous routes answers the start with 404;
+    /// that falls back to the synchronous call so an older deployment keeps
+    /// working.
+    func compressSession(
+        id: String,
+        focusTopic: String? = nil,
+        pollInterval: Duration = .seconds(2),
+        timeout: Duration = .seconds(600)
+    ) async throws -> SessionCompressResponse {
+        let body = CompressSessionRequest(sessionId: id, focusTopic: focusTopic)
+
+        let started: SessionCompressResponse
+        do {
+            started = try await send(endpoint: .compressSessionStart, method: "POST", body: body)
+        } catch APIError.http(let statusCode, _) where statusCode == 404 {
+            return try await send(endpoint: .compressSession, method: "POST", body: body)
+        }
+
+        guard started.isJobRunning else { return started }
+
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var latest = started
+        while ContinuousClock.now < deadline {
+            try await Task.sleep(for: pollInterval)
+            latest = try await send(endpoint: .compressSessionStatus(sessionID: id), method: "GET")
+            guard latest.isJobRunning else { return latest }
+        }
+
+        throw APIError.http(statusCode: 408, body: nil)
     }
 
     /// Truncates the session to empty on the server and resets its title to
