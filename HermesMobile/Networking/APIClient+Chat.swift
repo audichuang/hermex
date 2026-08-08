@@ -27,7 +27,22 @@ extension APIClient {
         )
     }
 
-    nonisolated func chatStreamURL(streamID: String, replayAfterSeq: Int? = nil) -> URL {
+    /// Builds the chat-stream URL, carrying a replay cursor when there is one.
+    ///
+    /// A replay sends both parameters, because the server trusts them
+    /// differently: `after_event_id` is checked against the stream's own run id
+    /// and ignored when it came from a different run, while a bare `after_seq`
+    /// is taken at face value (`_parse_run_journal_after_seq`,
+    /// `api/routes.py:17151` @ 399cd7ab). Sending only the sequence number meant
+    /// a cursor from a replaced run — a compression, a retry, a gateway restart
+    /// — could resume against the wrong event stream, and the client was
+    /// actively stripping the run id out of the id it already had. Sending it is
+    /// how that check gets bought back (#9).
+    nonisolated func chatStreamURL(
+        streamID: String,
+        replayAfterSeq: Int? = nil,
+        replayAfterEventID: String? = nil
+    ) -> URL {
         let url = Endpoint.chatStream(streamID: streamID).url(relativeTo: baseURL)
         guard let replayAfterSeq,
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -38,6 +53,9 @@ extension APIClient {
         var queryItems = components.queryItems ?? []
         queryItems.append(URLQueryItem(name: "replay", value: "1"))
         queryItems.append(URLQueryItem(name: "after_seq", value: "\(max(0, replayAfterSeq))"))
+        if let replayAfterEventID, !replayAfterEventID.isEmpty {
+            queryItems.append(URLQueryItem(name: "after_event_id", value: replayAfterEventID))
+        }
         components.queryItems = queryItems
         return components.url ?? url
     }
