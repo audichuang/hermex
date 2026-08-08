@@ -286,8 +286,9 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(liveActivityManager.markStaleCount, 1)
     }
 
+
     @MainActor
-    func testForegroundReconnectActiveStreamReloadsAndRestartsWithoutReplay() async throws {
+    func testForegroundReconnectActiveStreamResumesFromItsOwnCursor() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
         let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
@@ -296,6 +297,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         }
 
         coordinator.start(streamID: "stream-123")
+        streamClient.emit(.token("Partial answer."), lastEventID: "stream-123:12")
         coordinator.suspendActiveStreamConnection()
 
         await coordinator.reconnectIfNeeded()
@@ -305,7 +307,45 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(streamClient.startedURLs.count, 2)
         let resumedURL = try XCTUnwrap(streamClient.startedURLs.last)
         let queryItems = URLComponents(url: resumedURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(queryItems.first(where: { $0.name == "replay" })?.value, "1")
+        XCTAssertEqual(queryItems.first(where: { $0.name == "after_seq" })?.value, "12")
+        XCTAssertEqual(queryItems.first(where: { $0.name == "after_event_id" })?.value, "stream-123:12")
+    }
+
+    /// A run this client never streamed has no cursor, so it attaches without
+    /// asking for a replay. Replaying it would rebuild the run on top of a
+    /// transcript with no in-flight message to merge into and duplicate every
+    /// token; the reference client only avoids that by rendering the run-journal
+    /// snapshot first, which this does not do.
+    @MainActor
+    func testAttachingToARunThisClientNeverSawDoesNotAskForAReplay() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: streamClient)
+
+        coordinator.start(streamID: "stream-elsewhere")
+
+        let url = try XCTUnwrap(streamClient.startedURLs.first)
+        let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         XCTAssertNil(queryItems.first(where: { $0.name == "replay" }))
+        XCTAssertNil(queryItems.first(where: { $0.name == "after_event_id" }))
+    }
+
+    /// A cursor is only meaningful inside its own run. Carrying one across to a
+    /// different stream is exactly the stale-cursor case the server's run-id
+    /// check exists to reject, so the client does not offer it.
+    @MainActor
+    func testStartingADifferentRunDropsThePreviousCursor() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: streamClient)
+
+        coordinator.start(streamID: "stream-one")
+        streamClient.emit(.token("Alpha"), lastEventID: "stream-one:5")
+        coordinator.start(streamID: "stream-two")
+
+        let url = try XCTUnwrap(streamClient.startedURLs.last)
+        let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertNil(queryItems.first(where: { $0.name == "after_seq" }))
+        XCTAssertNil(queryItems.first(where: { $0.name == "after_event_id" }))
     }
 
     @MainActor
