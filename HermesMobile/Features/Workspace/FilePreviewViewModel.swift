@@ -113,12 +113,22 @@ final class FilePreviewViewModel {
         ["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"].contains(pathExtension)
     }
 
+    /// Formats the app refuses to ask the server about at all.
+    ///
+    /// `docx` / `xlsx` / `pptx` are deliberately absent: the server extracts
+    /// text from exactly those three (`CLAIMED_OFFICE_EXTENSIONS`,
+    /// `api/office_documents.py` @ 399cd7ab), so blocking them here showed
+    /// "not available" for files it could have read (#29). Their legacy binary
+    /// counterparts `doc` / `xls` / `ppt` stay on the list — upstream claims
+    /// only the OOXML ones. When the server lacks the Python libraries it
+    /// answers with its own install hint, which is a more useful thing to show
+    /// than a flat refusal.
     private var isKnownUnsupportedBinaryPath: Bool {
         [
             "7z", "a", "aiff", "avi", "bin", "bz2", "class", "db", "dmg", "doc",
-            "docx", "dylib", "exe", "flac", "gz", "jar", "m4a", "mov", "mp3",
-            "mp4", "o", "pdf", "pkg", "ppt", "pptx", "pyc", "rar", "sqlite",
-            "svg", "tar", "tgz", "wav", "xls", "xlsx", "xz", "zip"
+            "dylib", "exe", "flac", "gz", "jar", "m4a", "mov", "mp3",
+            "mp4", "o", "pdf", "pkg", "ppt", "pyc", "rar", "sqlite",
+            "svg", "tar", "tgz", "wav", "xls", "xz", "zip"
         ].contains(pathExtension)
     }
 
