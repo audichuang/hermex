@@ -334,15 +334,19 @@ final class ChatViewModel {
     /// Model-aware effort vocabulary (`supported_efforts` from `GET /api/reasoning`).
     /// `nil` on older servers → the composer falls back to the static list (issue #18).
     private(set) var supportedReasoningEfforts: [String]?
-    /// `supports_reasoning_effort`; `false` hides the composer effort control.
+    /// `supports_reasoning_effort`; `false` means no effort ladder.
     private(set) var supportsReasoningEffort: Bool?
+    /// `supports_thinking_toggle`; `true` keeps the control visible even with an
+    /// empty ladder, which is the ZAI GLM case (#26).
+    private(set) var supportsThinkingToggle: Bool?
     /// Drops out-of-order `GET /api/reasoning` responses after rapid model switches
     /// so the gating never reflects a stale model (upstream #3750 class of bug).
     private var reasoningGatingFetchToken = 0
     var showsReasoningEffortControl: Bool {
         ReasoningEffortOption.showsEffortControl(
             supportsReasoningEffort: supportsReasoningEffort,
-            supportedEfforts: supportedReasoningEfforts
+            supportedEfforts: supportedReasoningEfforts,
+            supportsThinkingToggle: supportsThinkingToggle
         )
     }
     private(set) var isLoadingComposerConfiguration = false
@@ -540,7 +544,7 @@ final class ChatViewModel {
         self.listenPlaybackSpeed = ListenPlaybackSpeed.stored(in: userDefaults)
         self.serverTTSAudioPlayerFactory = serverTTSAudioPlayerFactory
             ?? { try ServerTTSAudioPlayer(data: $0) }
-        displayTitle = Self.displayTitle(from: session.title)
+        displayTitle = Self.displayTitle(from: session.preferredTitle)
         self.streamCoordinator.attach(delegate: self)
         self.pendingActionCoordinator.delegate = self
         self.attachmentCoordinator.delegate = self
@@ -812,6 +816,7 @@ final class ChatViewModel {
             selectedReasoningEffort: selectedReasoningEffort,
             supportedReasoningEfforts: supportedReasoningEfforts,
             supportsReasoningEffort: supportsReasoningEffort,
+            supportsThinkingToggle: supportsThinkingToggle,
             modelCatalogGroups: modelCatalogGroups,
             agentCommands: agentCommands,
             workspaceRoots: workspaceRoots,
@@ -830,6 +835,7 @@ final class ChatViewModel {
         selectedReasoningEffort = state.selectedReasoningEffort
         supportedReasoningEfforts = state.supportedReasoningEfforts
         supportsReasoningEffort = state.supportsReasoningEffort
+        supportsThinkingToggle = state.supportsThinkingToggle
         modelCatalogGroups = state.modelCatalogGroups
         agentCommands = state.agentCommands
         workspaceRoots = state.workspaceRoots
@@ -912,6 +918,7 @@ final class ChatViewModel {
             if token == reasoningGatingFetchToken {
                 supportedReasoningEfforts = nil
                 supportsReasoningEffort = nil
+                supportsThinkingToggle = nil
             }
             return
         }
@@ -920,6 +927,7 @@ final class ChatViewModel {
 
         supportedReasoningEfforts = response.normalizedSupportedEfforts
         supportsReasoningEffort = response.supportsReasoningEffort
+        supportsThinkingToggle = response.supportsThinkingToggle
 
         if let selected = Self.nonEmpty(selectedReasoningEffort)?.lowercased(),
            let supported = supportedReasoningEfforts,

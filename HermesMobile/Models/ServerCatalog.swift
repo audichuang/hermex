@@ -482,9 +482,17 @@ struct ReasoningStatusResponse: Decodable, Equatable {
     /// `nil` on older servers that don't send the field — callers must fall back
     /// to the static effort list (issue #18).
     let supportedEfforts: [String]?
-    /// `supports_reasoning_effort` — `false` means the resolved model has no
-    /// effort control at all (hide the picker). `nil` on older servers.
+    /// `supports_reasoning_effort` — `false` means the resolved model takes no
+    /// effort ladder. On its own it does NOT mean "no reasoning control": see
+    /// `supportsThinkingToggle`. `nil` on older servers.
     let supportsReasoningEffort: Bool?
+    /// `supports_thinking_toggle` — whether the composer should render ANY
+    /// reasoning control. True for effort-capable models *and* for ZAI GLM
+    /// models that accept the thinking on/off switch but not the ladder
+    /// (`api/config.py:4189` @ 399cd7ab). Verified on the live deployment: this
+    /// field is on `GET /api/reasoning`, not on `/api/models`. `nil` on older
+    /// servers (#26).
+    let supportsThinkingToggle: Bool?
     let error: String?
 
     var effectiveEffort: String? {
@@ -711,11 +719,40 @@ struct ModelCatalogOption: Identifiable, Equatable, Hashable, Sendable {
     let providerID: String?
 }
 
+extension String {
+    /// The model id without the `@provider:` prefix the server adds to models
+    /// that belong to a provider other than the active one
+    /// (`_apply_provider_prefix`, `api/config.py:2279` @ 399cd7ab — verified on
+    /// the live deployment, where `openai-codex` is active and its models are
+    /// bare while `@deepseek:` and `@gemini:` ones are prefixed).
+    ///
+    /// The same model is therefore spelled differently depending on which
+    /// provider happens to be active, so a saved default written under one
+    /// spelling stopped matching the catalog under the other and the picker
+    /// showed no checkmark at all (#27).
+    var bareModelID: String {
+        guard hasPrefix("@"), let separator = firstIndex(of: ":") else { return self }
+        return String(self[index(after: separator)...])
+    }
+
+    /// The provider named by an `@provider:` prefix, if there is one.
+    var modelIDProviderPrefix: String? {
+        guard hasPrefix("@"), let separator = firstIndex(of: ":") else { return nil }
+        let provider = self[index(after: startIndex)..<separator]
+        return provider.isEmpty ? nil : String(provider)
+    }
+}
+
 extension ModelCatalogOption {
     func matchesSelection(modelID: String?, providerID: String?) -> Bool {
-        guard id == modelID else { return false }
-        guard let providerID else { return true }
-        return self.providerID == providerID
+        guard let modelID, id.bareModelID == modelID.bareModelID else { return false }
+
+        // A provider named on either side has to agree, so two providers
+        // offering the same bare id can't be confused. The `@provider:` prefix
+        // counts as naming one.
+        guard let selectionProvider = providerID ?? modelID.modelIDProviderPrefix else { return true }
+        guard let optionProvider = self.providerID ?? id.modelIDProviderPrefix else { return true }
+        return optionProvider == selectionProvider
     }
 }
 
@@ -723,11 +760,13 @@ extension Collection where Element == ModelCatalogOption {
     func firstMatchingSelection(modelID: String?, providerID: String?) -> ModelCatalogOption? {
         guard let modelID, !modelID.isEmpty else { return nil }
 
-        if let providerID {
-            return first { $0.id == modelID && $0.providerID == providerID }
+        // Prefer the identical spelling; only then fall back to the normalized
+        // comparison, so an exact match is never lost to a same-named model.
+        if let exact = first(where: { $0.id == modelID && (providerID == nil || $0.providerID == providerID) }) {
+            return exact
         }
 
-        return first { $0.id == modelID }
+        return first { $0.matchesSelection(modelID: modelID, providerID: providerID) }
     }
 }
 

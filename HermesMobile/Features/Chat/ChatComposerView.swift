@@ -98,6 +98,7 @@ struct MessageComposerView: View {
     let selectedReasoningEffort: String?
     /// Model-aware effort vocabulary; `nil` → full static list (issue #18).
     let supportedReasoningEfforts: [String]?
+    let supportsThinkingToggle: Bool?
     /// When false the model has no effort control — hide the reasoning menu.
     let showsReasoningControl: Bool
     let isUpdatingConfiguration: Bool
@@ -815,6 +816,7 @@ struct MessageComposerView: View {
         ComposerReasoningMenu(
             selectedReasoningEffort: selectedReasoningEffort,
             supportedEfforts: supportedReasoningEfforts,
+            supportsThinkingToggle: supportsThinkingToggle,
             reasoningTitle: reasoningTitle,
             isDisabled: isConfigurationControlDisabled,
             width: reasoningControlWidth,

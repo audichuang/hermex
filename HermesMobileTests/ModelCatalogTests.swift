@@ -301,4 +301,101 @@ final class PersonalityAutocompleteTests: XCTestCase {
 
         XCTAssertEqual(response.slashAutocompleteNames, ["none", "mentor", "critic"])
     }
+
+    /// The server prefixes every model of a non-active provider with
+    /// `@provider:`, so the same model is spelled two different ways depending
+    /// on which provider is active. Comparing raw ids left the picker unable to
+    /// mark the current default at all (#27). Confirmed against the live
+    /// deployment: `openai-codex` is active and its ids are bare, while
+    /// `@deepseek:` and `@gemini:` ones carry the prefix.
+    func testModelSelectionMatchesAcrossTheProviderPrefix() {
+        let prefixed = ModelCatalogOption(
+            id: "@gemini:gemini-3.5-flash",
+            displayName: "Gemini 3.5 Flash",
+            providerID: "gemini"
+        )
+
+        XCTAssertTrue(prefixed.matchesSelection(modelID: "gemini-3.5-flash", providerID: nil))
+        XCTAssertTrue(prefixed.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
+        XCTAssertTrue(prefixed.matchesSelection(modelID: "gemini-3.5-flash", providerID: "gemini"))
+
+        let bare = ModelCatalogOption(id: "gemini-3.5-flash", displayName: "Gemini 3.5 Flash", providerID: "gemini")
+        XCTAssertTrue(bare.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
+    }
+
+    /// Normalizing must not merge two providers that offer the same bare id.
+    func testModelSelectionStillSeparatesProvidersSharingABareID() {
+        let other = ModelCatalogOption(
+            id: "@deepseek:gemini-3.5-flash",
+            displayName: "Look-alike",
+            providerID: "deepseek"
+        )
+
+        XCTAssertFalse(other.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
+        XCTAssertFalse(other.matchesSelection(modelID: "gemini-3.5-flash", providerID: "gemini"))
+    }
+
+    /// An exact spelling wins over a normalized one so a same-named model from
+    /// another provider can never be picked in its place.
+    func testFirstMatchingSelectionPrefersTheExactSpelling() {
+        let options = [
+            ModelCatalogOption(id: "@gemini:flash", displayName: "Prefixed", providerID: "gemini"),
+            ModelCatalogOption(id: "flash", displayName: "Bare", providerID: "gemini")
+        ]
+
+        XCTAssertEqual(options.firstMatchingSelection(modelID: "flash", providerID: nil)?.displayName, "Bare")
+        XCTAssertEqual(
+            options.firstMatchingSelection(modelID: "@gemini:flash", providerID: nil)?.displayName,
+            "Prefixed"
+        )
+    }
+
+    /// ZAI GLM-4.5–5.1 take the thinking on/off switch but not the effort
+    /// ladder, so upstream reports an empty ladder alongside
+    /// `supports_thinking_toggle: true`. Hiding on the empty ladder removed the
+    /// only way to turn thinking off from the phone (#26). Verified on the live
+    /// deployment that this field is on `GET /api/reasoning`.
+    func testThinkingToggleKeepsTheReasoningControlWithoutAnEffortLadder() {
+        XCTAssertTrue(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: false,
+            supportedEfforts: [],
+            supportsThinkingToggle: true
+        ))
+
+        XCTAssertFalse(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: false,
+            supportedEfforts: [],
+            supportsThinkingToggle: false
+        ))
+
+        // Older servers report none of it and keep today's behaviour.
+        XCTAssertTrue(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: nil,
+            supportedEfforts: nil,
+            supportsThinkingToggle: nil
+        ))
+    }
+
+    /// The toggle-only control needs both states. Without "Default" it would be
+    /// one-way: thinking could be switched off and never back on.
+    func testThinkingToggleOnlyModelOffersBothStates() {
+        let options = ReasoningEffortOption.options(
+            forSupportedEfforts: [],
+            supportsThinkingToggle: true
+        )
+
+        XCTAssertEqual(options.map(\.id), ["", "none"])
+    }
+
+    func testReasoningStatusDecodesTheThinkingToggleFlag() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(ReasoningStatusResponse.self, from: Data("""
+        {"show_reasoning": false, "reasoning_effort": "", "supported_efforts": [],
+         "supports_reasoning_effort": false, "supports_thinking_toggle": true}
+        """.utf8))
+
+        XCTAssertEqual(response.supportsThinkingToggle, true)
+        XCTAssertEqual(response.supportsReasoningEffort, false)
+    }
 }

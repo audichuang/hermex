@@ -119,6 +119,17 @@ extension APIClient {
         )
     }
 
+    /// Copies a session. Answers with the whole duplicated session, so no
+    /// follow-up fetch is needed. Rejects subagent sessions with a 400 — they
+    /// are view-only upstream.
+    func duplicateSession(id: String) async throws -> SessionResponse {
+        try await send(
+            endpoint: .duplicateSession,
+            method: "POST",
+            body: SessionIDRequest(sessionId: id)
+        )
+    }
+
     /// Compresses a session and waits for the result.
     ///
     /// Starts the asynchronous job the web client uses and polls it, rather than
