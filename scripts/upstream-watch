@@ -22,6 +22,16 @@ DEFAULT_TARGET_REF = "origin/master"
 # CONTRACT_TESTS.md.
 DEFAULT_RELEASES_LOUD_THRESHOLD = 20
 
+# Upstream files that declare API route literals. `api/routes.py` holds the main
+# dispatcher, but it delegates every `/api/kanban/*` request to the bridge, whose
+# own path literals live in that module — reading only routes.py reported the
+# app's entire Kanban surface as "removed from upstream". `git_show` yields ""
+# for a ref that predates a file, so listing a newer module is safe.
+ROUTE_SOURCE_FILES = (
+    "api/routes.py",
+    "api/kanban_bridge.py",
+)
+
 RISK_FILE_PATTERNS = (
     "api/routes.py",
     "api/streaming.py",
@@ -314,6 +324,30 @@ def extract_mobile_paths(repo_root: Path) -> set[str]:
         if value.startswith("/api") or value == "/health":
             paths.add(value)
     return paths
+
+
+def partition_mobile_paths(mobile_paths: set[str]) -> tuple[set[str], set[str]]:
+    """Split mobile endpoint paths into literal ones and interpolated ones.
+
+    A path built with Swift interpolation
+    (`/api/kanban/tasks/\\(request.cardID)/block`) cannot be compared against
+    upstream route literals at all: the id is filled in at runtime, and upstream
+    matches these inside a dispatcher by prefix *and* suffix
+    (`path.startswith(_TASK_PREFIX) and path.endswith("/block")`), where some
+    suffixes come from a tuple of pairs rather than an inline literal. So neither
+    the whole path nor its suffix exists as a route literal to match.
+
+    Comparing them literally reported the app's entire Kanban surface as removed
+    from upstream. Accepting any surviving prefix instead would be worse: a
+    genuinely deleted `/block` would still pass as long as `/api/kanban/tasks`
+    existed, turning a false alarm into a missed regression. Neither answer is
+    honest, so these are reported separately for a human to confirm.
+    """
+    literal: set[str] = set()
+    interpolated: set[str] = set()
+    for path in mobile_paths:
+        (interpolated if "\\(" in path else literal).add(path)
+    return literal, interpolated
 
 
 def extract_contract_test_paths(repo_root: Path) -> set[str]:
@@ -680,9 +714,17 @@ def build_report(args: argparse.Namespace) -> str:
     triaged_routes = git_show(upstream_dir, triaged_ref, "api/routes.py")
     target_routes = git_show(upstream_dir, target_ref, "api/routes.py")
 
-    base_paths = extract_route_paths(base_routes)
-    triaged_paths = extract_route_paths(triaged_routes)
-    target_paths = extract_route_paths(target_routes)
+    # Route paths come from every declaring module; request keys and SSE names
+    # stay scoped to routes.py / streaming.py as before.
+    def route_paths_at(ref: str) -> set[str]:
+        paths: set[str] = set()
+        for file_path in ROUTE_SOURCE_FILES:
+            paths |= extract_route_paths(git_show(upstream_dir, ref, file_path))
+        return paths
+
+    base_paths = route_paths_at(base_ref)
+    triaged_paths = route_paths_at(triaged_ref)
+    target_paths = route_paths_at(target_ref)
     triaged_request_keys = extract_request_keys(triaged_routes)
     target_request_keys = extract_request_keys(target_routes)
     added_request_keys = sorted(target_request_keys - triaged_request_keys)
@@ -702,7 +744,9 @@ def build_report(args: argparse.Namespace) -> str:
     removed_paths_since_tested = sorted(base_paths - target_paths)
     added_paths_since_triage = sorted(target_paths - triaged_paths)
     removed_paths_since_triage = sorted(triaged_paths - target_paths)
-    missing_mobile_paths = sorted(mobile_paths - target_paths)
+    literal_mobile_paths, interpolated_mobile_paths = partition_mobile_paths(mobile_paths)
+    missing_mobile_paths = sorted(literal_mobile_paths - target_paths)
+    unverifiable_mobile_paths = sorted(interpolated_mobile_paths)
     untested_mobile_paths = sorted(mobile_paths - contract_paths)
 
     files_since_tested = changed_files(upstream_dir, base_ref, target_ref)
@@ -787,6 +831,15 @@ def build_report(args: argparse.Namespace) -> str:
         lines.extend(bullet_list(missing_mobile_paths, empty="None"))
     else:
         lines.append("No mobile endpoint paths appear removed from target upstream.")
+
+    if unverifiable_mobile_paths:
+        lines.extend([
+            "",
+            "Dynamic mobile endpoint paths this check cannot verify "
+            "(runtime-interpolated; upstream matches them by prefix+suffix inside a "
+            "dispatcher, so there is no route literal to compare). Confirm by hand:",
+        ])
+        lines.extend(bullet_list(unverifiable_mobile_paths, empty="None"))
 
     lines.extend(["", "Mobile endpoint paths missing from the local contract matrix:"])
     lines.extend(bullet_list(untested_mobile_paths, empty="None"))

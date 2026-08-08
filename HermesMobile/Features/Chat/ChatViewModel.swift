@@ -440,6 +440,24 @@ final class ChatViewModel {
     private var isLoadingSkillSlashSuggestions = false
     private var queuedSlashMessages: [QueuedSlashMessage] = []
     private var isDrainingQueuedSlashMessage = false
+    /// The prompt the server handed back for a goal's next turn, held until this
+    /// stream finishes.
+    ///
+    /// Deliberately **not** in `queuedSlashMessages`. The server marks the
+    /// session (`PENDING_GOAL_CONTINUATION`) and then treats whichever
+    /// `/api/chat/start` arrives next as the goal turn *without checking the
+    /// prompt* (`api/routes.py`: `if not goal_related and s.session_id in
+    /// PENDING_GOAL_CONTINUATION`). So the continuation has to BE the next send.
+    /// Appending it to a FIFO queue that already held a message let that message
+    /// consume the marker instead, leaving the goal one turn behind for the rest
+    /// of the run. It is sent through its own path, ahead of the queue and holding
+    /// `goalStartReservation` — see `sendGoalContinuation(_:)`.
+    private var pendingGoalContinuation: PendingGoalContinuation?
+    /// Non-nil while a goal continuation's `/api/chat/start` is committed to but
+    /// not yet resolved. Every path that can start a turn checks this and steps
+    /// aside; the holder passes its own token to bypass it. Taken synchronously
+    /// before the drain's `Task` so there is no window to lose the race in.
+    private var goalStartReservation: UUID?
     private var activeBtwStreamID: String?
     private var activeBtwMessageID: String?
     private var activeBtwQuestion: String?
@@ -485,7 +503,9 @@ final class ChatViewModel {
         isCLISession = session.isCliSession == true
         self.server = server
         let resolvedClient = client ?? APIClient(baseURL: server)
-        let resolvedStreamClient = streamClient ?? SSEClient()
+        // Only the chat stream opts into unexpected-close reporting: its completion
+        // is what releases a held goal continuation. See `SSEClient.init`.
+        let resolvedStreamClient = streamClient ?? SSEClient(reportsUnexpectedClose: true)
         let resolvedLiveActivityManager = liveActivityManager ?? AgentLiveActivityManager.shared
         self.client = resolvedClient
         self.streamCoordinator = ChatStreamCoordinator(
@@ -1070,7 +1090,14 @@ final class ChatViewModel {
                 workspace: currentWorkspace,
                 model: currentModel,
                 modelProvider: requestModelProvider,
-                profile: requestProfileName
+                profile: requestProfileName,
+                // The session being switched away from. The server only commits
+                // its memory when it is visible to the *new* request's profile,
+                // so this has an effect when the profile did not actually change
+                // and is deliberately skipped upstream on a genuine cross-profile
+                // switch ("skip memory commit for the previous profile's
+                // session"). Sending it is still correct — the server decides.
+                previousSessionID: sessionID
             )
 
             guard let session = newSessionResponse.session else {
@@ -1956,7 +1983,15 @@ final class ChatViewModel {
         Set((message.attachments ?? []).compactMap(\.identityKey))
     }
 
-    func sendMessage(_ draft: String, modelContext: ModelContext? = nil) async -> Bool {
+    /// `goalStartToken` is supplied only by `sendGoalContinuation`, to send through
+    /// its own reservation. Any other caller that arrives while a reservation is
+    /// outstanding is queued instead of sent, so it cannot claim the goal's turn.
+    @discardableResult
+    func sendMessage(
+        _ draft: String,
+        modelContext: ModelContext? = nil,
+        goalStartToken: UUID? = nil
+    ) async -> Bool {
         guard !isViewingCachedData else {
             sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
             return false
@@ -1964,6 +1999,24 @@ final class ChatViewModel {
 
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return false }
+
+        // Decline while a turn is already running or the goal owns the next
+        // `chat/start`. Declining rather than silently queueing keeps the draft and
+        // its attachments in the composer, so the caller can retry — a queue would
+        // report success, let the UI clear the draft, and then hold the text with no
+        // bubble and no guaranteed drain trigger.
+        //
+        // `activeStreamID != nil` is unconditional: the server creates its
+        // `PENDING_GOAL_CONTINUATION` marker and clears its own active stream before
+        // the `goal_continue` frame reaches us, so during that gap no client state
+        // can tell that a marker exists. A send accepted then spends the goal's turn.
+        // The composer never reaches here mid-stream (`ChatView` routes a mid-stream
+        // draft to `submitStreamingMessage`); the exposed callers are skill
+        // shortcuts and other direct `sendMessage` users.
+        if activeStreamID != nil || isChatStartReserved(bypassing: goalStartToken) {
+            sendErrorMessage = String(localized: "Wait for the current response to finish before sending another message.")
+            return false
+        }
 
         guard let sessionID else {
             sendErrorMessage = String(localized: "The server did not provide a session ID.")
@@ -1999,6 +2052,15 @@ final class ChatViewModel {
         // firing two concurrent `startChat`s). The UI already blocks this; the guard
         // keeps a future caller (accessibility shortcut, test harness) safe too.
         guard !isSendingVoiceNote, !isStartingChat else { return false }
+        // A goal continuation owns the next `chat/start`. This path reaches
+        // `performChatSend` without going through `sendMessage`, so it needs its own
+        // check; unlike a typed message there is nothing useful to queue here (the
+        // clip has to be transcribed and uploaded first), so it declines and the
+        // user can send again — the reservation lasts one request.
+        guard !isChatStartReserved(bypassing: nil) else {
+            setUploadAttachmentError(String(localized: "Wait for the current response to finish before sending a voice note."))
+            return false
+        }
         guard !isViewingCachedData else {
             setUploadAttachmentError(String(localized: "Reconnect to the server to send a voice note."))
             return false
@@ -2059,6 +2121,17 @@ final class ChatViewModel {
             isImage: pending.isImage
         )
         let localMessageID = "local-\(UUID().uuidString)"
+        // Re-check immediately before starting the turn. The early guard ran before
+        // transcription and upload, two `await`s the stream's `stream_end` and the
+        // continuation's reservation can both land inside — and the composer
+        // deliberately allows recording mid-stream. Without this the clip would race
+        // the goal's turn and claim the server's marker.
+        guard activeStreamID == nil, !isChatStartReserved(bypassing: nil) else {
+            setUploadAttachmentError(
+                String(localized: "Wait for the current response to finish before sending a voice note.")
+            )
+            return false
+        }
         // The API message text is the bare transcript — NOT chatMessageText(…),
         // which would append a "[Attached files: <clip>.m4a]" suffix. That suffix
         // is the agent's only signal about a non-image attachment (the server
@@ -2104,7 +2177,17 @@ final class ChatViewModel {
         toolCallAnchorMessageID = nil
         streamCoordinator.prepareForNewResponse()
         responseCompletionNeedsTranscriptRefresh = false
-        defer { isStartingChat = false }
+        defer {
+            isStartingChat = false
+            // A send that never produced a stream leaves nothing to finish, so
+            // `finishStream()` — the usual drain trigger — never fires and a
+            // pending goal continuation would sit until some unrelated event
+            // happened to start a drain. This retry is a no-op when a stream did
+            // start (the guard sees `activeStreamID`) and when this send *is* the
+            // drain (`isDrainingQueuedSlashMessage` is still set), so it cannot
+            // reintroduce the tight retry loop of issue #202.
+            drainQueuedSlashMessageIfIdle()
+        }
 
         let optimisticMessage = ChatMessage(
             role: "user",
@@ -2185,7 +2268,25 @@ final class ChatViewModel {
             return false
         }
 
-        guard activeStreamID == nil else {
+        // Mutually exclusive with everything that can start a turn, in both
+        // directions.
+        //
+        // `activeStreamID == nil` alone is a TOCTOU: a send that has passed its own
+        // guard and is awaiting `/api/chat/start` has no stream id yet, so a goal
+        // change would sail past and the two server mutations would land in an order
+        // the user never asked for — `/goal clear` finishing before a turn that then
+        // pushes toward the cleared goal, or a kickoff being counted as the old
+        // turn. The in-flight flags close that window; `isChatStartReserved` closes
+        // the continuation's. The reverse direction is covered by
+        // `isChatStartReserved` reporting `isSubmittingGoal`.
+        guard activeStreamID == nil,
+              !isSubmittingGoal,
+              !isStartingChat,
+              !isSendingVoiceNote,
+              !isEditingMessage,
+              !isRegeneratingMessage,
+              !isChatStartReserved(bypassing: nil)
+        else {
             goalErrorMessage = String(localized: "Wait for the current response to finish before changing goals.")
             sendErrorMessage = goalErrorMessage
             return false
@@ -2195,7 +2296,14 @@ final class ChatViewModel {
         goalErrorMessage = nil
         sendErrorMessage = nil
         lastError = nil
-        defer { isSubmittingGoal = false }
+        defer {
+            isSubmittingGoal = false
+            // The drain skips while a goal request is in flight, so retry once it
+            // resolves — otherwise a continuation held across this call would wait
+            // for an unrelated trigger. No-op when this request started a turn of its
+            // own (the guard sees `activeStreamID`).
+            drainQueuedSlashMessageIfIdle()
+        }
 
         do {
             let response = try await client.submitGoal(
@@ -2213,6 +2321,21 @@ final class ChatViewModel {
                 goalErrorMessage = response.displayMessage ?? String(localized: "Goal request failed.")
                 sendErrorMessage = goalErrorMessage
                 return false
+            }
+
+            // Only now that the server confirmed a state change: any continuation
+            // still held belongs to the goal this command just replaced, cleared, or
+            // paused, so sending it afterwards would spend a turn on a goal that no
+            // longer applies. Dropped silently — the user is explicitly changing goal
+            // state and does not need to be told the old goal stopped.
+            //
+            // Skipped for `status`, the one read-only action (upstream's set is
+            // status / pause / resume / clear / set / error). Treating an unknown
+            // future action as state-changing is the safe direction: dropping costs
+            // one turn that `/goal resume` recovers, while keeping a stale
+            // continuation would run a cancelled goal.
+            if response.action?.lowercased() != "status" {
+                pendingGoalContinuation = nil
             }
 
             hasActivatedGoalCommand = true
@@ -2395,7 +2518,7 @@ final class ChatViewModel {
 
         guard activeStreamID != nil else {
             let sent = await sendMessage(message)
-            return sent ? .executed(message: nil) : .unsupported(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the queued message."))
+            return sent ? .executed(message: nil) : .sendDeclined(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the queued message."))
         }
 
         let position = enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments())
@@ -2414,7 +2537,7 @@ final class ChatViewModel {
 
         guard activeStreamID != nil else {
             let sent = await sendMessage(message)
-            return sent ? .executed(message: nil) : .unsupported(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the steering message."))
+            return sent ? .executed(message: nil) : .sendDeclined(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the steering message."))
         }
 
         do {
@@ -2440,7 +2563,7 @@ final class ChatViewModel {
 
         guard activeStreamID != nil else {
             let sent = await sendMessage(message)
-            return sent ? .executed(message: nil) : .unsupported(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the interrupt message."))
+            return sent ? .executed(message: nil) : .sendDeclined(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the interrupt message."))
         }
 
         enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments(), atFront: true)
@@ -2784,7 +2907,7 @@ final class ChatViewModel {
                 if sent {
                     return .executed(message: nil)
                 }
-                return .unsupported(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the skill message."))
+                return .sendDeclined(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the skill message."))
             }
 
             return .executed(message: SlashSkillFormatter.message(for: suggestions, query: SlashSkillFormatter.skillQuery(from: args)))
@@ -2811,7 +2934,7 @@ final class ChatViewModel {
             if sent {
                 return .executed(message: nil)
             }
-            return .unsupported(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the skill message."))
+            return .sendDeclined(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the skill message."))
         } catch {
             lastError = error
             return .unsupported(friendlyMessage: error.localizedDescription)
@@ -2900,7 +3023,10 @@ final class ChatViewModel {
                 workspace: currentWorkspace,
                 model: currentModel,
                 modelProvider: requestModelProvider,
-                profile: requestProfileName
+                profile: requestProfileName,
+                // The chat this new session is being started from, so the
+                // server commits its memory first.
+                previousSessionID: sessionID
             )
 
             guard let session = response.session else {
@@ -3052,7 +3178,10 @@ final class ChatViewModel {
             return .unsupported(friendlyMessage: String(localized: "Retry is available for WebUI sessions only."))
         }
 
-        guard activeStreamID == nil else {
+        // `goalStartReservation`: a goal continuation owns the next `chat/start`,
+        // and this path calls `client.startChat` directly, so it would otherwise
+        // claim the goal's turn. Reuses the existing wait message.
+        guard activeStreamID == nil, !isChatStartReserved(bypassing: nil) else {
             return .unsupported(friendlyMessage: String(localized: "Wait for the current response to finish before retrying messages."))
         }
 
@@ -3071,7 +3200,12 @@ final class ChatViewModel {
         toolCallAnchorMessageID = nil
         streamCoordinator.prepareForNewResponse()
         responseCompletionNeedsTranscriptRefresh = false
-        defer { isStartingChat = false }
+        defer {
+            isStartingChat = false
+            // Same reason as in `performChatSend`: a retry that produced no
+            // stream must not leave a pending goal continuation stranded.
+            drainQueuedSlashMessageIfIdle()
+        }
 
         do {
             let retryResponse = try await client.retrySession(id: sessionID)
@@ -3350,7 +3484,9 @@ final class ChatViewModel {
             return false
         }
 
-        guard activeStreamID == nil else {
+        // See the retry path: this also calls `client.startChat` directly and must
+        // not claim a goal continuation's reserved turn.
+        guard activeStreamID == nil, !isChatStartReserved(bypassing: nil) else {
             messageActionErrorMessage = String(localized: "Wait for the current response to finish before editing.")
             return false
         }
@@ -3455,7 +3591,9 @@ final class ChatViewModel {
             return false
         }
 
-        guard activeStreamID == nil else {
+        // See the retry path: this also calls `client.startChat` directly and must
+        // not claim a goal continuation's reserved turn.
+        guard activeStreamID == nil, !isChatStartReserved(bypassing: nil) else {
             messageActionErrorMessage = String(localized: "Wait for the current response to finish before regenerating.")
             return false
         }
@@ -3863,6 +4001,12 @@ final class ChatViewModel {
             updateActiveBtwMessage(isLoading: true)
         case .done:
             updateActiveBtwMessage(isLoading: false)
+            // Close as soon as the answer is complete: a `btw` is one question and
+            // one answer, so nothing after `done` matters, and holding the connection
+            // open let a later transport error overwrite the finished answer with
+            // "Error: …". `finishBtwStream()` is idempotent, so a subsequent
+            // `stream_end` is a no-op.
+            finishBtwStream()
         case .approvalPending, .clarificationPending:
             break
         case .streamEnd, .cancelled:
@@ -3875,7 +4019,10 @@ final class ChatViewModel {
             activeBtwAnswer = "Error: \(message)"
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
-        case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .pendingSteerLeftover:
+        case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .pendingSteerLeftover,
+             .goalStatus, .goalContinue:
+            // A `btw` side-question never drives the session's goal, so goal
+            // frames on this stream carry nothing for it to act on.
             break
         }
     }
@@ -4010,7 +4157,30 @@ final class ChatViewModel {
         if let completedSessionID = completedSession.sessionId,
            let sessionID,
            completedSessionID != sessionID {
+            // The server moved this conversation onto a new session id — an
+            // auto-compression turn rotates it mid-stream — so this payload
+            // belongs to a session this view model is not pinned to.
+            //
+            // A held goal continuation has to be dropped here, not at drain time.
+            // The `goal_continue` frame carries the PRE-rotation id (upstream
+            // builds it from a local variable captured before the rotation), and
+            // this view model's `sessionID` is a `let`, so the drain-time check
+            // compares old-to-old, passes, and would POST the next goal turn into
+            // what is now the archived parent session.
+            dropGoalContinuation(reason: .sessionCompressed)
             return
+        }
+
+        // Positive confirmation that the session did not move: this is the only
+        // place a held goal continuation becomes sendable. See
+        // `PendingGoalContinuation.isArmed`.
+        //
+        // Requires two non-empty ids that match. A blank or absent id proves
+        // nothing, and arming on it would defeat the fail-closed design.
+        if let completedSessionID = Self.nonEmptySessionID(completedSession.sessionId),
+           let currentSessionID = Self.nonEmptySessionID(sessionID),
+           completedSessionID == currentSessionID {
+            pendingGoalContinuation?.isArmed = true
         }
 
         applyCompressionAnchorMetadata(from: completedSession)
@@ -4524,12 +4694,179 @@ final class ChatViewModel {
         return queuedSlashMessages.count
     }
 
+    private static func nonEmptySessionID(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// True when the goal owns the next `chat/start` and the caller is not its holder.
+    ///
+    /// Covers the whole time a continuation is held, not just its in-flight moment:
+    /// from the `goal_continue` frame arriving until the continuation is sent or
+    /// dropped. Armed-ness is not part of the test — an *unarmed* continuation
+    /// counts too.
+    ///
+    /// The reason is that the server creates the goal marker while the stream is
+    /// still finishing, and claims it on the next `chat/start` *before* checking for
+    /// an active worker — so it can be spent by a request that then gets a 409. The
+    /// client has not seen `done` yet at that point, so gating on armed-ness would
+    /// leave exactly that window open to a skill shortcut or any direct
+    /// `sendMessage` caller.
+    private func isChatStartReserved(bypassing token: UUID?) -> Bool {
+        if let goalStartReservation {
+            return goalStartReservation != token
+        }
+        // A goal request in flight also owns the next turn: `POST /api/goal` can
+        // return a kickoff prompt that immediately becomes one, and it is awaiting a
+        // response right now, so nothing else may start a turn underneath it. This is
+        // the other half of `submitGoal`'s own guard.
+        if isSubmittingGoal {
+            return true
+        }
+        // No reservation taken yet, but a continuation is held: it owns the next
+        // start. The holder is identified by its token, which only exists once a
+        // reservation was taken, so a nil token here is by definition not the holder.
+        return pendingGoalContinuation != nil
+    }
+
+    /// Why a held goal continuation had to be thrown away. Each case gets its own
+    /// wording because "compressed" and "the turn broke" send the user to different
+    /// next actions.
+    private enum GoalContinuationDropReason {
+        /// The server moved the conversation to a new session id.
+        case sessionCompressed
+        /// The stream ended without the matching `done` that arms a continuation —
+        /// an error, a cancel, or a replay that opened straight onto `stream_end`.
+        case turnDidNotComplete
+
+        var message: String {
+            switch self {
+            case .sessionCompressed:
+                return String(localized: "The goal stopped because this session was compressed.")
+            case .turnDidNotComplete:
+                return String(localized: "The goal stopped because the turn didn't finish cleanly.")
+            }
+        }
+    }
+
+    /// Drops a goal continuation the client can no longer safely send, and says why
+    /// — a silent stall would look like the goal simply stopped working.
+    ///
+    /// `hadContinuation` lets the drain path report one it has already taken out of
+    /// `pendingGoalContinuation`.
+    private func dropGoalContinuation(
+        reason: GoalContinuationDropReason,
+        hadContinuation: Bool = false
+    ) {
+        guard hadContinuation || pendingGoalContinuation != nil else { return }
+        pendingGoalContinuation = nil
+        appendLocalNoticeMessage(reason.message)
+    }
+
+    /// Hands a pending goal continuation to the send queue as its **next** item.
+    ///
+    /// Front-of-queue, not appended: the server consumes its
+    /// `PENDING_GOAL_CONTINUATION` marker on whatever `chat/start` arrives next
+    /// and does not check the prompt, so an already-queued message going first
+    /// would be counted as the goal turn and the real continuation would trail a
+    /// turn behind for the rest of the run. Promoting at drain time (rather than
+    /// when the frame arrives) also keeps the window in which anything could
+    /// overtake it as small as the client can make it.
+    ///
+    /// Takes the goal continuation if it is cleared to send, otherwise nil.
+    ///
+    /// Consuming it here (rather than leaving it set) means a declined
+    /// continuation is dropped exactly once. An unarmed one is discarded too: it
+    /// never received the matching `done` that proves the session did not rotate,
+    /// and the stream it belonged to has now ended, so it will never be armed.
+    private func takeGoalContinuationClearedToSend() -> PendingGoalContinuation? {
+        guard let continuation = pendingGoalContinuation else { return nil }
+        pendingGoalContinuation = nil
+
+        guard continuation.isArmed else {
+            dropGoalContinuation(reason: .turnDidNotComplete, hadContinuation: true)
+            return nil
+        }
+
+        guard continuation.sessionID == sessionID else {
+            dropGoalContinuation(reason: .sessionCompressed, hadContinuation: true)
+            return nil
+        }
+
+        return continuation
+    }
+
+    /// Starts the goal's next turn, reserving the next `chat/start` first.
+    ///
+    /// The reservation is taken **synchronously, before the `Task`**. The server
+    /// hands its `PENDING_GOAL_CONTINUATION` marker to whichever `chat/start`
+    /// arrives first — and claims it *before* taking the session lock — so a manual
+    /// send slipping in between this decision and the actual request would take the
+    /// goal's turn. The continuation would then get a 409, be requeued behind a
+    /// newer continuation, and eventually be replayed as an ordinary message long
+    /// after the goal ended — re-running whatever tools that stale prompt implies.
+    private func sendGoalContinuation(_ continuation: PendingGoalContinuation) {
+        let token = UUID()
+        goalStartReservation = token
+        isDrainingQueuedSlashMessage = true
+
+        Task { @MainActor in
+            // The continuation is a server-authored prompt and carries no
+            // attachments. `sendMessage` consumes whatever is staged in the
+            // composer, so anything the user had queued up would otherwise be
+            // silently attached to the goal's turn. Set aside and put back.
+            //
+            // `restorePendingAttachments` rather than `replace…`: it prepends, so an
+            // attachment the user added *during* the send is kept rather than
+            // overwritten, and it is a no-op when nothing was staged.
+            let stagedAttachments = attachmentCoordinator.consumePendingAttachments()
+            let sent = await sendMessage(continuation.text, goalStartToken: token)
+            attachmentCoordinator.restorePendingAttachments(stagedAttachments)
+
+            if goalStartReservation == token {
+                goalStartReservation = nil
+            }
+            isDrainingQueuedSlashMessage = false
+
+            // A failed send ends the goal chain here — deliberately no retry.
+            //
+            // Retrying is unsafe: a failure does not prove the request never
+            // reached the server, so re-sending could replay the prompt (and its
+            // tools) on top of a turn that actually succeeded. Only the server
+            // could make that safe, with an idempotency key it does not offer.
+            //
+            // Retrying is also what deadlocks: while a continuation is held,
+            // `isChatStartReserved` blocks every other send, and after a failure
+            // there is no stream left to produce another drain trigger — so a
+            // held-and-never-retried continuation would wedge the composer shut.
+            //
+            // Dropping it keeps both properties: no replay, no wedge. The goal
+            // stops visibly and `/goal resume` picks it back up.
+            if !sent {
+                dropGoalContinuation(reason: .turnDidNotComplete, hadContinuation: true)
+            }
+        }
+    }
+
     private func drainQueuedSlashMessageIfIdle() {
         guard activeStreamID == nil,
               !isStartingChat,
-              !isDrainingQueuedSlashMessage,
-              !queuedSlashMessages.isEmpty
+              // A goal request in flight may itself produce the next turn, and it
+              // holds no stream id while awaiting its response. `submitGoal`'s defer
+              // retries this drain once it resolves.
+              !isSubmittingGoal,
+              !isDrainingQueuedSlashMessage
         else { return }
+
+        // Checked before the queue so a goal continuation always goes first.
+        if let continuation = takeGoalContinuationClearedToSend() {
+            sendGoalContinuation(continuation)
+            return
+        }
+
+        // A reservation outstanding means a continuation's `chat/start` is in
+        // flight; ordinary queued messages must not race it.
+        guard goalStartReservation == nil, !queuedSlashMessages.isEmpty else { return }
 
         let next = queuedSlashMessages.removeFirst()
         isDrainingQueuedSlashMessage = true
@@ -5135,6 +5472,70 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         appendLocalNoticeMessage(String(localized: "Steering hint was not consumed before the response ended, so it was queued for the next turn."))
         return true
     }
+
+    /// Surfaces a goal frame that reports a *terminal* outcome.
+    ///
+    /// `api/goals.py` puts the reason a goal stopped in this frame's `message`:
+    /// "✓ Goal achieved: …", or "⏸ Goal paused — 20/20 turns used. Use /goal
+    /// resume to keep going…" once the turn budget runs out. Dropping it left the
+    /// conversation simply stopping with no explanation of why.
+    ///
+    /// Only terminal frames are shown. `evaluating` and `continuing` arrive on
+    /// every turn, and their text ("Evaluating goal progress…", "↻ Continuing
+    /// toward goal (3/20)") would pile up in the transcript — the next turn
+    /// starting is its own feedback. Filtering by exclusion rather than by an
+    /// allow-list means a future terminal state still gets through, which is the
+    /// safer failure direction: a redundant notice beats a silent stop.
+    func streamCoordinatorApplyGoalStatus(_ payload: GoalStreamEvent) {
+        let state = payload.state?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        guard state != "evaluating", state != "continuing" else { return }
+
+        // A frame addressed to another session must never post into this one.
+        if let frameSessionID = payload.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !frameSessionID.isEmpty,
+           let sessionID,
+           frameSessionID != sessionID {
+            return
+        }
+
+        let message = payload.message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !message.isEmpty else { return }
+
+        appendLocalNoticeMessage(message)
+    }
+
+    /// Starts the next turn of a goal the server says is unfinished.
+    ///
+    /// Goal continuation is client-driven upstream: `api/streaming.py` emits
+    /// `goal_continue` with the prompt and adds the session to
+    /// `PENDING_GOAL_CONTINUATION`, but it never starts the turn — the web
+    /// client re-POSTs `/api/chat/start` itself. Without this, a multi-turn goal
+    /// ended after one turn on iOS with no error shown.
+    ///
+    /// Held in `pendingGoalContinuation` rather than sent here: the frame arrives
+    /// mid-stream, and the server rejects a second stream on the same session. It
+    /// is also stored **unarmed** — a matching `done` has to confirm the session did
+    /// not rotate before anything may send it. The actual send happens at drain
+    /// time; see `sendGoalContinuation(_:)`.
+    @discardableResult
+    func streamCoordinatorEnqueueGoalContinuation(_ payload: GoalStreamEvent) -> Bool {
+        guard let prompt = payload.continuationPromptText else { return false }
+        // A frame addressed to another session must never steer this transcript.
+        // Frames without a session id are trusted: they can only arrive on this
+        // session's own stream connection.
+        let frameSessionID = payload.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let frameSessionID, !frameSessionID.isEmpty, let sessionID, frameSessionID != sessionID {
+            return false
+        }
+        // Bind to the frame's own session when it named one, so a mid-stream id
+        // rotation is detected at drain time rather than silently retargeted.
+        guard let boundSessionID = (frameSessionID?.isEmpty == false ? frameSessionID : sessionID) else {
+            return false
+        }
+
+        pendingGoalContinuation = PendingGoalContinuation(text: prompt, sessionID: boundSessionID)
+        return true
+    }
 }
 
 private struct ActiveChatStreamSnapshot: Equatable {
@@ -5209,6 +5610,26 @@ private final class ActiveChatStreamSnapshotStore {
 private struct QueuedSlashMessage {
     let text: String
     let attachments: [PendingAttachment]
+}
+
+/// A goal's next-turn prompt, held until the stream that produced it ends.
+///
+/// **Fail-closed**: `isArmed` starts false and is only set by a `done` frame whose
+/// session id matches this view model's. Nothing may send an unarmed continuation.
+///
+/// The reason is that a compression turn rotates the session id mid-stream, and the
+/// `goal_continue` frame carries the *pre*-rotation id (upstream builds it from a
+/// local variable captured before the rotation) — so comparing the frame's id
+/// against our own always matches and can never detect the rotation. Only the
+/// `done` frame carries the new id. And `done` is not guaranteed to arrive at all:
+/// `apperror`, a cancel, a `done` without a session, and a replay that opens
+/// straight onto `stream_end` all reach the drain without one. Requiring a positive
+/// match means every one of those paths declines to send instead of posting the next
+/// goal turn into what is by then an archived parent session.
+private struct PendingGoalContinuation {
+    let text: String
+    let sessionID: String
+    var isArmed = false
 }
 
 struct ReasoningGroup: Identifiable, Equatable {
