@@ -823,7 +823,19 @@ struct ChatView: View {
                                 } label: {
                                     Label("Files", systemImage: "folder")
                                 }
-                                .disabled(viewModel.isViewingCachedData)
+                                // CLI sessions are excluded because the two
+                                // endpoints behind this browser disagree about
+                                // the workspace root: `/api/list` falls back to
+                                // the CLI session's own workspace
+                                // (`_handle_list_dir`, `api/routes.py:16943`
+                                // @ 399cd7ab) while `/api/file` falls back to
+                                // the WebUI's last workspace
+                                // (`get_session_for_file_ops`,
+                                // `api/models.py:5236`). So the listing was one
+                                // directory and every file opened from it came
+                                // from another — wrong contents or a 404, with
+                                // nothing on screen to explain it (#28).
+                                .disabled(viewModel.isViewingCachedData || session.isCliSession == true)
                                 .accessibilityLabel("Files")
                             }
                         }
