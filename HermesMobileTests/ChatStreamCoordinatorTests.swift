@@ -1836,6 +1836,19 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testLateGoalStatusAfterDoneStillReachesDelegate() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        streamClient.emit(.goalStatus(GoalStreamEvent(state: "idle", message: "Goal paused")))
+
+        XCTAssertEqual(delegate.goalStatuses.map(\.state), ["idle"])
+    }
+
+    @MainActor
     func testLateMeteringAndLifecycleAfterDoneContinueTeardown() throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let liveActivityManager = CoordinatorSpyLiveActivityManager()
@@ -1895,7 +1908,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         // Teardown is one-shot per run: later terminal events must not repeat
         // delegate finish/drain/title-refresh side effects (PR #295 re-gate).
-        streamClient.emit(.error("late"))
+        streamClient.emit(.error(ErrorStreamEvent(error: "late")))
         streamClient.emit(.cancelled)
         streamClient.emit(.streamEnd)
 
@@ -2021,7 +2034,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         coordinator.start(streamID: "stream-123")
         streamClient.emit(.done(DoneStreamEvent()))
-        streamClient.emit(.error("late failure"))
+        streamClient.emit(.error(ErrorStreamEvent(error: "late failure")))
 
         // Exactly one end (.complete from done); the late error tears down the
         // transport without publishing a failed end over a settled completion.
@@ -2114,6 +2127,58 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         return ModelContext(container)
     }
 
+    /// The upstream goal loop is client-driven: `api/streaming.py` emits
+    /// `goal_continue` with the next prompt and expects the client to start that
+    /// turn. Decoding it end to end guards against silently ending after one turn.
+    @MainActor
+    func testGoalContinueEventReachesDelegateWithContinuationPrompt() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-goal")
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal_continue",
+            data: """
+            {
+              "session_id": "session-abc",
+              "continuation_prompt": "Keep going: finish the migration.",
+              "text": "Keep going: finish the migration.",
+              "message": "Continuing goal…",
+              "message_key": "goal_continuing",
+              "decision": {"should_continue": true, "status": "continuing"}
+            }
+            """
+        ))
+
+        XCTAssertEqual(delegate.goalContinuations, ["Keep going: finish the migration."])
+        XCTAssertEqual(coordinator.activeStreamID, "stream-goal")
+        XCTAssertEqual(delegate.finishCount, 0)
+    }
+
+    /// A `goal` frame reports status but must never queue another turn.
+    @MainActor
+    func testGoalStatusEventReachesDelegateWithoutQueueingATurn() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-goal-status")
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal",
+            data: #"{"session_id": "session-abc", "state": "evaluating", "message": "Evaluating goal progress…", "message_key": "goal_evaluating_progress"}"#
+        ))
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal",
+            data: #"{"session_id": "session-abc", "state": "idle", "message": "⏸ Goal paused — 20/20 turns used. Use /goal resume to keep going, or /goal clear to stop."}"#
+        ))
+
+        XCTAssertEqual(delegate.goalStatuses.map(\.state), ["evaluating", "idle"])
+        XCTAssertTrue(delegate.goalContinuations.isEmpty)
+        XCTAssertEqual(coordinator.activeStreamID, "stream-goal-status")
+        XCTAssertEqual(delegate.finishCount, 0)
+    }
+
     @MainActor
     private func makeCoordinator(
         streamClient: CoordinatorSpySSEStreamingClient? = nil,
@@ -2185,6 +2250,8 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var tokens: [String] = []
     private(set) var donePayloads: [DoneStreamEvent] = []
     private(set) var pendingSteerLeftovers: [String] = []
+    private(set) var goalContinuations: [String] = []
+    private(set) var goalStatuses: [GoalStreamEvent] = []
     var latestAssistantMessageID: String? = "assistant-latest"
     var restoresSnapshot = false
     var restoredSnapshotEventID: String?
@@ -2316,6 +2383,16 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         pendingSteerLeftovers.append(trimmed)
+        return true
+    }
+
+    func streamCoordinatorApplyGoalStatus(_ payload: GoalStreamEvent) {
+        goalStatuses.append(payload)
+    }
+
+    func streamCoordinatorEnqueueGoalContinuation(_ payload: GoalStreamEvent) -> Bool {
+        guard let prompt = payload.continuationPromptText else { return false }
+        goalContinuations.append(prompt)
         return true
     }
 }
