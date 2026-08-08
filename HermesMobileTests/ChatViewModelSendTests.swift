@@ -1345,7 +1345,7 @@ final class ChatViewModelSendTests: XCTestCase {
             data: #"{"session_id": "session-abc", "continuation_prompt": "Continue the goal."}"#
         ))
         // Terminal error instead of `done` — nothing armed the continuation.
-        streamClient.emit(.error("Provider exploded"))
+        streamClient.emit(.error(ErrorStreamEvent(error: "Provider exploded")))
 
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(startedMessages, ["Start the goal"])

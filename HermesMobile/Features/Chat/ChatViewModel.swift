@@ -4709,8 +4709,8 @@ final class ChatViewModel {
             break
         case .streamEnd, .cancelled:
             finishBtwStream()
-        case .error(let message):
-            activeBtwAnswer = "Error: \(message)"
+        case .error(let payload):
+            activeBtwAnswer = "Error: \(payload.displayMessage(fallback: String(localized: "The stream returned an error.")))"
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
         case .transportError(let message):
@@ -6154,6 +6154,15 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorDidReceiveErrorMessage(_ message: String) {
         sendErrorMessage = message
+    }
+
+    func streamCoordinatorRequestTranscriptReload() {
+        // No `modelContext` reaches the stream event path, so this reload skips
+        // the cache merge. It is a recovery read of the server's own copy; the
+        // next context-carrying load re-caches it.
+        Task { @MainActor [weak self] in
+            await self?.loadMessages()
+        }
     }
 
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {
