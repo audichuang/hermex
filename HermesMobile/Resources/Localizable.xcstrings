@@ -5413,6 +5413,854 @@
         }
       }
     },
+    "Covers both the git menu in the chat toolbar and the branch picker in the composer." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يشمل كلًا من قائمة git في شريط أدوات المحادثة ومنتقي الفرع في مربع الكتابة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gilt sowohl für das Git-Menü in der Chat-Symbolleiste als auch für die Branch-Auswahl im Eingabefeld."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Abarca tanto el menú de git en la barra de herramientas del chat como el selector de rama en el campo de escritura."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Concerne à la fois le menu git de la barre d'outils de la discussion et le sélecteur de branche du champ de saisie."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "חל גם על תפריט git בסרגל הכלים של הצ׳אט וגם על בורר הענף בתיבת ההקלדה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Riguarda sia il menu git nella barra strumenti della chat sia il selettore del branch nel campo di scrittura."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "チャットツールバーの git メニューと入力欄のブランチ選択の両方に適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "채팅 도구 모음의 git 메뉴와 입력창의 브랜치 선택기 모두에 적용돼요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geldt zowel voor het git-menu in de chatwerkbalk als voor de branchkiezer in het invoerveld."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dotyczy zarówno menu git na pasku narzędzi czatu, jak i wyboru gałęzi w polu wiadomości."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vale tanto para o menu do git na barra de ferramentas do chat quanto para o seletor de branch no campo de mensagem."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Относится и к меню git на панели инструментов чата, и к выбору ветки в поле ввода."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hem sohbet araç çubuğundaki git menüsünü hem de yazma alanındaki dal seçiciyi kapsar."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "یہ چیٹ ٹول بار کے git مینو اور لکھنے کے خانے میں برانچ سلیکٹر، دونوں پر لاگو ہوتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "同時作用於聊天工具列的 git 選單與輸入框中的分支選擇器。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "同时作用于聊天工具栏中的 git 菜单和输入框中的分支选择器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "同時作用於聊天工具列的 git 選單與輸入框中的分支選擇器。"
+          }
+        }
+      }
+    },
+    "Debug builds only. Replay a canned reply and tune the streamed-text fade feel live." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لإصدارات التصحيح فقط. أعد تشغيل ردًّا جاهزًا واضبط إحساس تلاشي النص المتدفّق مباشرةً."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nur für Debug-Builds. Spiele eine vorbereitete Antwort ab und stelle das Einblenden des gestreamten Textes live ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Solo en compilaciones de depuración. Reproduce una respuesta preparada y ajusta en vivo el desvanecido del texto en streaming."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Versions de débogage uniquement. Rejouez une réponse préenregistrée et réglez en direct le fondu du texte diffusé."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "לגרסאות ניפוי שגיאות בלבד. הפעל תשובה מוכנה וכוונן בזמן אמת את אפקט ההופעה של הטקסט הזורם."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Solo build di debug. Riproduci una risposta predefinita e regola dal vivo la dissolvenza del testo in streaming."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "デバッグビルド専用。用意された返信を再生し、ストリーミングテキストのフェードの感触をその場で調整します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "디버그 빌드 전용. 미리 준비된 답변을 재생하고 스트리밍 텍스트의 페이드 느낌을 실시간으로 조정해요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Alleen debug-builds. Speel een vooraf ingesteld antwoord af en stel de fade van gestreamde tekst live in."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tylko kompilacje debugowania. Odtwórz gotową odpowiedź i na żywo dostrój wygaszanie strumieniowanego tekstu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Apenas builds de depuração. Reproduza uma resposta pronta e ajuste ao vivo o efeito de fade do texto transmitido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Только для отладочных сборок. Воспроизведите готовый ответ и настройте плавное появление потокового текста в реальном времени."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Yalnızca hata ayıklama derlemeleri. Hazır bir yanıtı yeniden oynatın ve akan metnin solma hissini canlı olarak ayarlayın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "صرف ڈیبگ بلڈز کے لیے۔ ایک تیار شدہ جواب دوبارہ چلائیں اور اسٹریم ہوتے متن کے فیڈ کو براہِ راست ترتیب دیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "僅限除錯版本。重播預設回覆，即時調整串流文字的淡入手感。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "仅限调试版本。回放预设回复，实时调整流式传输文字的淡入手感。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "僅限除錯版本。重播預設回覆，即時調整串流文字的淡入手感。"
+          }
+        }
+      }
+    },
+    "Developer" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "المطوّر"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Entwickler"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Desarrollador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Développeur"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מפתח"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sviluppatore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "開発者"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "개발자"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ontwikkelaar"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deweloper"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Desenvolvedor"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Разработчик"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geliştirici"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ڈویلپر"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "開發者"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "开发者"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "開發者"
+          }
+        }
+      }
+    },
+    "Files Button" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "زر الملفات"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dateien-Schaltfläche"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Botón de archivos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bouton Fichiers"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "כפתור קבצים"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pulsante File"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ファイルボタン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "파일 버튼"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bestandenknop"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Przycisk plików"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Botão de arquivos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Кнопка «Файлы»"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dosyalar Düğmesi"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "فائلیں بٹن"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "檔案按鈕"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "文件按钮"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "檔案按鈕"
+          }
+        }
+      }
+    },
+    "Git Actions" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إجراءات Git"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git-Aktionen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Acciones de Git"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Actions Git"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "פעולות Git"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Azioni Git"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git アクション"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git 작업"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git-acties"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Akcje Git"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ações do Git"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Действия Git"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git Eylemleri"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git ایکشنز"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git 操作"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git 操作"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git 操作"
+          }
+        }
+      }
+    },
+    "Main Page" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "الصفحة الرئيسية"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hauptseite"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Página principal"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Page principale"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "עמוד ראשי"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pagina principale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "メインページ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "메인 페이지"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hoofdpagina"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Strona główna"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Página principal"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Главная страница"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ana Sayfa"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "مرکزی صفحہ"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "主頁面"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "主页面"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "主頁面"
+          }
+        }
+      }
+    },
+    "Streaming Lab" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "مختبر البث"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Streaming-Labor"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Laboratorio de streaming"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Labo de streaming"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מעבדת סטרימינג"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Laboratorio di streaming"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ストリーミングラボ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "스트리밍 랩"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Streaminglab"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Laboratorium strumieniowania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Laboratório de streaming"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Лаборатория потоковой передачи"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Akış Laboratuvarı"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اسٹریمنگ لیب"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "串流實驗室"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "流式传输实验室"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "串流實驗室"
+          }
+        }
+      }
+    },
+    "Turn off the entries you never use to shorten the top of the session list. Each one is the only way into its screen, so turn it back on here when you need it again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أوقف العناصر التي لا تستخدمها لتقصير أعلى قائمة الجلسات. كل عنصر هو الطريق الوحيد إلى شاشته، لذا أعد تشغيله من هنا عندما تحتاج إليه مجددًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Schalte Einträge aus, die du nie nutzt, um den Kopf der Sitzungsliste zu kürzen. Jeder Eintrag ist der einzige Weg zu seinem Bildschirm – schalte ihn hier wieder ein, wenn du ihn brauchst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Desactiva las entradas que nunca usas para acortar la parte superior de la lista de sesiones. Cada una es la única forma de llegar a su pantalla, así que vuelve a activarla aquí cuando la necesites."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Désactivez les entrées que vous n'utilisez jamais pour raccourcir le haut de la liste des sessions. Chacune est le seul accès à son écran : réactivez-la ici quand vous en avez besoin."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "כבה פריטים שאינך משתמש בהם כדי לקצר את ראש רשימת המפגשים. כל פריט הוא הדרך היחידה למסך שלו, לכן הפעל אותו כאן שוב כשתזדקק לו."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Disattiva le voci che non usi mai per accorciare la parte alta dell'elenco delle sessioni. Ognuna è l'unico accesso alla sua schermata, quindi riattivala qui quando ti serve."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "使わない項目をオフにすると、セッション一覧の上部を短くできます。各項目はその画面への唯一の入口なので、必要になったらここでオンに戻してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "사용하지 않는 항목을 꺼서 세션 목록 상단을 줄일 수 있어요. 각 항목은 해당 화면으로 가는 유일한 통로이므로 필요할 때 여기서 다시 켜세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zet items die u nooit gebruikt uit om de bovenkant van de sessielijst korter te maken. Elk item is de enige route naar zijn scherm, dus zet het hier weer aan wanneer u het nodig hebt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wyłącz pozycje, których nigdy nie używasz, aby skrócić górę listy sesji. Każda z nich to jedyne wejście do swojego ekranu, więc włącz ją tutaj ponownie, gdy będzie potrzebna."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Desative os itens que você nunca usa para encurtar o topo da lista de sessões. Cada um é o único caminho para a sua tela, então reative-o aqui quando precisar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Отключите пункты, которыми вы не пользуетесь, чтобы сократить верх списка сессий. Каждый из них — единственный путь к своему экрану, поэтому включите его здесь снова, когда он понадобится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hiç kullanmadığınız girişleri kapatarak oturum listesinin üst kısmını kısaltın. Her biri kendi ekranına giden tek yoldur; gerektiğinde buradan yeniden açın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "جو اندراجات آپ کبھی استعمال نہیں کرتے انہیں بند کر دیں تاکہ سیشن فہرست کا اوپری حصہ مختصر ہو جائے۔ ہر ایک اپنی اسکرین تک پہنچنے کا واحد راستہ ہے، اس لیے ضرورت پڑنے پر اسے یہاں سے دوبارہ آن کر لیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "關閉你從不使用的項目，可以縮短工作階段列表頂端。每個項目都是進入對應畫面的唯一入口，需要時再從這裡打開。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "关闭你从不使用的项目，可以缩短会话列表顶部。每个项目都是进入对应页面的唯一入口，需要时再从这里打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "關閉你從不使用的項目，可以縮短工作階段列表頂端。每個項目都是進入對應畫面的唯一入口，需要時再從這裡打開。"
+          }
+        }
+      }
+    },
     "↑%lld ↓%lld" : {
       "localizations" : {
         "en" : {
