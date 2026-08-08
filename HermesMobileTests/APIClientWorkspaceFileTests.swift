@@ -668,4 +668,65 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         }
         XCTAssertEqual(file.content, "fresh")
     }
+
+    /// The server extracts text from `docx` / `xlsx` / `pptx`
+    /// (`CLAIMED_OFFICE_EXTENSIONS`, `api/office_documents.py` @ 399cd7ab), so
+    /// blocking them client-side showed "not available" for files it could have
+    /// read (#29).
+    @MainActor
+    func testOfficeDocumentsAreRequestedFromTheServerInsteadOfRefused() async throws {
+        for path in ["Docs/spec.docx", "Docs/budget.xlsx", "Docs/deck.pptx"] {
+            var requestedPaths: [String] = []
+            let client = makeClient { request in
+                requestedPaths.append(request.url?.path ?? "nil")
+                return apiTestJSONResponse("""
+                {"path": "\(path)", "content": "Extracted text", "size": 14, "lines": 1}
+                """, for: request)
+            }
+            let viewModel = try FilePreviewViewModel(
+                session: makeFilePreviewSession(),
+                server: XCTUnwrap(URL(string: "https://example.test")),
+                path: path,
+                apiClient: client
+            )
+
+            await viewModel.load()
+
+            XCTAssertEqual(requestedPaths, ["/api/file"], "\(path) must reach the server.")
+            guard case .text(let file) = viewModel.preview else {
+                return XCTFail("\(path) should preview as text, got \(String(describing: viewModel.preview))")
+            }
+            XCTAssertEqual(file.content, "Extracted text")
+        }
+    }
+
+    /// The legacy binary formats stay blocked — upstream claims only the OOXML
+    /// three, so asking would just waste a round trip on a certain refusal.
+    @MainActor
+    func testLegacyOfficeBinariesStayUnsupported() async throws {
+        for path in ["Docs/old.doc", "Docs/old.xls", "Docs/old.ppt"] {
+            let client = makeClient { request in
+                XCTAssertEqual(request.url?.path, "/api/file/raw", "\(path) must not hit the text endpoint.")
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )
+                return (try XCTUnwrap(response), Data([0xD0, 0xCF]))
+            }
+            let viewModel = try FilePreviewViewModel(
+                session: makeFilePreviewSession(),
+                server: XCTUnwrap(URL(string: "https://example.test")),
+                path: path,
+                apiClient: client
+            )
+
+            await viewModel.load()
+
+            guard case .unavailable = viewModel.preview else {
+                return XCTFail("\(path) should stay unsupported.")
+            }
+        }
+    }
 }
