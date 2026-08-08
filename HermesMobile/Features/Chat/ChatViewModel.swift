@@ -1128,10 +1128,15 @@ final class ChatViewModel {
 
     @discardableResult
     func selectReasoningEffort(_ effort: String) async -> Bool {
+        // An empty effort is meaningful, not a no-op: upstream reads it as
+        // "clear the override so the provider default applies", and documents
+        // it as the *re-enable* path for thinking-toggle-only models
+        // (`set_reasoning_effort`, `api/config.py:4307` @ 399cd7ab). Rejecting
+        // it here would leave the toggle one-way — thinking could be turned off
+        // and never back on, which is the trap #26 exists to close.
         let selectedEffort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !selectedEffort.isEmpty else { return false }
 
-        guard selectedEffort != selectedReasoningEffort else {
+        guard selectedEffort != (selectedReasoningEffort ?? "") else {
             return false
         }
 

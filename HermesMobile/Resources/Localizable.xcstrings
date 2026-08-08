@@ -144138,6 +144138,1278 @@
           }
         }
       }
+    },
+    "Scheduling Unavailable" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الجدولة غير متاحة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Planung nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programación no disponible"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Planification indisponible"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "תזמון אינו זמין"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pianificazione non disponibile"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スケジュール機能を利用できません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "예약 기능을 사용할 수 없음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Planning niet beschikbaar"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Harmonogram niedostępny"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agendamento indisponível"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Планирование недоступно"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamanlama kullanılamıyor"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "شیڈولنگ دستیاب نہیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排程功能無法使用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排程功能不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排程功能無法使用"
+          }
+        }
+      }
+    },
+    "This server doesn't have scheduling enabled, so tasks can't run here." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يتم تفعيل الجدولة على هذا الخادم، لذا لا يمكن تشغيل المهام هنا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Server ist die Planung nicht aktiviert, daher können hier keine Aufgaben laufen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor no tiene la programación activada, por lo que aquí no se pueden ejecutar tareas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La planification n’est pas activée sur ce serveur, les tâches ne peuvent donc pas s’y exécuter."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "בשרת הזה התזמון אינו מופעל, ולכן לא ניתן להריץ כאן משימות."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su questo server la pianificazione non è attiva, quindi le attività non possono essere eseguite qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーではスケジュール機能が有効になっていないため、タスクを実行できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버에는 예약 기능이 켜져 있지 않아 여기서는 작업을 실행할 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Op deze server is planning niet ingeschakeld, dus taken kunnen hier niet worden uitgevoerd."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na tym serwerze harmonogram jest wyłączony, więc zadania nie mogą tu działać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor não tem agendamento ativado, então as tarefas não podem ser executadas aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом сервере планирование не включено, поэтому задачи здесь выполняться не могут."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucuda zamanlama etkin değil, bu nedenle görevler burada çalıştırılamaz."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس سرور پر شیڈولنگ فعال نہیں ہے، اس لیے یہاں ٹاسک نہیں چل سکتے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "呢部伺服器未啟用排程功能，所以喺呢度執行唔到工作。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器未启用排程功能，因此无法在这里运行任务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台伺服器未啟用排程功能，因此無法在這裡執行工作。"
+          }
+        }
+      }
+    },
+    "This server signs in with single sign-on. Open it in a browser, sign in there, then try again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يستخدم هذا الخادم الدخول الموحّد. افتحه في المتصفح وسجّل الدخول هناك، ثم أعد المحاولة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server nutzt Single Sign-on. Öffne ihn im Browser, melde dich dort an und versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor usa inicio de sesión único. Ábrelo en un navegador, inicia sesión allí y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur utilise l’authentification unique. Ouvrez-le dans un navigateur, connectez-vous, puis réessayez."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "השרת הזה משתמש בכניסה יחידה. פתח אותו בדפדפן, היכנס שם ונסה שוב."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server usa il single sign-on. Aprilo in un browser, accedi lì e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーはシングルサインオンを使用します。ブラウザで開いてサインインしてから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버는 싱글 사인온을 사용합니다. 브라우저에서 열어 로그인한 뒤 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze server gebruikt eenmalige aanmelding. Open hem in een browser, meld je daar aan en probeer het opnieuw."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten serwer używa logowania jednokrotnego. Otwórz go w przeglądarce, zaloguj się tam i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor usa logon único. Abra-o em um navegador, entre por lá e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот сервер использует единый вход. Откройте его в браузере, войдите там и повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucu tek oturum açma kullanıyor. Tarayıcıda açın, orada oturum açın ve yeniden deneyin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ سرور سنگل سائن آن استعمال کرتا ہے۔ اسے براؤزر میں کھول کر وہاں سائن اِن کریں، پھر دوبارہ کوشش کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "呢部伺服器使用單一登入。請喺瀏覽器開啟並登入後再試一次。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器使用单点登录。请在浏览器中打开并登录后再试一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台伺服器使用單一登入。請在瀏覽器中開啟並登入後再試一次。"
+          }
+        }
+      }
+    },
+    "This server signs in through an identity proxy, which didn't authorize this request. Open the server in a browser, or check the custom headers." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يسجّل هذا الخادم الدخول عبر وكيل هوية لم يصرّح بهذا الطلب. افتح الخادم في المتصفح أو تحقّق من الترويسات المخصّصة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server meldet über einen Identitäts-Proxy an, der diese Anfrage nicht autorisiert hat. Öffne den Server im Browser oder prüfe die eigenen Header."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor inicia sesión a través de un proxy de identidad que no autorizó esta solicitud. Abre el servidor en un navegador o revisa las cabeceras personalizadas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur s’authentifie via un proxy d’identité qui n’a pas autorisé cette requête. Ouvrez le serveur dans un navigateur ou vérifiez les en-têtes personnalisés."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "השרת הזה מתחבר דרך פרוקסי זהות שלא אישר את הבקשה הזו. פתח את השרת בדפדפן, או בדוק את הכותרות המותאמות."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server accede tramite un proxy di identità che non ha autorizzato questa richiesta. Apri il server in un browser o controlla le intestazioni personalizzate."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーは ID プロキシ経由でサインインしますが、そのプロキシがこのリクエストを承認しませんでした。ブラウザでサーバーを開くか、カスタムヘッダーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버는 ID 프록시를 통해 로그인하지만 이 요청은 승인되지 않았습니다. 브라우저에서 서버를 열거나 사용자 지정 헤더를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze server meldt aan via een identiteitsproxy die dit verzoek niet heeft geautoriseerd. Open de server in een browser of controleer de aangepaste headers."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten serwer loguje przez proxy tożsamości, które nie autoryzowało tego żądania. Otwórz serwer w przeglądarce lub sprawdź własne nagłówki."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor autentica por um proxy de identidade que não autorizou esta requisição. Abra o servidor em um navegador ou verifique os cabeçalhos personalizados."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот сервер выполняет вход через прокси идентификации, который не авторизовал этот запрос. Откройте сервер в браузере или проверьте пользовательские заголовки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucu, bu isteği yetkilendirmeyen bir kimlik proxy’si üzerinden oturum açıyor. Sunucuyu tarayıcıda açın veya özel başlıkları kontrol edin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ سرور شناختی پراکسی کے ذریعے سائن اِن کرتا ہے، جس نے اس درخواست کی اجازت نہیں دی۔ سرور کو براؤزر میں کھولیں یا کسٹم ہیڈرز چیک کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "呢部伺服器透過身分代理登入，但該代理未授權今次請求。請喺瀏覽器開啟伺服器，或檢查自訂標頭。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器通过身份代理登录，但该代理未授权此请求。请在浏览器中打开服务器，或检查自定义标头。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台伺服器透過身分代理登入，但該代理未授權這次請求。請在瀏覽器中開啟伺服器，或檢查自訂標頭。"
+          }
+        }
+      }
+    },
+    "Connection ok. Already signed in by this server." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تم الاتصال. هذا الخادم سجّل دخولك بالفعل."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbindung ok. Dieser Server hat dich bereits angemeldet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conexión correcta. Este servidor ya te ha iniciado sesión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexion établie. Ce serveur vous a déjà authentifié."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "החיבור תקין. השרת הזה כבר חיבר אותך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connessione riuscita. Questo server ti ha già autenticato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続できました。このサーバーではすでにサインイン済みです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결되었습니다. 이 서버에 이미 로그인되어 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinding oké. Deze server heeft je al aangemeld."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie działa. Ten serwer już Cię zalogował."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conexão ok. Este servidor já fez seu login."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Соединение установлено. Этот сервер уже выполнил вход."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı başarılı. Bu sunucu sizi zaten oturum açtırmış."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کنیکشن ٹھیک ہے۔ یہ سرور آپ کو پہلے ہی سائن اِن کر چکا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線正常。呢部伺服器已經幫你登入咗。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接正常。此服务器已为你登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線正常。這台伺服器已為你登入。"
+          }
+        }
+      }
+    },
+    "The server did not accept that response. The request is still waiting." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يقبل الخادم هذا الرد. لا يزال الطلب في الانتظار."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat diese Antwort nicht angenommen. Die Anfrage wartet weiterhin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El servidor no aceptó esa respuesta. La solicitud sigue esperando."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le serveur n’a pas accepté cette réponse. La demande est toujours en attente."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "השרת לא קיבל את התשובה הזו. הבקשה עדיין ממתינה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il server non ha accettato questa risposta. La richiesta è ancora in attesa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーはその応答を受け付けませんでした。リクエストはまだ待機中です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 해당 응답을 받아들이지 않았습니다. 요청이 아직 대기 중입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De server heeft dat antwoord niet geaccepteerd. Het verzoek wacht nog steeds."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serwer nie przyjął tej odpowiedzi. Żądanie nadal czeka."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O servidor não aceitou essa resposta. A solicitação continua aguardando."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сервер не принял этот ответ. Запрос всё ещё ожидает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu bu yanıtı kabul etmedi. İstek hâlâ bekliyor."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سرور نے وہ جواب قبول نہیں کیا۔ درخواست ابھی بھی منتظر ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器未接受呢個回應，請求仲喺度等緊。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器未接受该回应，请求仍在等待中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器未接受該回應，請求仍在等待中。"
+          }
+        }
+      }
+    },
+    "The model was busy, so the server answered with its fallback model." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "كان النموذج مشغولاً، لذا ردّ الخادم بنموذجه الاحتياطي."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell war ausgelastet, daher hat der Server mit seinem Ersatzmodell geantwortet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El modelo estaba ocupado, así que el servidor respondió con su modelo de reserva."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le modèle était occupé, le serveur a donc répondu avec son modèle de secours."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "המודל היה עמוס, ולכן השרת ענה עם מודל הגיבוי שלו."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il modello era occupato, quindi il server ha risposto con il modello di riserva."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モデルが混雑していたため、サーバーはフォールバックモデルで応答しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모델이 사용 중이어서 서버가 대체 모델로 응답했습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het model was bezet, dus de server antwoordde met zijn reservemodel."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model był zajęty, więc serwer odpowiedział modelem zapasowym."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O modelo estava ocupado, então o servidor respondeu com o modelo reserva."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Модель была занята, поэтому сервер ответил резервной моделью."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model meşguldü, bu yüzden sunucu yedek modeliyle yanıt verdi."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ماڈل مصروف تھا، اس لیے سرور نے اپنے متبادل ماڈل سے جواب دیا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "個模型忙緊，伺服器改用後備模型回答。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该模型繁忙，服务器改用后备模型作答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該模型忙碌中，伺服器改用備援模型回答。"
+          }
+        }
+      }
+    },
+    "Approvals aren't available on this run, so the agent may act without asking." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الموافقات غير متاحة في هذا التشغيل، لذا قد يتصرّف الوكيل دون سؤال."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen Lauf sind keine Freigaben verfügbar, der Agent handelt daher möglicherweise ohne zu fragen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las aprobaciones no están disponibles en esta ejecución, por lo que el agente puede actuar sin preguntar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les approbations ne sont pas disponibles pour cette exécution : l’agent peut agir sans demander."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "אישורים אינם זמינים בהרצה הזו, ולכן הסוכן עשוי לפעול בלי לשאול."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le approvazioni non sono disponibili in questa esecuzione, quindi l’agente potrebbe agire senza chiedere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この実行では承認を利用できないため、エージェントが確認せずに操作する場合があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이번 실행에서는 승인을 사용할 수 없어 에이전트가 묻지 않고 실행할 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Goedkeuringen zijn niet beschikbaar in deze run, dus de agent kan handelen zonder te vragen."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "W tym uruchomieniu zatwierdzenia są niedostępne, więc agent może działać bez pytania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As aprovações não estão disponíveis nesta execução, então o agente pode agir sem perguntar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В этом запуске подтверждения недоступны, поэтому агент может действовать без запроса."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu çalıştırmada onaylar kullanılamıyor, bu nedenle aracı sormadan işlem yapabilir."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس رن میں منظوریاں دستیاب نہیں، اس لیے ایجنٹ پوچھے بغیر کارروائی کر سکتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今次執行用唔到審批，代理可能唔問就直接執行。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次运行无法使用审批，代理可能不询问就直接执行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次執行無法使用審批，代理可能不詢問就直接執行。"
+          }
+        }
+      }
+    },
+    "A header name can't contain spaces, colons, or other punctuation." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يمكن أن يحتوي اسم الترويسة على مسافات أو نقطتين رأسيتين أو علامات ترقيم أخرى."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Header-Name darf keine Leerzeichen, Doppelpunkte oder andere Satzzeichen enthalten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El nombre de una cabecera no puede contener espacios, dos puntos ni otros signos de puntuación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un nom d’en-tête ne peut pas contenir d’espaces, de deux-points ni d’autres signes de ponctuation."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "שם כותרת אינו יכול לכלול רווחים, נקודתיים או סימני פיסוק אחרים."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il nome di un’intestazione non può contenere spazi, due punti o altra punteggiatura."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ヘッダー名にスペース、コロン、その他の記号は使用できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "헤더 이름에는 공백, 콜론 등 문장 부호를 넣을 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een headernaam mag geen spaties, dubbele punten of andere leestekens bevatten."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nazwa nagłówka nie może zawierać spacji, dwukropków ani innej interpunkcji."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O nome de um cabeçalho não pode conter espaços, dois-pontos ou outra pontuação."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Имя заголовка не может содержать пробелы, двоеточия или другие знаки препинания."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlık adı boşluk, iki nokta veya başka noktalama işareti içeremez."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ہیڈر کے نام میں خالی جگہ، کولن یا دیگر رموزِ اوقاف نہیں ہو سکتے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標頭名稱唔可以有空格、冒號或者其他標點符號。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标头名称不能包含空格、冒号或其他标点符号。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標頭名稱不能包含空格、冒號或其他標點符號。"
+          }
+        }
+      }
+    },
+    "A header value can't contain line breaks." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يمكن أن تحتوي قيمة الترويسة على فواصل أسطر."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Header-Wert darf keine Zeilenumbrüche enthalten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El valor de una cabecera no puede contener saltos de línea."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La valeur d’un en-tête ne peut pas contenir de sauts de ligne."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ערך של כותרת אינו יכול לכלול מעברי שורה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il valore di un’intestazione non può contenere interruzioni di riga."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ヘッダーの値に改行は使用できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "헤더 값에는 줄바꿈을 넣을 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een headerwaarde mag geen regeleinden bevatten."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartość nagłówka nie może zawierać znaków nowego wiersza."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O valor de um cabeçalho não pode conter quebras de linha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Значение заголовка не может содержать переносы строк."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlık değeri satır sonu içeremez."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ہیڈر کی ویلیو میں لائن بریک نہیں ہو سکتے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標頭值唔可以有換行字元。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标头值不能包含换行符。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標頭值不能包含換行字元。"
+          }
+        }
+      }
+    },
+    "%@ is set by the connection itself. Setting it here makes the server reject every request that changes anything." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يتم ضبط %@ بواسطة الاتصال نفسه. ضبطه هنا يجعل الخادم يرفض كل طلب يُجري تغييرًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird von der Verbindung selbst gesetzt. Wenn du ihn hier setzt, lehnt der Server jede ändernde Anfrage ab."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ lo establece la propia conexión. Definirlo aquí hace que el servidor rechace toda solicitud que modifique algo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ est défini par la connexion elle-même. Le définir ici fait rejeter par le serveur toute requête qui modifie quelque chose."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‏%@ נקבע על ידי החיבור עצמו. הגדרתו כאן תגרום לשרת לדחות כל בקשה שמשנה משהו."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ è impostato dalla connessione stessa. Impostarlo qui fa sì che il server rifiuti ogni richiesta che modifica qualcosa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は接続自体が設定します。ここで設定すると、変更を伴うリクエストがすべてサーバーに拒否されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 은(는) 연결 자체가 설정합니다. 여기서 설정하면 서버가 변경을 일으키는 모든 요청을 거부합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wordt door de verbinding zelf ingesteld. Hier instellen zorgt ervoor dat de server elk wijzigend verzoek weigert."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ jest ustawiany przez samo połączenie. Ustawienie go tutaj sprawi, że serwer odrzuci każde żądanie zmieniające cokolwiek."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ é definido pela própria conexão. Defini-lo aqui faz o servidor rejeitar toda requisição que altere algo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ задаётся самим соединением. Если задать его здесь, сервер отклонит любой изменяющий запрос."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ bağlantının kendisi tarafından ayarlanır. Burada ayarlamak, sunucunun değişiklik yapan her isteği reddetmesine yol açar."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ کنیکشن خود سیٹ کرتا ہے۔ اسے یہاں سیٹ کرنے سے سرور ہر تبدیلی والی درخواست مسترد کر دے گا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 由連線本身設定。喺呢度設定會令伺服器拒絕所有會改動內容嘅請求。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 由连接本身设置。在这里设置会让服务器拒绝所有会修改内容的请求。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 由連線本身設定。在這裡設定會讓伺服器拒絕所有會變更內容的請求。"
+          }
+        }
+      }
+    },
+    "Header will not be sent: %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لن يتم إرسال الترويسة: %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header wird nicht gesendet: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La cabecera no se enviará: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En-tête non envoyé : %@"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "הכותרת לא תישלח: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’intestazione non verrà inviata: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ヘッダーは送信されません: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "헤더가 전송되지 않습니다: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header wordt niet verzonden: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nagłówek nie zostanie wysłany: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O cabeçalho não será enviado: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заголовок не будет отправлен: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlık gönderilmeyecek: %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ہیڈر نہیں بھیجا جائے گا: %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標頭唔會送出：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标头不会被发送：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標頭不會送出：%@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

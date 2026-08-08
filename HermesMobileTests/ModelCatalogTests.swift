@@ -391,6 +391,36 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(options.map(\.id), ["", "none"])
     }
 
+    /// Selecting "Default" sends `effort: ""`, which upstream reads as "clear
+    /// the override so the provider default applies" and documents as the
+    /// re-enable path for thinking-toggle-only models
+    /// (`set_reasoning_effort`, `api/config.py:4307` @ 399cd7ab). The client
+    /// used to reject an empty effort before sending it, which would have made
+    /// the toggle one-way — off, and never back on.
+    @MainActor
+    func testSelectingTheDefaultEffortIsSentRatherThanSwallowed() async throws {
+        nonisolated(unsafe) var sentEfforts: [String] = []
+        MockURLProtocol.requestHandler = { request in
+            if request.url?.path == "/api/reasoning", request.httpMethod == "POST" {
+                let body = try XCTUnwrap(apiTestBodyData(from: request))
+                let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+                sentEfforts.append(try XCTUnwrap(json?["effort"] as? String))
+            }
+            return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": ""}"#, for: request)
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let client = APIClient(
+            baseURL: try XCTUnwrap(URL(string: "https://example.test")),
+            session: URLSession(configuration: configuration)
+        )
+
+        _ = try await client.saveReasoningEffort("", sessionID: "session-abc")
+
+        XCTAssertEqual(sentEfforts, [""], "The empty effort is the whole re-enable path.")
+    }
+
     func testReasoningStatusDecodesTheThinkingToggleFlag() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
