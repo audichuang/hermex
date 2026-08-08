@@ -14,6 +14,8 @@ struct CustomHeadersEditor: View {
         var fieldStroke: Color
         var accent: Color
         var removeTint: Color
+        /// Colour for a row that will be dropped rather than sent.
+        var warningText: Color
 
         static let standard = Style(
             primaryText: .primary,
@@ -21,7 +23,8 @@ struct CustomHeadersEditor: View {
             fieldBackground: Color(.secondarySystemBackground),
             fieldStroke: Color(.separator),
             accent: .accentColor,
-            removeTint: .red
+            removeTint: .red,
+            warningText: .red
         )
 
         static let onboarding = Style(
@@ -30,7 +33,8 @@ struct CustomHeadersEditor: View {
             fieldBackground: .white.opacity(0.08),
             fieldStroke: .white.opacity(0.14),
             accent: Color(red: 1.0, green: 0.74, blue: 0.10),
-            removeTint: Color(red: 1.0, green: 0.5, blue: 0.4)
+            removeTint: Color(red: 1.0, green: 0.5, blue: 0.4),
+            warningText: Color(red: 1.0, green: 0.5, blue: 0.4)
         )
     }
 
@@ -83,6 +87,19 @@ struct CustomHeadersEditor: View {
                 SecureField("Value", text: header.value)
                     .foregroundStyle(style.primaryText)
                     .accessibilityLabel("Header value")
+            }
+
+            // A row that won't be sent has to say so here. Dropping it silently
+            // is the same invisible failure the reserved-name rule exists to
+            // prevent — the user would go on believing the header is in effect
+            // and have nothing to connect the symptom to (#12).
+            if let reason = header.wrappedValue.rejectionReason {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(style.warningText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Header will not be sent: \(reason)")
             }
         }
     }

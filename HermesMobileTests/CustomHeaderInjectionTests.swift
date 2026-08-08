@@ -72,6 +72,40 @@ final class CustomHeaderModelTests: XCTestCase {
         XCTAssertEqual(store.snapshot(), [])
     }
 
+    /// The server enters its CSRF gate the moment it sees `Origin` or `Referer`,
+    /// and this app never sends `X-CSRF-Token`. A user following a reverse-proxy
+    /// guide that says to add `Origin` would find the connection test passing,
+    /// sign-in working and the session list loading — and then every POST
+    /// failing with a bare 403 pointing nowhere near the header they added
+    /// (#12). The rest are transport-owned: setting them corrupts the request.
+    func testReservedHeaderNamesAreRejectedWithAReason() {
+        for name in ["Origin", "referer", "Cookie", "HOST", "content-length", "X-CSRF-Token"] {
+            let header = CustomHeader(name: name, value: "https://hermes.example.com")
+            XCTAssertFalse(header.isApplicable, "\(name) must never reach the wire.")
+            XCTAssertNotNil(header.rejectionReason, "\(name) has to say why it was refused.")
+        }
+    }
+
+    func testOrdinaryHeadersAreStillAccepted() {
+        let header = CustomHeader(name: "Authorization", value: "Bearer abc")
+        XCTAssertTrue(header.isApplicable)
+        XCTAssertNil(header.rejectionReason)
+
+        // A half-typed name is incomplete, not an error to shout about.
+        XCTAssertNil(CustomHeader(name: "", value: "").rejectionReason)
+    }
+
+    func testReservedHeadersAreNotSentEvenWhenStored() throws {
+        var request = URLRequest(url: try XCTUnwrap(URL(string: "https://example.test/api/chat/start")))
+        [
+            CustomHeader(name: "Origin", value: "https://hermes.example.com"),
+            CustomHeader(name: "X-Api-Key", value: "abc123")
+        ].apply(to: &request)
+
+        XCTAssertNil(request.value(forHTTPHeaderField: "Origin"))
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Api-Key"), "abc123")
+    }
+
     func testMergedUnderBuiltInsLetsBuiltInsWin() {
         let merged = [
             CustomHeader(name: "Accept", value: "application/evil"),
