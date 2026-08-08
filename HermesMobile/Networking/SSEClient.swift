@@ -125,6 +125,8 @@ enum SSEEvent: Equatable {
     case streamEnd
     case cancelled
     case error(ErrorStreamEvent)
+    /// Non-fatal: the stream continues. Never route this to `finishStream`.
+    case warning(WarningStreamEvent)
     case transportError(String)
     case heartbeat
     case ignored
@@ -356,6 +358,14 @@ struct SSEEventDecoder {
             return .streamEnd
         case "cancel":
             return .cancelled
+        case "warning":
+            let payload = decodePayload(
+                WarningStreamEvent.self,
+                eventType: eventType,
+                from: eventData,
+                decoder: decoder
+            )
+            return .warning(payload ?? WarningStreamEvent())
         case "error", "apperror":
             // "apperror" is one of the four socket-closing frames (stream_end, cancel,
             // error, apperror). The docs describe its payload as {error, type, session,
@@ -566,6 +576,35 @@ struct ErrorStreamEvent: Decodable, Equatable {
     private static func nonEmpty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// A non-fatal `warning` frame. The stream keeps running, so this must never
+/// reach `finishStream`. Upstream's main case is a rate-limited model being
+/// swapped for a fallback (`api/streaming.py:8059` @ 399cd7ab), which the user
+/// otherwise cannot see at all — they would judge the wrong model's quality and
+/// cost (#7).
+struct WarningStreamEvent: Decodable, Equatable {
+    let type: String?
+    let message: String?
+
+    init(type: String? = nil, message: String? = nil) {
+        self.type = type
+        self.message = message
+    }
+
+    var displayMessage: String? {
+        let trimmed = message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty { return trimmed }
+
+        switch type {
+        case "fallback":
+            return String(localized: "The model was busy, so the server answered with its fallback model.")
+        case "approval_gateway_unsupported", "approval_gateway_offline":
+            return String(localized: "Approvals aren't available on this run, so the agent may act without asking.")
+        default:
+            return nil
+        }
     }
 }
 

@@ -755,6 +755,41 @@ final class SSEClientTests: XCTestCase {
         XCTAssertEqual(event, .error(ErrorStreamEvent(error: "The stream returned a malformed error event.")))
     }
 
+    /// A `warning` frame used to fall to `default` and vanish. The fallback case
+    /// is the costly one: the user judges the answer's quality and price as the
+    /// model they picked, having actually been served a different one (#7).
+    func testWarningEventDecodesFallbackNotice() {
+        let event = SSEEventDecoder.decode(
+            eventType: "warning",
+            data: #"{"type": "fallback", "message": "Switched to the fallback model."}"#
+        )
+
+        guard case .warning(let payload) = event else { return XCTFail("Expected a warning event, got \(event)") }
+        XCTAssertEqual(payload.type, "fallback")
+        XCTAssertEqual(payload.displayMessage, "Switched to the fallback model.")
+    }
+
+    /// A typed warning with no text still has to say something.
+    func testWarningEventWithoutMessageDescribesTheKnownTypes() {
+        let fallback = SSEEventDecoder.decode(eventType: "warning", data: #"{"type": "fallback"}"#)
+        guard case .warning(let fallbackPayload) = fallback else {
+            return XCTFail("Expected a warning event, got \(fallback)")
+        }
+        XCTAssertNotNil(fallbackPayload.displayMessage)
+
+        let gateway = SSEEventDecoder.decode(eventType: "warning", data: #"{"type": "approval_gateway_offline"}"#)
+        guard case .warning(let gatewayPayload) = gateway else {
+            return XCTFail("Expected a warning event, got \(gateway)")
+        }
+        XCTAssertNotNil(gatewayPayload.displayMessage)
+
+        let unknown = SSEEventDecoder.decode(eventType: "warning", data: #"{"type": "something_new"}"#)
+        guard case .warning(let unknownPayload) = unknown else {
+            return XCTFail("Expected a warning event, got \(unknown)")
+        }
+        XCTAssertNil(unknownPayload.displayMessage, "An unknown, textless warning has nothing to say.")
+    }
+
     func testUnknownStreamEventTypeIsIgnored() {
         let event = SSEEventDecoder.decode(
             eventType: "future_server_event",
