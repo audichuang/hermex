@@ -1012,6 +1012,11 @@ struct KanbanAppliedFilters: Decodable, Equatable, Sendable {
 struct KanbanStats: Decodable, Equatable, Sendable {
     let total: Int?
     let byStatus: [String: Int]?
+    /// Task count per assignee. `_stats_payload()` returns `kb.board_stats(conn)`
+    /// when the installed `hermes_cli.kanban_db` provides it and otherwise falls
+    /// back to its own query, which yields a flat `{assignee: total}`. Only the
+    /// fallback lives in `hermes-webui`, so the nested `{assignee: {status: n}}`
+    /// shape cannot be ruled out — both are accepted and reported as a total.
     let byAssignee: [String: Int]?
 
     enum CodingKeys: String, CodingKey { case total, byStatus, byAssignee }
@@ -1020,7 +1025,13 @@ struct KanbanStats: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         total = container.decodeLossyIntIfPresent(forKey: .total)
         byStatus = try? container.decodeIfPresent([String: Int].self, forKey: .byStatus)
-        byAssignee = try? container.decodeIfPresent([String: Int].self, forKey: .byAssignee)
+        if let flat = try? container.decodeIfPresent([String: Int].self, forKey: .byAssignee) {
+            byAssignee = flat
+        } else if let nested = try? container.decodeIfPresent([String: [String: Int]].self, forKey: .byAssignee) {
+            byAssignee = nested.mapValues { $0.values.reduce(0, +) }
+        } else {
+            byAssignee = nil
+        }
     }
 }
 

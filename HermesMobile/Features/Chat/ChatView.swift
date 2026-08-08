@@ -2048,6 +2048,9 @@ struct ChatView: View {
                     submittedDraftRevision: submittedDraftRevision
                 )
             }
+        case .sendDeclined(let friendlyMessage):
+            // Deliberately keeps `draftMessage`: the text was fine, the timing wasn't.
+            viewModel.setSendErrorMessage(friendlyMessage)
         case .needsSubArg:
             viewModel.setSendErrorMessage(String(localized: "Choose a slash command or continue typing."))
         case .sendAsMessage:
@@ -3213,7 +3216,7 @@ private extension SlashCommandExecutionResult {
         switch self {
         case .executed, .openedSession:
             true
-        case .sendAsMessage, .unsupported, .needsSubArg:
+        case .sendAsMessage, .unsupported, .needsSubArg, .sendDeclined:
             false
         }
     }

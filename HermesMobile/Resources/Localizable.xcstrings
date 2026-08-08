@@ -400,6 +400,324 @@
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已啟動" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "已啟動" } }
     } },
+    "The connection to the server closed unexpectedly." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انقطع الاتصال بالخادم بشكل غير متوقع."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Die Verbindung zum Server wurde unerwartet geschlossen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La conexión con el servidor se cerró inesperadamente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La connexion au serveur s'est fermée de manière inattendue."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "החיבור לשרת נסגר באופן לא צפוי."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La connessione al server si è chiusa in modo inatteso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "サーバへの接続が予期せず切断されました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "서버 연결이 예기치 않게 끊겼어요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De verbinding met de server is onverwacht verbroken."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Połączenie z serwerem zostało nieoczekiwanie zamknięte."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "A conexão com o servidor foi encerrada inesperadamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Соединение с сервером неожиданно закрылось."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sunucu bağlantısı beklenmedik şekilde kapandı."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "سرور سے کنکشن غیر متوقع طور پر بند ہو گیا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "與伺服器的連線意外中斷。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "与服务器的连接意外中断。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "與伺服器的連線意外中斷。"
+          }
+        }
+      }
+    },
+    "The goal stopped because the turn didn't finish cleanly." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "توقّف الهدف لأن الدور لم ينتهِ بشكل سليم."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Das Ziel wurde gestoppt, weil der Durchgang nicht ordnungsgemäß beendet wurde."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "El objetivo se detuvo porque el turno no terminó correctamente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "L'objectif s'est arrêté car le tour ne s'est pas terminé correctement."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "המטרה הופסקה מפני שהתור לא הסתיים כראוי."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "L'obiettivo si è fermato perché il turno non è terminato correttamente."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ターンが正常に終了しなかったため、ゴールが停止しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "차례가 정상적으로 끝나지 않아 목표가 중단됐어요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Het doel is gestopt omdat de ronde niet netjes is afgerond."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cel został zatrzymany, ponieważ tura nie zakończyła się poprawnie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "A meta parou porque o turno não terminou corretamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Цель остановлена, потому что ход не завершился корректно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tur düzgün bitmediği için hedef durdu."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "باری درست طریقے سے مکمل نہ ہونے کی وجہ سے ہدف رک گیا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此回合未正常結束，因此目標已停止。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "本轮未正常结束，因此目标已停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此回合未正常結束，因此目標已停止。"
+          }
+        }
+      }
+    },
+    "The goal stopped because this session was compressed." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "توقّف الهدف لأن هذه الجلسة تم ضغطها."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Das Ziel wurde gestoppt, weil diese Sitzung komprimiert wurde."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "El objetivo se detuvo porque esta sesión se comprimió."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "L'objectif s'est arrêté car cette session a été compressée."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "המטרה הופסקה מפני שהשיחה הזו נדחסה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "L'obiettivo si è fermato perché questa sessione è stata compressa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このセッションが圧縮されたため、ゴールが停止しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 세션이 압축되어 목표가 중단됐어요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Het doel is gestopt omdat deze sessie is gecomprimeerd."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cel został zatrzymany, ponieważ ta sesja została skompresowana."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "A meta parou porque esta sessão foi comprimida."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Цель остановлена, потому что эта сессия была сжата."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu oturum sıkıştırıldığı için hedef durdu."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "یہ سیشن کمپریس ہونے کی وجہ سے ہدف رک گیا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此工作階段已壓縮，因此目標已停止。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此会话已压缩，因此目标已停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此工作階段已壓縮，因此目標已停止。"
+          }
+        }
+      }
+    },
     "This Preview is stale. Run Preview Dispatch again before relying on it." : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Diese Vorschau ist veraltet. Führe die Dispatch-Vorschau erneut aus, bevor du dich darauf verlässt." } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Esta vista previa está obsoleta. Ejecuta de nuevo la vista previa del despacho antes de confiar en ella." } },
@@ -457,6 +775,112 @@
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "這可能會啟動最多 %lld 個工作程序並消耗 API 預算。" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "這可能會啟動最多 %lld 個工作程序並消耗 API 預算。" } }
     } },
+    "This task is already running." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "هذه المهمة قيد التشغيل بالفعل."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diese Aufgabe läuft bereits."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esta tarea ya se está ejecutando."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cette tâche est déjà en cours d'exécution."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "משימה זו כבר פועלת."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Questa attività è già in esecuzione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このタスクはすでに実行中です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 작업은 이미 실행 중이에요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deze taak wordt al uitgevoerd."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "To zadanie jest już uruchomione."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esta tarefa já está em execução."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Эта задача уже выполняется."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu görev zaten çalışıyor."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "یہ ٹاسک پہلے ہی چل رہا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此任務已在執行中。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此任务已在运行中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此任務已在執行中。"
+          }
+        }
+      }
+    },
     "Timed Out" : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Zeitüberschreitung" } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Tiempo agotado" } },
@@ -4105,6 +4529,218 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "該工作階段仍在回覆中，暫時無法移動。請待其完成後再試。"
+          }
+        }
+      }
+    },
+    "Wait for the current response to finish before sending a voice note." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انتظر انتهاء الرد الحالي قبل إرسال ملاحظة صوتية."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Warte, bis die aktuelle Antwort fertig ist, bevor du eine Sprachnachricht sendest."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Espera a que termine la respuesta actual antes de enviar una nota de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Attends la fin de la réponse en cours avant d'envoyer une note vocale."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "המתן לסיום התשובה הנוכחית לפני שליחת הודעה קולית."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Attendi il termine della risposta corrente prima di inviare una nota vocale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "現在の応答が完了してから音声メモを送信してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "현재 응답이 끝난 뒤에 음성 메모를 보내세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wacht tot het huidige antwoord klaar is voordat je een spraakbericht verstuurt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Poczekaj na zakończenie bieżącej odpowiedzi przed wysłaniem notatki głosowej."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aguarde o término da resposta atual antes de enviar uma nota de voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Дождитесь завершения текущего ответа, прежде чем отправить голосовую заметку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sesli not göndermeden önce mevcut yanıtın bitmesini bekleyin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "صوتی نوٹ بھیجنے سے پہلے موجودہ جواب مکمل ہونے کا انتظار کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請待目前回應完成後再傳送語音備忘。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请等当前回复完成后再发送语音备忘。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請待目前回應完成後再傳送語音備忘。"
+          }
+        }
+      }
+    },
+    "Wait for the current response to finish before sending another message." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انتظر انتهاء الرد الحالي قبل إرسال رسالة أخرى."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Warte, bis die aktuelle Antwort fertig ist, bevor du eine weitere Nachricht sendest."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Espera a que termine la respuesta actual antes de enviar otro mensaje."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Attends la fin de la réponse en cours avant d'envoyer un autre message."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "המתן לסיום התשובה הנוכחית לפני שליחת הודעה נוספת."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Attendi il termine della risposta corrente prima di inviare un altro messaggio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "現在の応答が完了してから次のメッセージを送信してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "현재 응답이 끝난 뒤에 다음 메시지를 보내세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wacht tot het huidige antwoord klaar is voordat je een volgend bericht verstuurt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Poczekaj na zakończenie bieżącej odpowiedzi przed wysłaniem kolejnej wiadomości."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aguarde o término da resposta atual antes de enviar outra mensagem."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Дождитесь завершения текущего ответа, прежде чем отправить следующее сообщение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Başka bir mesaj göndermeden önce mevcut yanıtın bitmesini bekleyin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "دوسرا پیغام بھیجنے سے پہلے موجودہ جواب مکمل ہونے کا انتظار کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請待目前回應完成後再傳送下一則訊息。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请等当前回复完成后再发送下一条消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請待目前回應完成後再傳送下一則訊息。"
           }
         }
       }
