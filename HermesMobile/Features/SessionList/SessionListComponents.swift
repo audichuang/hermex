@@ -55,6 +55,8 @@ enum SessionRowActionPolicy {
         case "weixin", "telegram", "discord", "slack", "email", "wecom", "wecom_callback", "matrix":
             return true
         default:
+            // Upstream lets explicit WebUI/messaging source markers override
+            // the legacy `is_cli_session` bit before falling back to that bit.
             return session.isCliSession == true
         }
     }
