@@ -104,6 +104,92 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(queryItems.first(where: { $0.name == "after_event_id" })?.value, "stream-123:12")
     }
 
+    @MainActor
+    func testSessionLoadReplacingRunAdoptsNewSnapshotInsteadOfReusingOldCursor() async throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        delegate.runtimeJournalSnapshotApplyResult = true
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-b"}"#, for: request)
+        }
+
+        coordinator.start(streamID: "stream-a")
+        streamClient.emit(.token("Old run."), lastEventID: "stream-a:12")
+        coordinator.suspendActiveStreamConnection()
+        let preparation = coordinator.prepareForSessionLoad()
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let snapshot = try decoder.decode(
+            RuntimeJournalSnapshot.self,
+            from: Data(#"{"stream_id":"stream-b","last_seq":4,"last_event_id":"stream-b:4","last_assistant_text":"New run."}"#.utf8)
+        )
+
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-b",
+            runtimeJournalSnapshot: snapshot,
+            preparation: preparation,
+            usedCacheFallback: false
+        )
+        await coordinator.reconnectIfNeeded()
+
+        XCTAssertEqual(delegate.appliedRuntimeJournalSnapshotStreamIDs, ["stream-b"])
+        let resumedURL = try XCTUnwrap(streamClient.startedURLs.last)
+        let queryItems = URLComponents(url: resumedURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(queryItems.first(where: { $0.name == "after_seq" })?.value, "4")
+        XCTAssertEqual(queryItems.first(where: { $0.name == "after_event_id" })?.value, "stream-b:4")
+    }
+
+    @MainActor
+    func testSessionLoadAppliesServerSnapshotWhenLocalSnapshotHasNoCursorOrVisibleState() throws {
+        let delegate = CoordinatorDelegateSpy()
+        delegate.hasRestoredSnapshot = true
+        delegate.restoredSnapshotHasVisibleStreamState = false
+        delegate.runtimeJournalSnapshotApplyResult = true
+        let coordinator = makeCoordinator(delegate: delegate)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let snapshot = try decoder.decode(
+            RuntimeJournalSnapshot.self,
+            from: Data(#"{"stream_id":"stream-123","last_seq":4,"last_assistant_text":"Server answer."}"#.utf8)
+        )
+
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-123",
+            runtimeJournalSnapshot: snapshot,
+            preparation: coordinator.prepareForSessionLoad(),
+            usedCacheFallback: false
+        )
+
+        XCTAssertEqual(delegate.restoredSnapshotStreamIDs, ["stream-123"])
+        XCTAssertEqual(delegate.appliedRuntimeJournalSnapshotStreamIDs, ["stream-123"])
+    }
+
+    @MainActor
+    func testSessionLoadKeepsVisibleLocalSnapshotWhenItHasNoCursor() throws {
+        let delegate = CoordinatorDelegateSpy()
+        delegate.hasRestoredSnapshot = true
+        delegate.restoredSnapshotHasVisibleStreamState = true
+        delegate.runtimeJournalSnapshotApplyResult = true
+        let coordinator = makeCoordinator(delegate: delegate)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let snapshot = try decoder.decode(
+            RuntimeJournalSnapshot.self,
+            from: Data(#"{"stream_id":"stream-123","last_seq":4,"last_assistant_text":"Server answer."}"#.utf8)
+        )
+
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-123",
+            runtimeJournalSnapshot: snapshot,
+            preparation: coordinator.prepareForSessionLoad(),
+            usedCacheFallback: false
+        )
+
+        XCTAssertEqual(delegate.restoredSnapshotStreamIDs, ["stream-123"])
+        XCTAssertTrue(delegate.appliedRuntimeJournalSnapshotStreamIDs.isEmpty)
+    }
+
     /// A run this client never streamed has no cursor, so it attaches without
     /// asking for a replay. Replaying it would rebuild the run on top of a
     /// transcript with no in-flight message to merge into and duplicate every
@@ -186,6 +272,39 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(queryItems.first(where: { $0.name == "replay" })?.value, "1")
         XCTAssertEqual(queryItems.first(where: { $0.name == "after_seq" })?.value, "9")
         XCTAssertFalse(coordinator.isConnectionSuspended)
+    }
+
+    @MainActor
+    func testForegroundReconnectInactiveReplayUsesMaterializedSnapshotSequence() async throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        delegate.runtimeJournalSnapshotApplyResult = true
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            return apiTestJSONResponse(
+                #"{"active": false, "stream_id": "stream-123", "replay_available": true}"#,
+                for: request
+            )
+        }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let snapshot = try decoder.decode(
+            RuntimeJournalSnapshot.self,
+            from: Data(#"{"stream_id":"stream-123","last_seq":7,"last_event_id":"malformed","last_assistant_text":"Partial answer."}"#.utf8)
+        )
+
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-123",
+            runtimeJournalSnapshot: snapshot,
+            preparation: coordinator.prepareForSessionLoad(),
+            usedCacheFallback: false
+        )
+        await coordinator.reconnectIfNeeded()
+
+        let replayURL = try XCTUnwrap(streamClient.startedURLs.last)
+        let queryItems = URLComponents(url: replayURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(queryItems.first(where: { $0.name == "after_seq" })?.value, "7")
+        XCTAssertNil(queryItems.first(where: { $0.name == "after_event_id" }))
     }
 
     @MainActor
@@ -1133,8 +1252,12 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var warningMessages: [String] = []
     private(set) var transcriptReloadRequests = 0
     private(set) var goalStatuses: [GoalStreamEvent] = []
+    private(set) var appliedRuntimeJournalSnapshotStreamIDs: [String?] = []
     var latestAssistantMessageID: String? = "assistant-latest"
+    var hasRestoredSnapshot = false
     var restoredSnapshotEventID: String?
+    var restoredSnapshotHasVisibleStreamState = true
+    var runtimeJournalSnapshotApplyResult = false
     var appendTokenResult = true
     var doneHasCompletedTranscript = false
     var onLoadMessages: (() async -> Void)?
@@ -1160,9 +1283,18 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         saveSnapshotCount += 1
     }
 
-    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> String? {
+    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestore? {
         restoredSnapshotStreamIDs.append(streamID)
-        return restoredSnapshotEventID
+        guard hasRestoredSnapshot || restoredSnapshotEventID != nil else { return nil }
+        return ChatStreamSnapshotRestore(
+            lastEventID: restoredSnapshotEventID,
+            hasVisibleStreamState: restoredSnapshotHasVisibleStreamState
+        )
+    }
+
+    func streamCoordinatorApplyRuntimeJournalSnapshot(_ snapshot: RuntimeJournalSnapshot) -> Bool {
+        appliedRuntimeJournalSnapshotStreamIDs.append(snapshot.streamId)
+        return runtimeJournalSnapshotApplyResult
     }
 
     func streamCoordinatorRemoveSnapshot(streamID: String?) {

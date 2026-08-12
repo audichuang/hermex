@@ -210,6 +210,8 @@ final class APIClientSessionListTests: APIClientTestCase {
               {"session_id": "good-1", "title": "Fine", "message_count": 3},
               {"session_id": "drifted", "title": "Odd", "message_count": "12", "created_at": "not-a-number"},
               {"session_id": 42},
+              {"title": "Missing server identity"},
+              {"session_id": "   ", "title": "Blank server identity"},
               {"session_id": "good-2", "title": "Also fine"}
             ]}
             """, for: request)
@@ -218,9 +220,10 @@ final class APIClientSessionListTests: APIClientTestCase {
         let response = try await client.sessions()
         let ids = (response.sessions ?? []).compactMap(\.sessionId)
 
-        XCTAssertTrue(ids.contains("good-1"))
-        XCTAssertTrue(ids.contains("good-2"))
-        XCTAssertTrue(ids.contains("drifted"), "A drifted field costs the field, not the row.")
+        XCTAssertEqual(response.sessions?.count, 6)
+        XCTAssertEqual(ids, ["good-1", "drifted", "42", "   ", "good-2"])
+        XCTAssertNil(response.sessions?[3].sessionId)
+        XCTAssertEqual(response.sessions?[4].sessionId, "   ")
         XCTAssertEqual(
             response.sessions?.first(where: { $0.sessionId == "drifted" })?.messageCount,
             12,
@@ -231,6 +234,64 @@ final class APIClientSessionListTests: APIClientTestCase {
             "42",
             "A numeric id is coerced rather than dropped."
         )
+    }
+
+    func testRuntimeJournalSnapshotDecodesSnakeCaseToolErrorFlag() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "runtime-1",
+                "runtime_journal_snapshot": {
+                  "session_id": "runtime-1",
+                  "stream_id": "stream-1",
+                  "tool_calls": [
+                    {
+                      "event_type": "tool_complete",
+                      "name": "terminal",
+                      "tid": "tool-1",
+                      "is_error": true
+                    }
+                  ]
+                }
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.session(id: "runtime-1")
+        let event = try XCTUnwrap(response.session?.runtimeJournalSnapshot?.toolCalls?.first)
+
+        XCTAssertEqual(event.isError, true)
+    }
+
+    func testRuntimeJournalSnapshotSkipsMalformedToolCallRows() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "runtime-1",
+                "runtime_journal_snapshot": {
+                  "tool_calls": [
+                    {
+                      "event_type": "tool_complete",
+                      "name": "terminal",
+                      "tid": "tool-1",
+                      "is_error": true
+                    },
+                    42
+                  ]
+                }
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.session(id: "runtime-1")
+        let events = try XCTUnwrap(response.session?.runtimeJournalSnapshot?.toolCalls)
+
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?.isError, true)
     }
 
     /// The server derives `display_title` for rows whose stored title is a

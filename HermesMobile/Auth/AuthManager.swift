@@ -24,11 +24,10 @@ final class AuthManager {
     nonisolated static let passkeyOnlyMessage =
         String(localized: "This server signs in with passkeys, which Hermex doesn't support yet.")
 
-    /// Single sign-on. The app can't run the OIDC redirect flow yet, but the
-    /// browser can, and a completed browser sign-in leaves a session this app
-    /// then rides.
+    /// Single sign-on. Hermex cannot run the OIDC redirect flow yet, and an
+    /// external browser's session is not shared with the app.
     nonisolated static let oidcOnlyMessage =
-        String(localized: "This server signs in with single sign-on. Open it in a browser, sign in there, then try again.")
+        String(localized: "This server signs in with single sign-on, which Hermex doesn't support yet.")
 
     /// Trusted-header mode where the proxy did *not* authenticate this request,
     /// so the server reports the mode but not a session.

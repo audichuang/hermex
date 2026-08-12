@@ -194,6 +194,17 @@ final class SessionListMutationTests: XCTestCase {
             {
               "sessions": [
                 {
+                  "title": "Missing identity",
+                  "message_count": 2,
+                  "archived": false
+                },
+                {
+                  "session_id": "   ",
+                  "title": "Blank identity",
+                  "message_count": 2,
+                  "archived": false
+                },
+                {
                   "session_id": "empty-placeholder",
                   "title": "Untitled Session",
                   "message_count": 0,
@@ -2275,6 +2286,38 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testDuplicatePolicyRejectsExternalSessionsBeforeAnyRequest() async throws {
+        var requestedPaths: [String] = []
+        let viewModel = try makeViewModel { request in
+            requestedPaths.append(request.url?.path ?? "nil")
+            XCTFail("External sessions must not reach the duplicate endpoint.")
+            throw URLError(.badURL)
+        }
+        let cliSession = SessionSummary(sessionId: "cli", isCliSession: true)
+        let messagingSession = SessionSummary(
+            sessionId: "telegram",
+            rawSource: "telegram",
+            sessionSource: "messaging"
+        )
+
+        XCTAssertFalse(SessionRowActionPolicy.canDuplicate(cliSession))
+        XCTAssertFalse(SessionRowActionPolicy.canDuplicate(messagingSession))
+        XCTAssertTrue(SessionRowActionPolicy.canDuplicate(SessionSummary(sessionId: "webui")))
+        XCTAssertTrue(SessionRowActionPolicy.canDuplicate(SessionSummary(
+            sessionId: "webui-override",
+            isCliSession: true,
+            sessionSource: "webui"
+        )))
+        let duplicatedCLI = await viewModel.duplicate(cliSession)
+        let duplicatedMessaging = await viewModel.duplicate(messagingSession)
+
+        XCTAssertNil(duplicatedCLI)
+        XCTAssertNil(duplicatedMessaging)
+        XCTAssertEqual(viewModel.actionErrorMessage, "This command is not available in the mobile app.")
+        XCTAssertTrue(requestedPaths.isEmpty)
+    }
+
     func testCopyDeepLinkUsesExportAvailabilityRules() throws {
         let session = SessionSummary(sessionId: "session & /?=✓", readOnly: true)
 
@@ -2824,6 +2867,15 @@ final class SessionListMutationTests: XCTestCase {
         """
         {
           "sessions": [
+            {
+              "title": "Missing archived identity",
+              "archived": true
+            },
+            {
+              "session_id": "   ",
+              "title": "Blank archived identity",
+              "archived": true
+            },
             {
               "session_id": "session-abc",
               "title": "Planning",

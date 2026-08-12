@@ -127,9 +127,9 @@ final class ChatPendingActionCoordinator {
             // agent stayed blocked. `stale_cleared` is the one false that still
             // means "this card is finished" (#5).
             //
-            // Only an explicit false counts: a server that omits `ok` is an
-            // unknown, not a refusal, and must keep today's behaviour.
-            guard response.ok != false || response.staleCleared == true else {
+            // Only an explicit success may clear a live card. A missing `ok`
+            // is unknown and must fail closed.
+            guard response.ok == true || response.staleCleared == true else {
                 approvalErrorMessage = String(localized: "The server did not accept that response. The request is still waiting.")
                 await refreshApprovalPending(sessionID: prompt.sessionID)
                 return false

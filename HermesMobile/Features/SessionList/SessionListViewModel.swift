@@ -218,7 +218,11 @@ final class SessionListViewModel {
         do {
             let response = try await client.sessions()
             let visibleSessions = (response.sessions ?? [])
-                .filter { $0.archived != true && $0.shouldAppearInSessionList }
+                .filter {
+                    Self.nonEmpty($0.sessionId) != nil
+                        && $0.archived != true
+                        && $0.shouldAppearInSessionList
+                }
             applySessions(visibleSessions, archivedCount: response.archivedCount, animation: animation)
             isViewingCachedData = false
 
@@ -446,6 +450,10 @@ final class SessionListViewModel {
             }
 
             let session = SessionSummary(from: sessionDetail)
+            guard Self.nonEmpty(session.sessionId) != nil else {
+                actionErrorMessage = String(localized: "The server did not provide a session ID.")
+                return nil
+            }
             if session.archived != true,
                session.shouldAppearInSessionList,
                !sessions.contains(where: { $0.sessionId == session.sessionId }) {
@@ -582,6 +590,11 @@ final class SessionListViewModel {
     }
 
     func duplicate(_ session: SessionSummary, modelContext: ModelContext? = nil) async -> SessionSummary? {
+        guard SessionRowActionPolicy.canDuplicate(session) else {
+            actionErrorMessage = String(localized: "This command is not available in the mobile app.")
+            return nil
+        }
+
         guard let sessionId = Self.nonEmpty(session.sessionId) else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
             return nil
@@ -596,8 +609,10 @@ final class SessionListViewModel {
         do {
             let result = try await sessionMutator.duplicate(sessionID: sessionId)
 
-            guard let duplicatedSession = result.session else {
+            guard let duplicatedSession = result.session,
+                  Self.nonEmpty(duplicatedSession.sessionId) != nil else {
                 actionErrorMessage = result.errorMessage
+                    ?? String(localized: "The server did not return the duplicated session ID.")
                 return nil
             }
 
@@ -892,7 +907,7 @@ final class SessionListViewModel {
             }
 
             let newSession = SessionSummary(from: sessionDetail)
-            guard newSession.sessionId?.isEmpty == false else {
+            guard Self.nonEmpty(newSession.sessionId) != nil else {
                 actionErrorMessage = String(localized: "The server did not return the new session ID.")
                 return nil
             }
