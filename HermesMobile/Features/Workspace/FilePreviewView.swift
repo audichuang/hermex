@@ -372,7 +372,7 @@ struct FilePreviewView: View {
             exportFilename = payload.filename
             isFileExporterPresented = true
         } catch {
-            exportErrorMessage = error.localizedDescription
+            exportErrorMessage = viewModel.exportErrorMessage ?? error.localizedDescription
             onAPIError(error)
         }
     }
@@ -392,7 +392,7 @@ struct FilePreviewView: View {
             try await PhotoLibrarySaver.saveImageData(payload.data)
             saveConfirmationMessage = String(localized: "Image saved to Photos.")
         } catch {
-            exportErrorMessage = error.localizedDescription
+            exportErrorMessage = viewModel.exportErrorMessage ?? error.localizedDescription
             onAPIError(error)
         }
     }

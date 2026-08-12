@@ -1321,7 +1321,9 @@ final class ChatViewModel {
         do {
             let response = try await client.saveReasoningEffort(
                 selectedEffort,
-                sessionID: sessionID
+                sessionID: sessionID,
+                model: currentModel,
+                provider: currentModelProvider
             )
             selectedReasoningEffort = response.effectiveEffort ?? selectedEffort
             return true
@@ -1522,8 +1524,7 @@ final class ChatViewModel {
 
             let loadedMessages = session?.messages ?? []
             let loadedActiveStreamID = session?.activeStreamId?.trimmingCharacters(in: .whitespacesAndNewlines)
-            var reloadedMessages = loadedMessages
-            if let modelContext {
+            var reloadedMessages = loadedMessages            if let modelContext {
                 do {
                     let cachedMessages = try CacheStore.cachedMessages(
                         serverURL: server,
@@ -1556,6 +1557,7 @@ final class ChatViewModel {
                 previousMessages: previousMessages,
                 previousMessagesOffset: previousMessagesOffset
             )
+            materializePendingUserMessageIfNeeded(from: session, streamID: loadedActiveStreamID)
             if renderedCacheFirst {
                 // The taller server transcript has now replaced the lighter cache-first
                 // render; signal the view to re-pin to the bottom without a visible jump.
@@ -1581,7 +1583,7 @@ final class ChatViewModel {
                     cacheErrorMessage = error.localizedDescription
                 }
             }
-            if let title = session?.title {
+            if let title = loadedSessionTitle(session) {
                 displayTitle = Self.displayTitle(from: title)
             }
             setCompletedToolCallGroups(ToolCallGroup.groups(
@@ -1596,8 +1598,29 @@ final class ChatViewModel {
             toolCallAnchorMessageID = nil
             reasoningAnchorMessageID = nil
             attachmentCoordinator.removeAllLocalPreviews()
+            if runtimeJournalSnapshot == nil,
+               let loadedActiveStreamID,
+               !loadedActiveStreamID.isEmpty {
+                let localSnapshot = ActiveChatStreamSnapshotStore.shared.snapshot(
+                    server: server,
+                    sessionID: sessionID,
+                    streamID: loadedActiveStreamID
+                )
+                if localSnapshot?.activeStreamLastEventID == nil,
+                   localSnapshot?.hasVisibleStreamState != true {
+                    // Paginated responses omit the journal snapshot upstream. Apply
+                    // their transcript first, then fetch metadata only when a local
+                    // snapshot cannot already restore this run (#8).
+                    runtimeJournalSnapshot = try? await client.session(
+                        id: sessionID,
+                        includeMessages: false,
+                        messageLimit: nil
+                    ).session?.runtimeJournalSnapshot
+                }
+            }
             streamCoordinator.reconcileSessionLoad(
                 loadedActiveStreamID: loadedActiveStreamID,
+                runtimeJournalSnapshot: runtimeJournalSnapshot,
                 preparation: streamLoadPreparation,
                 usedCacheFallback: false,
                 runStartedAt: Self.activeRunStartDate(
@@ -1640,6 +1663,7 @@ final class ChatViewModel {
                         attachmentCoordinator.removeAllLocalPreviews()
                         streamCoordinator.reconcileSessionLoad(
                             loadedActiveStreamID: nil,
+                            runtimeJournalSnapshot: nil,
                             preparation: streamLoadPreparation,
                             usedCacheFallback: true
                         )
@@ -1858,7 +1882,7 @@ final class ChatViewModel {
                 outputTokens: session.outputTokens,
                 estimatedCost: session.estimatedCost
             )
-            if let title = session.title {
+            if let title = loadedSessionTitle(session) {
                 displayTitle = Self.displayTitle(from: title)
             }
             currentWorkspace = session.workspace ?? currentWorkspace
@@ -2004,6 +2028,28 @@ final class ChatViewModel {
         messages = reloadedMessages
         transcriptRevision &+= 1
         updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
+    }
+
+    private func materializePendingUserMessageIfNeeded(from session: SessionDetail?, streamID: String?) {
+        guard let content = session?.pendingUserMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !content.isEmpty
+        else { return }
+
+        let pendingMessage = ChatMessage(
+            role: "user",
+            content: content,
+            timestamp: session?.pendingStartedAt,
+            messageId: "local-pending-\(streamID ?? sessionID ?? "unknown")"
+        )
+        let tailStart = messages.lastIndex(where: { $0.role == "assistant" })
+            .map { messages.index(after: $0) } ?? messages.startIndex
+        guard !Self.loadedMessagesContainEquivalentUserMessage(
+            Array(messages[tailStart...]),
+            localMessage: pendingMessage
+        ) else {
+            return
+        }
+        messages.append(pendingMessage)
     }
 
     nonisolated private static func mergingReloadedMessages(
@@ -2877,13 +2923,13 @@ final class ChatViewModel {
             restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
         }
         if streamingAssistantMessageID == nil {
-            streamingAssistantMessageID = Self.latestAssistantMessageID(in: messages)
+            streamingAssistantMessageID = TranscriptTurnClassifier.currentTurnAssistantMessageIDs(in: messages).last
         }
         if let noticeMessage {
             pinLocalNoticeMessage(noticeMessage)
         }
 
-        streamCoordinator.start(streamID: streamID)
+        streamCoordinator.start(streamID: streamID, resumesFromLastEvent: true)
         return true
     }
 
@@ -3324,7 +3370,9 @@ final class ChatViewModel {
                 }
                 let response = try await client.saveReasoningEffort(
                     reasoning,
-                    sessionID: sessionID
+                    sessionID: sessionID,
+                    model: currentModel,
+                    provider: currentModelProvider
                 )
                 selectedReasoningEffort = response.effectiveEffort ?? reasoning
             } else {
@@ -3829,7 +3877,7 @@ final class ChatViewModel {
                 estimatedCost: session.estimatedCost
             )
             contextWindowSnapshot = snapshot.replacingTokensUsed(response.summary?.compressedTokenEstimate)
-            if let title = session.title {
+            if let title = loadedSessionTitle(session) {
                 displayTitle = Self.displayTitle(from: title)
             }
             currentWorkspace = session.workspace ?? currentWorkspace
@@ -4723,8 +4771,7 @@ final class ChatViewModel {
     }
 
     @discardableResult
-    private func restoreActiveStreamSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {
-        guard let sessionID,
+    private func restoreActiveStreamSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {        guard let sessionID,
               let snapshot = ActiveChatStreamSnapshotStore.shared.snapshot(
                 server: server,
                 sessionID: sessionID,
@@ -4760,8 +4807,7 @@ final class ChatViewModel {
         scheduleStreamingScrollTrigger()
         return ChatStreamSnapshotRestoreResult(
             didRestoreSnapshot: true,
-            lastEventID: snapshot.activeStreamLastEventID
-        )
+            lastEventID: snapshot.activeStreamLastEventID        )
     }
 
     private func removeActiveStreamSnapshot(streamID: String?) {
@@ -5851,7 +5897,7 @@ final class ChatViewModel {
 
             do {
                 let response = try await client.session(id: sessionID, includeMessages: false, messageLimit: nil)
-                if let title = response.session?.title {
+                if let title = loadedSessionTitle(response.session) {
                     applyLiveActivitySessionTitle(title)
                 }
             } catch {
@@ -6099,6 +6145,19 @@ final class ChatViewModel {
         return trimmedTitle
     }
 
+    private func loadedSessionTitle(_ session: SessionDetail?) -> String? {
+        guard let title = Self.nonEmpty(session?.title) else { return nil }
+        guard Self.isGeneratedWebUITitle(title), !Self.isGeneratedWebUITitle(displayTitle) else {
+            return title
+        }
+        return nil
+    }
+
+    private static func isGeneratedWebUITitle(_ title: String) -> Bool {
+        title == "Hermes WebUI"
+            || title.range(of: #"^Hermes WebUI #\d+$"#, options: .regularExpression) != nil
+    }
+
     private static func nonEmpty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed?.isEmpty == false ? trimmed : nil
@@ -6225,7 +6284,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     func streamCoordinatorLatestAssistantMessageID() -> String? {
-        Self.latestAssistantMessageID(in: messages)
+        TranscriptTurnClassifier.currentTurnAssistantMessageIDs(in: messages).last
     }
 
     func streamCoordinatorStartAuxiliaryMonitoring() {
@@ -6242,8 +6301,36 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     @discardableResult
-    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {
-        restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
+    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {        restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
+    }
+
+    @discardableResult
+    func streamCoordinatorApplyRuntimeJournalSnapshot(_ snapshot: RuntimeJournalSnapshot) -> Bool {
+        let assistantText = snapshot.lastAssistantText ?? ""
+        let reasoningText = snapshot.lastReasoningText ?? ""
+        let toolCalls = (snapshot.toolCalls ?? []).filter { payload in
+            payload.name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        let hasAssistantText = !assistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasReasoningText = !reasoningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard hasAssistantText || hasReasoningText || !toolCalls.isEmpty else { return false }
+
+        if hasAssistantText {
+            _ = appendAssistantToken(assistantText)
+        }
+        if hasReasoningText {
+            _ = appendReasoning(reasoningText)
+        }
+        for toolCall in toolCalls {
+            if toolCall.isCompleted == true {
+                _ = appendToolCall(toolCall)
+                _ = completeToolCall(toolCall)
+            } else {
+                _ = appendToolCall(toolCall)
+            }
+        }
+        flushPendingStreamingContent()
+        return true
     }
 
     func streamCoordinatorRemoveSnapshot(streamID: String?) {
@@ -6286,11 +6373,11 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     func streamCoordinatorDidReceiveWarningMessage(_ message: String) {
-        // An inline notice, not `sendErrorMessage`: the run is still going and
-        // an error banner would say otherwise. Being told the model was swapped
-        // is the whole point — without it the answer gets judged as the model
-        // the user picked (#7).
-        appendLocalNoticeMessage(message)
+        // A pinned notice, not `sendErrorMessage`: the run is still going and
+        // an error banner would say otherwise. Pinning also keeps the warning
+        // visible when `done` replaces the transcript; `stream_end` flushes it
+        // into the canonical transcript afterward (#7).
+        pinLocalNoticeMessage(message)
     }
 
     func streamCoordinatorRequestTranscriptReload() {
@@ -6471,7 +6558,9 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         let message = payload.message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !message.isEmpty else { return }
 
-        appendLocalNoticeMessage(message)
+        // `done` follows this frame and replaces the transcript. Keep the reason
+        // pinned until `stream_end` flushes it back after that replacement.
+        pinLocalNoticeMessage(message)
     }
 
     /// Starts the next turn of a goal the server says is unfinished.
@@ -6534,6 +6623,15 @@ struct ActiveChatStreamSnapshot: Equatable {
     let contextWindowSnapshot: ContextWindowSnapshot?
     let localAttachmentPreviews: [String: [String: Data]]
     let pinnedLocalNotices: [String]
+
+    var hasVisibleStreamState: Bool {
+        let assistantText = streamingAssistantMessageID.flatMap { messageID in
+            messages.first(where: { $0.messageId == messageID })?.content
+        }
+        return assistantText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || !liveReasoningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !liveToolCalls.isEmpty
+    }
 }
 
 private struct ActiveChatStreamSnapshotKey: Hashable {

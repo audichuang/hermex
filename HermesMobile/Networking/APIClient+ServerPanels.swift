@@ -37,14 +37,25 @@ extension APIClient {
         try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
     }
 
+    /// Writes the reasoning effort (`POST /api/reasoning`). Origin #319 scopes
+    /// the write to the active session (`session_id` required). Newer servers
+    /// also read `model`/`provider`; the pin ignores extra keys, so sending
+    /// them is safe on both.
     func saveReasoningEffort(
         _ effort: String,
-        sessionID: String
+        sessionID: String,
+        model: String? = nil,
+        provider: String? = nil
     ) async throws -> ReasoningStatusResponse {
         try await send(
             endpoint: .reasoning(),
             method: "POST",
-            body: ReasoningEffortRequest(effort: effort, sessionId: sessionID)
+            body: ReasoningEffortRequest(
+                effort: effort,
+                sessionId: sessionID,
+                model: model,
+                provider: provider
+            )
         )
     }
 
@@ -188,6 +199,8 @@ private struct DefaultModelRequest: Encodable {
 private struct ReasoningEffortRequest: Encodable {
     let effort: String
     let sessionId: String
+    let model: String?
+    let provider: String?
 }
 
 private struct ReasoningDisplayRequest: Encodable {
