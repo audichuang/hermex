@@ -42,11 +42,21 @@ extension APIClient {
     /// with `400 session_id is required for reasoning effort changes`; the
     /// pinned upstream reads only `display`/`effort`/`model`/`provider` and
     /// ignores the extra key, so sending it is safe on both. (#180)
-    func saveReasoningEffort(_ effort: String, sessionID: String? = nil) async throws -> ReasoningStatusResponse {
+    func saveReasoningEffort(
+        _ effort: String,
+        sessionID: String? = nil,
+        model: String? = nil,
+        provider: String? = nil
+    ) async throws -> ReasoningStatusResponse {
         try await send(
             endpoint: .reasoning(),
             method: "POST",
-            body: ReasoningEffortRequest(effort: effort, sessionId: sessionID)
+            body: ReasoningEffortRequest(
+                effort: effort,
+                sessionId: sessionID,
+                model: model,
+                provider: provider
+            )
         )
     }
 
@@ -191,6 +201,8 @@ private struct ReasoningEffortRequest: Encodable {
     let effort: String
     // Encoded as `session_id` by convertToSnakeCase; omitted when nil.
     let sessionId: String?
+    let model: String?
+    let provider: String?
 }
 
 private struct ReasoningDisplayRequest: Encodable {

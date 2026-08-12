@@ -127,7 +127,7 @@ struct InsightsView: View {
                     Section("Top Sessions") {
                         ForEach(viewModel.topSessions.prefix(10)) { session in
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(session.title ?? String(localized: "Untitled Session"))
+                                Text(session.preferredTitle ?? String(localized: "Untitled Session"))
                                     .font(.subheadline)
                                     .fontWeight(.medium)
                                     .lineLimit(1)

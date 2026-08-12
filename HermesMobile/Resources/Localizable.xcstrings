@@ -148316,108 +148316,108 @@
         }
       }
     },
-    "This server signs in with single sign-on. Open it in a browser, sign in there, then try again." : {
+    "This server signs in with single sign-on, which Hermex doesn't support yet." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يستخدم هذا الخادم الدخول الموحّد. افتحه في المتصفح وسجّل الدخول هناك، ثم أعد المحاولة."
+            "value" : "يستخدم هذا الخادم تسجيل الدخول الموحّد، الذي لا يدعمه Hermex حتى الآن."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieser Server nutzt Single Sign-on. Öffne ihn im Browser, melde dich dort an und versuche es erneut."
+            "value" : "Dieser Server nutzt Single Sign-on, das Hermex noch nicht unterstützt."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este servidor usa inicio de sesión único. Ábrelo en un navegador, inicia sesión allí y vuelve a intentarlo."
+            "value" : "Este servidor usa inicio de sesión único, que Hermex aún no admite."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ce serveur utilise l’authentification unique. Ouvrez-le dans un navigateur, connectez-vous, puis réessayez."
+            "value" : "Ce serveur utilise l’authentification unique, que Hermex ne prend pas encore en charge."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "השרת הזה משתמש בכניסה יחידה. פתח אותו בדפדפן, היכנס שם ונסה שוב."
+            "value" : "השרת הזה משתמש בכניסה יחידה, שבה Hermex עדיין לא תומך."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questo server usa il single sign-on. Aprilo in un browser, accedi lì e riprova."
+            "value" : "Questo server usa il single sign-on, che Hermex non supporta ancora."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このサーバーはシングルサインオンを使用します。ブラウザで開いてサインインしてから、もう一度お試しください。"
+            "value" : "このサーバーはシングルサインオンを使用しますが、Hermex はまだ対応していません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 서버는 싱글 사인온을 사용합니다. 브라우저에서 열어 로그인한 뒤 다시 시도하세요."
+            "value" : "이 서버는 싱글 사인온을 사용하지만 Hermex는 아직 지원하지 않습니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deze server gebruikt eenmalige aanmelding. Open hem in een browser, meld je daar aan en probeer het opnieuw."
+            "value" : "Deze server gebruikt eenmalige aanmelding, wat Hermex nog niet ondersteunt."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ten serwer używa logowania jednokrotnego. Otwórz go w przeglądarce, zaloguj się tam i spróbuj ponownie."
+            "value" : "Ten serwer używa logowania jednokrotnego, którego Hermex jeszcze nie obsługuje."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este servidor usa logon único. Abra-o em um navegador, entre por lá e tente novamente."
+            "value" : "Este servidor usa logon único, que o Hermex ainda não oferece suporte."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Этот сервер использует единый вход. Откройте его в браузере, войдите там и повторите попытку."
+            "value" : "Этот сервер использует единый вход, который Hermex пока не поддерживает."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu sunucu tek oturum açma kullanıyor. Tarayıcıda açın, orada oturum açın ve yeniden deneyin."
+            "value" : "Bu sunucu tek oturum açma kullanıyor, ancak Hermex bunu henüz desteklemiyor."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "یہ سرور سنگل سائن آن استعمال کرتا ہے۔ اسے براؤزر میں کھول کر وہاں سائن اِن کریں، پھر دوبارہ کوشش کریں۔"
+            "value" : "یہ سرور سنگل سائن آن استعمال کرتا ہے، جسے Hermex ابھی سپورٹ نہیں کرتا۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "呢部伺服器使用單一登入。請喺瀏覽器開啟並登入後再試一次。"
+            "value" : "呢部伺服器使用單一登入，但 Hermex 暫時未支援。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此服务器使用单点登录。请在浏览器中打开并登录后再试一次。"
+            "value" : "此服务器使用单点登录，但 Hermex 尚不支持。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這台伺服器使用單一登入。請在瀏覽器中開啟並登入後再試一次。"
+            "value" : "這台伺服器使用單一登入，但 Hermex 尚未支援。"
           }
         }
       }

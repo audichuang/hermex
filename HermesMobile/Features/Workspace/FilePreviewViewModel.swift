@@ -62,12 +62,12 @@ final class FilePreviewViewModel {
                 preview = .unavailable(String(localized: "Preview is not available for this file type."))
             } else {
                 let file = try await apiClient.file(sessionID: sessionID, path: path)
-                exportData = Data((file.content ?? "").utf8)
+                exportData = isOfficeDocumentPath ? nil : Data((file.content ?? "").utf8)
                 preview = .text(file)
             }
         } catch {
             lastError = error
-            errorMessage = error.localizedDescription
+            errorMessage = previewErrorMessage(for: error)
         }
 
         isLoading = false
@@ -100,7 +100,7 @@ final class FilePreviewViewModel {
             return payload(with: data)
         } catch {
             lastError = error
-            exportErrorMessage = error.localizedDescription
+            exportErrorMessage = actionableErrorMessage(for: error)
             throw error
         }
     }
@@ -111,6 +111,24 @@ final class FilePreviewViewModel {
 
     private var isRasterImagePath: Bool {
         ["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"].contains(pathExtension)
+    }
+
+    private var isOfficeDocumentPath: Bool {
+        ["docx", "xlsx", "pptx"].contains(pathExtension)
+    }
+
+    private func previewErrorMessage(for error: Error) -> String {
+        actionableErrorMessage(for: error)
+    }
+
+    private func actionableErrorMessage(for error: Error) -> String {
+        guard let apiError = error as? APIError else { return error.localizedDescription }
+        if case .http(let statusCode, _) = apiError,
+           statusCode == 404,
+           apiError.serverMessage?.localizedCaseInsensitiveContains("session not found") == true {
+            return apiError.localizedDescription
+        }
+        return apiError.serverMessage ?? apiError.localizedDescription
     }
 
     /// Formats the app refuses to ask the server about at all.
