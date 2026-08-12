@@ -31,8 +31,8 @@ extension APIClient {
     ///
     /// A replay sends both parameters, because the server trusts them
     /// differently: `after_event_id` is checked against the stream's own run id
-    /// and ignored when it came from a different run, while a bare `after_seq`
-    /// is taken at face value (`_parse_run_journal_after_seq`,
+    /// and rejects a cursor from a different run, while a bare `after_seq` is
+    /// taken at face value (`_parse_run_journal_after_seq`,
     /// `api/routes.py:17151` @ 399cd7ab). Sending only the sequence number meant
     /// a cursor from a replaced run — a compression, a retry, a gateway restart
     /// — could resume against the wrong event stream, and the client was

@@ -716,6 +716,38 @@ final class SSEClientTests: XCTestCase {
         )
     }
 
+    /// Upstream can send diagnostics in `details` that differ from both the
+    /// short message and remediation hint; hiding them loses the root cause.
+    func testAppErrorEventDisplaysDistinctNonemptyDetails() {
+        let event = SSEEventDecoder.decode(
+            eventType: "apperror",
+            data: #"{"message":"Provider failed","details":"Quota exhausted","hint":"Check billing"}"#
+        )
+
+        guard case .error(let payload) = event else { return XCTFail("Expected an error event, got \(event)") }
+        XCTAssertEqual(
+            payload.displayMessage(fallback: "unused"),
+            "Provider failed\nQuota exhausted\nCheck billing"
+        )
+    }
+
+    func testAppErrorEventDoesNotRepeatProducerTruncatedDetailsPrefix() throws {
+        let message = String(repeating: "x", count: 1_201)
+        let details = String(message.prefix(1_197)) + "…"
+        let data = try JSONSerialization.data(withJSONObject: [
+            "message": message,
+            "details": details,
+            "hint": "Check billing"
+        ])
+        let event = SSEEventDecoder.decode(
+            eventType: "apperror",
+            data: String(decoding: data, as: UTF8.self)
+        )
+
+        guard case .error(let payload) = event else { return XCTFail("Expected an error event, got \(event)") }
+        XCTAssertEqual(payload.displayMessage(fallback: "unused"), "\(message)\nCheck billing")
+    }
+
     func testAppErrorEventDecodesDocsErrorShape() {
         // API docs describe the payload as {error, type, session, terminal_state?}.
         let event = SSEEventDecoder.decode(

@@ -149,15 +149,18 @@ struct ToolStreamEvent: Decodable, Equatable {
     let args: [String: JSONValue]?
     let duration: Double?
     let isError: Bool?
+    let isCompleted: Bool?
     let stableID: String?
 
     enum CodingKeys: String, CodingKey {
         case eventType = "event_type"
         case name
         case preview
+        case snippet
         case args
         case duration
         case isError = "is_error"
+        case done
         case tid
         case id
         case toolCallID = "tool_call_id"
@@ -172,6 +175,7 @@ struct ToolStreamEvent: Decodable, Equatable {
         args: [String: JSONValue]?,
         duration: Double?,
         isError: Bool?,
+        isCompleted: Bool? = nil,
         stableID: String? = nil
     ) {
         self.eventType = eventType
@@ -180,6 +184,7 @@ struct ToolStreamEvent: Decodable, Equatable {
         self.args = args
         self.duration = duration
         self.isError = isError
+        self.isCompleted = isCompleted
         self.stableID = stableID?.nonEmptyToolStreamID
     }
 
@@ -187,10 +192,12 @@ struct ToolStreamEvent: Decodable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         eventType = container.decodeLossyStringIfPresent(forKey: .eventType)
         name = container.decodeLossyStringIfPresent(forKey: .name)
-        preview = container.decodeLossyStringIfPresent(forKey: .preview)
+        preview = container.decodeLossyStringIfPresent(forKey: .snippet)
+            ?? container.decodeLossyStringIfPresent(forKey: .preview)
         args = try? container.decodeIfPresent([String: JSONValue].self, forKey: .args)
         duration = container.decodeLossyDoubleIfPresent(forKey: .duration)
         isError = container.decodeLossyBoolIfPresent(forKey: .isError)
+        isCompleted = container.decodeLossyBoolIfPresent(forKey: .done)
         stableID = [
             container.decodeLossyStringIfPresent(forKey: .tid),
             container.decodeLossyStringIfPresent(forKey: .id),
@@ -428,6 +435,7 @@ private extension ToolStreamEvent {
         args = nil
         duration = nil
         isError = nil
+        isCompleted = nil
         stableID = nil
     }
 }
@@ -510,12 +518,13 @@ struct ErrorStreamEvent: Decodable, Equatable {
     let message: String?
     let type: String?
     let hint: String?
+    let details: String?
     let terminalState: String?
     let recoveryControl: Bool?
     let session: SessionDetail?
 
     enum CodingKeys: String, CodingKey {
-        case error, message, type, hint, session
+        case error, message, type, hint, details, session
         case terminalState = "terminal_state"
         case recoveryControl = "recovery_control"
     }
@@ -525,6 +534,7 @@ struct ErrorStreamEvent: Decodable, Equatable {
         message: String? = nil,
         type: String? = nil,
         hint: String? = nil,
+        details: String? = nil,
         terminalState: String? = nil,
         recoveryControl: Bool? = nil,
         session: SessionDetail? = nil
@@ -533,6 +543,7 @@ struct ErrorStreamEvent: Decodable, Equatable {
         self.message = message
         self.type = type
         self.hint = hint
+        self.details = details
         self.terminalState = terminalState
         self.recoveryControl = recoveryControl
         self.session = session
@@ -544,6 +555,7 @@ struct ErrorStreamEvent: Decodable, Equatable {
         message = try? container.decodeIfPresent(String.self, forKey: .message)
         type = try? container.decodeIfPresent(String.self, forKey: .type)
         hint = try? container.decodeIfPresent(String.self, forKey: .hint)
+        details = container.decodeLossyStringIfPresent(forKey: .details)
         terminalState = try? container.decodeIfPresent(String.self, forKey: .terminalState)
         recoveryControl = try? container.decodeIfPresent(Bool.self, forKey: .recoveryControl)
         session = Self.decodeSession(from: container)
@@ -565,12 +577,30 @@ struct ErrorStreamEvent: Decodable, Equatable {
     /// report something to the user.
     var isRecoveryControl: Bool { recoveryControl == true }
 
-    /// The text to show, with the server's remediation hint appended when there
-    /// is one — dropping it left the user a red line with no next step.
+    /// The text to show, followed by distinct diagnostics and remediation.
     func displayMessage(fallback: String) -> String {
         let body = [error, message].compactMap(Self.nonEmpty).first ?? fallback
-        guard let hint = Self.nonEmpty(hint) else { return body }
-        return "\(body)\n\(hint)"
+        var parts = [body]
+        if let details = Self.nonEmpty(details),
+           !Self.isProducerTruncation(details, of: body) {
+            parts.append(details)
+        }
+        if let hint = Self.nonEmpty(hint), !parts.contains(hint) {
+            parts.append(hint)
+        }
+        return parts.joined(separator: "\n")
+    }
+
+    private static func isProducerTruncation(_ details: String, of message: String) -> Bool {
+        guard details != message, message.count > 1_200 else {
+            return details == message
+        }
+
+        var expected = String(message.prefix(1_197))
+        while expected.last?.isWhitespace == true {
+            expected.removeLast()
+        }
+        return details == expected + "…"
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

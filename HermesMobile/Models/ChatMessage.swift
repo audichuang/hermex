@@ -302,7 +302,13 @@ enum TranscriptTurnClassifier {
     }
 
     static func currentTurnAssistantMessageIDs(in messages: [ChatMessage]) -> [String] {
-        currentTurnAssistantAnchorIDs(in: messages)
+        let latestUserIndex = messages.lastIndex { isUserTurnBoundary($0) }
+        let startIndex = latestUserIndex.map { messages.index(after: $0) } ?? messages.startIndex
+        guard startIndex < messages.endIndex else { return [] }
+
+        return messages[startIndex...].compactMap { message in
+            message.role == "assistant" ? nonEmpty(message.messageId) : nil
+        }
     }
 
     private static func previousUserBoundaryIndex(before rawIndex: Int, in messages: [ChatMessage]) -> Int? {

@@ -944,6 +944,9 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(exactStatusReport.warnings, [.unsupportedStatus("TRIAGE")])
     }
 
+    /// The `runID` key had no raw value, so it spelled "runID" while the decoder
+    /// runs `.convertFromSnakeCase` and turns the server's `run_id` into
+    /// "runId". They could never match and the value was always nil (#13).
     func testKanbanDetailEventDecodesTheRunID() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
