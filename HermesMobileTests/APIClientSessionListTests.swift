@@ -272,6 +272,64 @@ final class APIClientSessionListTests: APIClientTestCase {
         )
     }
 
+    func testRuntimeJournalSnapshotDecodesSnakeCaseToolErrorFlag() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "runtime-1",
+                "runtime_journal_snapshot": {
+                  "session_id": "runtime-1",
+                  "stream_id": "stream-1",
+                  "tool_calls": [
+                    {
+                      "event_type": "tool_complete",
+                      "name": "terminal",
+                      "tid": "tool-1",
+                      "is_error": true
+                    }
+                  ]
+                }
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.session(id: "runtime-1")
+        let event = try XCTUnwrap(response.session?.runtimeJournalSnapshot?.toolCalls?.first)
+
+        XCTAssertEqual(event.isError, true)
+    }
+
+    func testRuntimeJournalSnapshotSkipsMalformedToolCallRows() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "runtime-1",
+                "runtime_journal_snapshot": {
+                  "tool_calls": [
+                    {
+                      "event_type": "tool_complete",
+                      "name": "terminal",
+                      "tid": "tool-1",
+                      "is_error": true
+                    },
+                    42
+                  ]
+                }
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.session(id: "runtime-1")
+        let events = try XCTUnwrap(response.session?.runtimeJournalSnapshot?.toolCalls)
+
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?.isError, true)
+    }
+
     /// The server derives `display_title` for rows whose stored title is a
     /// placeholder. Without it every CLI and subagent session showed as
     /// "Hermes WebUI #N" and none could be told from the others (#23).

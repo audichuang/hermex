@@ -59,6 +59,54 @@ struct SessionResponse: Decodable {
     let session: SessionDetail?
 }
 
+/// The server's durable projection of an active run, attached to a metadata-only
+/// session response so a client that did not start the run can render what has
+/// already happened before replaying its tail (#8).
+struct RuntimeJournalSnapshot: Decodable, Equatable {
+    let sessionId: String?
+    let streamId: String?
+    let lastSeq: Int?
+    let lastEventId: String?
+    let lastAssistantText: String?
+    let lastReasoningText: String?
+    let toolCalls: [ToolStreamEvent]?
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId
+        case streamId
+        case lastSeq
+        case lastEventId
+        case lastAssistantText
+        case lastReasoningText
+        case toolCalls
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
+        streamId = container.decodeLossyStringIfPresent(forKey: .streamId)
+        lastSeq = container.decodeLossyIntIfPresent(forKey: .lastSeq)
+        lastEventId = container.decodeLossyStringIfPresent(forKey: .lastEventId)
+        lastAssistantText = container.decodeLossyStringIfPresent(forKey: .lastAssistantText)
+        lastReasoningText = container.decodeLossyStringIfPresent(forKey: .lastReasoningText)
+        toolCalls = Self.decodeToolCallsTolerantly(from: container)
+    }
+
+    private static func decodeToolCallsTolerantly(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) -> [ToolStreamEvent]? {
+        guard let values = try? container.decodeIfPresent([JSONValue].self, forKey: .toolCalls) else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        return values.compactMap { value in
+            guard let data = try? JSONEncoder().encode(value) else { return nil }
+            return try? decoder.decode(ToolStreamEvent.self, from: data)
+        }
+    }
+}
+
 struct SessionMutationResponse: Decodable {
     let ok: Bool?
     let session: SessionSummary?
@@ -765,6 +813,7 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
     let compressionAnchorVisibleIdx: Int?
     let compressionAnchorMessageKey: CompressionAnchorMessageKey?
     let compressionAnchorSummary: String?
+    let runtimeJournalSnapshot: RuntimeJournalSnapshot?
     /// Where the conversation went after this session was archived as a
     /// pre-compression snapshot. Present only on such a snapshot, and upstream
     /// documents it as the recovery hint for exactly this client's situation —
@@ -819,6 +868,7 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         case compressionAnchorVisibleIdx
         case compressionAnchorMessageKey
         case compressionAnchorSummary
+        case runtimeJournalSnapshot
         case snakeCasedCompressionAnchorVisibleIdx = "compression_anchor_visible_idx"
         case snakeCasedCompressionAnchorMessageKey = "compression_anchor_message_key"
         case snakeCasedCompressionAnchorSummary = "compression_anchor_summary"
@@ -881,6 +931,10 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
             )) ?? nil)
         compressionAnchorSummary = container.decodeLossyStringIfPresent(forKey: .compressionAnchorSummary)
             ?? container.decodeLossyStringIfPresent(forKey: .snakeCasedCompressionAnchorSummary)
+        runtimeJournalSnapshot = (try? container.decodeIfPresent(
+            RuntimeJournalSnapshot.self,
+            forKey: .runtimeJournalSnapshot
+        )) ?? nil
         continuationSessionId = container.decodeLossyStringIfPresent(forKey: .continuationSessionId)
             ?? container.decodeLossyStringIfPresent(forKey: .snakeCasedContinuationSessionId)
     }

@@ -349,6 +349,55 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertEqual(response.effectiveEffort, "xhigh")
     }
 
+    /// #180: servers that scope effort writes to a session reject the write with
+    /// `400 session_id is required for reasoning effort changes` unless the
+    /// active session ID rides along.
+    func testSaveReasoningEffortSendsSessionIDWhenProvided() async throws {
+        let client = makeClient { request in
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["effort"] as? String, "high")
+            XCTAssertEqual(body?["session_id"] as? String, "session-42")
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "reasoning_effort": "high"
+            }
+            """, for: request)
+        }
+
+        let response = try await client.saveReasoningEffort("high", sessionID: "session-42")
+
+        XCTAssertEqual(response.effectiveEffort, "high")
+    }
+
+    func testSaveReasoningEffortSendsTheActiveModelContext() async throws {
+        let client = makeClient { request in
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["effort"] as? String, "high")
+            XCTAssertEqual(body?["session_id"] as? String, "session-42")
+            XCTAssertEqual(body?["model"] as? String, "glm-5")
+            XCTAssertEqual(body?["provider"] as? String, "zai")
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "reasoning_effort": "high"
+            }
+            """, for: request)
+        }
+
+        let response = try await client.saveReasoningEffort(
+            "high",
+            sessionID: "session-42",
+            model: "glm-5",
+            provider: "zai"
+        )
+
+        XCTAssertEqual(response.effectiveEffort, "high")
+    }
     func testSaveReasoningDisplayBuildsExpectedBodyAndDecodesResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/reasoning")
