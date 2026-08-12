@@ -62,7 +62,65 @@ final class ChatViewModelSteeringNoticeTests: XCTestCase {
         )
     }
 
+    func testFallbackWarningRemainsVisibleWhenDoneReplacesTheTranscript() async throws {
+        let (viewModel, streamClient) = try await makeStreamingViewModel()
+        let warning = "Switched to the fallback model."
+
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "warning",
+            data: #"{"type": "fallback", "message": "Switched to the fallback model."}"#
+        ))
+        streamClient.emit(completedSessionDoneEvent())
+
+        XCTAssertEqual(visibleLocalNotices(in: viewModel), [warning])
+
+        streamClient.emit(.streamEnd)
+
+        XCTAssertEqual(visibleLocalNotices(in: viewModel), [warning])
+    }
+
+    func testTerminalGoalStatusRemainsVisibleWhenDoneReplacesTheTranscript() async throws {
+        let (viewModel, streamClient) = try await makeStreamingViewModel()
+        let status = "Goal paused because the turn limit was reached."
+
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "goal",
+            data: #"{"session_id": "session-abc", "state": "idle", "message": "Goal paused because the turn limit was reached."}"#
+        ))
+        streamClient.emit(completedSessionDoneEvent())
+
+        XCTAssertEqual(visibleLocalNotices(in: viewModel), [status])
+
+        streamClient.emit(.streamEnd)
+
+        XCTAssertEqual(visibleLocalNotices(in: viewModel), [status])
+    }
+
     // MARK: - Helpers
+
+    private func completedSessionDoneEvent() -> SSEEvent {
+        SSEEventDecoder.decode(
+            eventType: "done",
+            data: """
+            {
+              "session": {
+                "session_id": "session-abc",
+                "messages": [
+                  {"role": "user", "content": "Start working", "message_id": "server-user"},
+                  {"role": "assistant", "content": "Final answer.", "message_id": "server-assistant"}
+                ]
+              }
+            }
+            """
+        )
+    }
+
+    private func visibleLocalNotices(in viewModel: ChatViewModel) -> [String] {
+        viewModel.messages
+            .filter { $0.role == "local_notice" }
+            .compactMap(\.content)
+            + viewModel.pinnedLocalNotices
+    }
 
     private func steer(_ viewModel: ChatViewModel, _ text: String) async {
         let command = try? XCTUnwrap(SlashCommandCatalog.command(named: "steer"))

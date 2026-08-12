@@ -457,7 +457,8 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         XCTAssertEqual(keychain.savedValues[.serverURL], "https://example.test")
     }
 
-    /// An OIDC server the app can't sign into must say so, not claim passkeys.
+    /// Browser and app cookie jars are separate, so external browser sign-in
+    /// cannot be presented as a way to authenticate Hermex.
     func testOIDCServerReportsSingleSignOnRatherThanPasskeys() async throws {
         let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
             authEnabled: true,
@@ -469,7 +470,10 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
 
         await manager.configure(serverURLString: "https://example.test", password: "")
 
-        XCTAssertEqual(manager.lastErrorMessage, AuthManager.oidcOnlyMessage)
+        XCTAssertEqual(
+            manager.lastErrorMessage,
+            "This server signs in with single sign-on, which Hermex doesn't support yet."
+        )
         XCTAssertNotEqual(manager.lastErrorMessage, AuthManager.passkeyOnlyMessage)
         XCTAssertEqual(manager.state, .unconfigured)
     }

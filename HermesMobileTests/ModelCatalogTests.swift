@@ -369,6 +369,24 @@ final class ModelCatalogTests: XCTestCase {
         )
     }
 
+    func testModelSelectionPreservesNamedCustomProviderIdentity() {
+        let beta = ModelCatalogOption(
+            id: "@custom:beta:model-a",
+            displayName: "Beta Model A",
+            providerID: "custom:beta"
+        )
+        let gamma = ModelCatalogOption(
+            id: "@custom:gamma:model-a",
+            displayName: "Gamma Model A",
+            providerID: "custom:gamma"
+        )
+
+        XCTAssertTrue(beta.matchesSelection(modelID: "@custom:beta:model-a", providerID: nil))
+        XCTAssertTrue(beta.matchesSelection(modelID: "model-a", providerID: "custom:beta"))
+        XCTAssertFalse(gamma.matchesSelection(modelID: "@custom:beta:model-a", providerID: nil))
+        XCTAssertFalse(gamma.matchesSelection(modelID: "model-a", providerID: "custom:beta"))
+    }
+
     /// ZAI GLM-4.5–5.1 take the thinking on/off switch but not the effort
     /// ladder, so upstream reports an empty ladder alongside
     /// `supports_thinking_toggle: true`. Hiding on the empty ladder removed the

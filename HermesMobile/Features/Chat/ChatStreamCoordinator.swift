@@ -31,6 +31,16 @@ struct ChatStreamLoadPreparation: Equatable {
     let shouldPrepareSuspendedStreamResume: Bool
 }
 
+struct ChatStreamSnapshotRestore: Equatable {
+    let lastEventID: String?
+    let hasVisibleStreamState: Bool
+
+    init(lastEventID: String?, hasVisibleStreamState: Bool = true) {
+        self.lastEventID = lastEventID
+        self.hasVisibleStreamState = hasVisibleStreamState
+    }
+}
+
 @MainActor
 protocol ChatStreamCoordinatorDelegate: AnyObject {
     var streamCoordinatorSessionID: String? { get }
@@ -46,7 +56,11 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorStopAuxiliaryMonitoring(clearPrompt: Bool)
     func streamCoordinatorSaveSnapshotIfNeeded()
     @discardableResult
-    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> String?
+    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestore?
+    /// Materializes a server-owned active-run snapshot when this client has no
+    /// same-run local snapshot. Returns true only when visible state was applied.
+    @discardableResult
+    func streamCoordinatorApplyRuntimeJournalSnapshot(_ snapshot: RuntimeJournalSnapshot) -> Bool
     func streamCoordinatorRemoveSnapshot(streamID: String?)
     func streamCoordinatorFlushPinnedLocalNoticesToTranscript()
     func streamCoordinatorDrainQueuedSlashMessageIfIdle()
@@ -114,6 +128,10 @@ final class ChatStreamCoordinator {
     private(set) var liveTokensPerSecond: Double?
     private var lastRecoveryStatusCheckDate: Date?
     private(set) var isReplayConnection = false
+    /// Replay floor for a server snapshot whose event id was missing/malformed.
+    /// It is set only after the snapshot's visible state was materialized.
+    private var materializedSnapshotReplayAfterSeq: Int?
+    private var didMaterializeRuntimeJournalSnapshot = false
     // Bumped whenever the active run starts or finalizes. Captured before an async
     // transcript load so a concurrent cancel/completion during the load can't be
     // double-finalized (PR #266 review #2).
@@ -172,24 +190,26 @@ final class ChatStreamCoordinator {
         let isSameRun = activeStreamID == streamID
         activeStreamID = streamID
         isConnectionSuspended = false
-        if !isSameRun, replayAfterSeq == nil {
+        if !isSameRun {
             lastEventID = nil
+            materializedSnapshotReplayAfterSeq = nil
         }
+        didMaterializeRuntimeJournalSnapshot = false
 
         // Resume from this connection's own cursor when it has one. Rejoining a
         // run that is still going used to drop it and attach bare, so the server
         // pushed only what happened from that moment on and everything produced
         // while the app was backgrounded never arrived (#8).
         //
-        // No cursor means no replay at all. Asking the server to replay a run
-        // this client never streamed would rebuild it on top of a transcript
-        // that has no in-flight assistant message to merge into, which
-        // duplicates content — the reference client only gets away with it by
-        // rendering the run-journal snapshot first. That is a larger change than
-        // this one and is deliberately left out.
-        let resumeEventID = (replayAfterSeq != nil || resumesFromLastEvent) ? lastEventID : nil
+        // A server-journal cursor is adopted only after its snapshot has been
+        // materialized into the transcript. With no local or server cursor we
+        // attach bare, because replaying from zero would duplicate content.
+        let parsedResumeEventSeq = Self.runJournalReplayAfterSeq(from: lastEventID)
         let resumeAfterSeq = replayAfterSeq
-            ?? (resumesFromLastEvent ? Self.runJournalReplayAfterSeq(from: resumeEventID) : nil)
+            ?? (resumesFromLastEvent ? parsedResumeEventSeq ?? materializedSnapshotReplayAfterSeq : nil)
+        let resumeEventID = resumeAfterSeq != nil && parsedResumeEventSeq != nil
+            ? Self.runQualifiedEventID(lastEventID, matching: streamID)
+            : nil
 
         markConnectionStarted(
             isReplay: resumeAfterSeq != nil,
@@ -246,31 +266,47 @@ final class ChatStreamCoordinator {
 
     func reconcileSessionLoad(
         loadedActiveStreamID rawLoadedActiveStreamID: String?,
+        runtimeJournalSnapshot: RuntimeJournalSnapshot?,
         preparation: ChatStreamLoadPreparation,
         usedCacheFallback: Bool
     ) {
         hasCompletedCurrentResponse = false
         liveTokensPerSecond = nil
+        didMaterializeRuntimeJournalSnapshot = false
 
         if usedCacheFallback {
             activeStreamID = nil
             isConnectionSuspended = false
             delegate?.streamCoordinatorStreamingAssistantMessageID = nil
+            materializedSnapshotReplayAfterSeq = nil
             resetRecoveryState()
             return
         }
 
         let loadedActiveStreamID = rawLoadedActiveStreamID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let previousStreamID = preparation.activeStreamIDBeforeLoad,
+           let loadedActiveStreamID,
+           !loadedActiveStreamID.isEmpty,
+           previousStreamID != loadedActiveStreamID {
+            lastEventID = nil
+            materializedSnapshotReplayAfterSeq = nil
+        }
         if preparation.shouldPrepareSuspendedStreamResume {
             delegate?.streamCoordinatorStreamingAssistantMessageID = nil
             if let streamID = loadedActiveStreamID, !streamID.isEmpty {
                 activeStreamID = streamID
                 delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 isConnectionSuspended = true
-                restoreSnapshotIfAvailable(streamID: streamID)
+                let restoredLocalSnapshot = restoreSnapshotIfAvailable(streamID: streamID)
+                if restoredLocalSnapshot == nil
+                    || (restoredLocalSnapshot?.lastEventID == nil
+                        && restoredLocalSnapshot?.hasVisibleStreamState == false) {
+                    applyRuntimeJournalSnapshotIfPossible(runtimeJournalSnapshot, streamID: streamID)
+                }
             } else {
                 activeStreamID = nil
                 isConnectionSuspended = false
+                materializedSnapshotReplayAfterSeq = nil
                 resetRecoveryState()
             }
         } else {
@@ -280,7 +316,12 @@ final class ChatStreamCoordinator {
             if let streamID {
                 activeStreamID = streamID
                 delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
-                restoreSnapshotIfAvailable(streamID: streamID)
+                let restoredLocalSnapshot = restoreSnapshotIfAvailable(streamID: streamID)
+                if restoredLocalSnapshot == nil
+                    || (restoredLocalSnapshot?.lastEventID == nil
+                        && restoredLocalSnapshot?.hasVisibleStreamState == false) {
+                    applyRuntimeJournalSnapshotIfPossible(runtimeJournalSnapshot, streamID: streamID)
+                }
                 if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
                     delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 }
@@ -301,8 +342,12 @@ final class ChatStreamCoordinator {
             guard self.activeStreamID == activeStreamID, isConnectionSuspended else { return }
 
             if response.active == true {
-                await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
-                guard self.activeStreamID == activeStreamID, isConnectionSuspended else { return }
+                let canResumeMaterializedServerSnapshot = didMaterializeRuntimeJournalSnapshot
+                didMaterializeRuntimeJournalSnapshot = false
+                if !canResumeMaterializedServerSnapshot {
+                    await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
+                    guard self.activeStreamID == activeStreamID, isConnectionSuspended else { return }
+                }
 
                 let streamIDToResume = activeStreamID
                 if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
@@ -314,7 +359,9 @@ final class ChatStreamCoordinator {
                 isConnectionSuspended = false
                 start(streamID: streamIDToResume, resumesFromLastEvent: true)
             } else if response.replayAvailable == true {
-                let replayAfterSeq = Self.runJournalReplayAfterSeq(from: lastEventID) ?? 0
+                let replayAfterSeq = Self.runJournalReplayAfterSeq(from: lastEventID)
+                    ?? materializedSnapshotReplayAfterSeq
+                    ?? 0
                 self.activeStreamID = activeStreamID
                 isConnectionSuspended = false
                 start(streamID: activeStreamID, replayAfterSeq: replayAfterSeq)
@@ -476,6 +523,14 @@ final class ChatStreamCoordinator {
         }
 
         return max(0, sequence)
+    }
+
+    private nonisolated static func runQualifiedEventID(_ eventID: String?, matching streamID: String) -> String? {
+        guard let eventID = eventID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let delimiterIndex = eventID.lastIndex(of: ":"),
+              eventID[..<delimiterIndex] == streamID
+        else { return nil }
+        return eventID
     }
 
     private func handle(_ event: SSEEvent) {
@@ -745,6 +800,8 @@ final class ChatStreamCoordinator {
         delegate?.streamCoordinatorStopAuxiliaryMonitoring(clearPrompt: true)
         activeStreamID = nil
         lastEventID = nil
+        materializedSnapshotReplayAfterSeq = nil
+        didMaterializeRuntimeJournalSnapshot = false
         liveTokensPerSecond = nil
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
         hasCompletedCurrentResponse = true
@@ -799,6 +856,8 @@ final class ChatStreamCoordinator {
         delegate?.streamCoordinatorRemoveSnapshot(streamID: finishedStreamID)
         activeStreamID = nil
         lastEventID = nil
+        materializedSnapshotReplayAfterSeq = nil
+        didMaterializeRuntimeJournalSnapshot = false
         liveTokensPerSecond = nil
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
         hasCompletedCurrentResponse = false
@@ -843,12 +902,38 @@ final class ChatStreamCoordinator {
         )
     }
 
-    private func restoreSnapshotIfAvailable(streamID: String) {
-        guard lastEventID == nil else {
-            _ = delegate?.streamCoordinatorRestoreSnapshotIfAvailable(streamID: streamID)
-            return
+    @discardableResult
+    private func restoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestore? {
+        guard let restored = delegate?.streamCoordinatorRestoreSnapshotIfAvailable(streamID: streamID) else {
+            return nil
         }
 
-        lastEventID = delegate?.streamCoordinatorRestoreSnapshotIfAvailable(streamID: streamID) ?? lastEventID
+        if lastEventID == nil {
+            lastEventID = restored.lastEventID
+        }
+        return restored
+    }
+
+    private func applyRuntimeJournalSnapshotIfPossible(
+        _ snapshot: RuntimeJournalSnapshot?,
+        streamID: String
+    ) {
+        guard let snapshot,
+              snapshot.streamId?.trimmingCharacters(in: .whitespacesAndNewlines) == streamID,
+              delegate?.streamCoordinatorApplyRuntimeJournalSnapshot(snapshot) == true
+        else { return }
+
+        didMaterializeRuntimeJournalSnapshot = true
+
+        let eventID = snapshot.lastEventId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let eventID,
+           !eventID.isEmpty,
+           let eventSeq = Self.runJournalReplayAfterSeq(from: eventID) {
+            lastEventID = eventID
+            materializedSnapshotReplayAfterSeq = eventSeq
+        } else if let lastSeq = snapshot.lastSeq, lastSeq > 0 {
+            lastEventID = nil
+            materializedSnapshotReplayAfterSeq = lastSeq
+        }
     }
 }

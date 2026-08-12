@@ -745,13 +745,21 @@ extension String {
 
 extension ModelCatalogOption {
     func matchesSelection(modelID: String?, providerID: String?) -> Bool {
-        guard let modelID, id.bareModelID == modelID.bareModelID else { return false }
+        guard let modelID else { return false }
+
+        let optionProvider = self.providerID ?? id.modelIDProviderPrefix
+        let selectionProvider = providerID
+            ?? optionProvider.flatMap { modelID.hasPrefix("@\($0):") ? $0 : nil }
+            ?? modelID.modelIDProviderPrefix
+        guard normalizedModelID(id, providerID: optionProvider)
+                == normalizedModelID(modelID, providerID: selectionProvider)
+        else { return false }
 
         // A provider named on either side has to agree, so two providers
         // offering the same bare id can't be confused — this deployment really
         // does serve `@gemini:gemini-2.5-flash` and `@google:gemini-2.5-flash`
         // side by side. The `@provider:` prefix counts as naming one.
-        guard let selectionProvider = providerID ?? modelID.modelIDProviderPrefix else {
+        guard let selectionProvider else {
             // A selection that names no provider is the active provider's
             // spelling, because the prefix is exactly what the server adds to
             // everyone else. Matching it against a prefixed option would tick
@@ -767,8 +775,15 @@ extension ModelCatalogOption {
         //
         // `parseModelOptions` fills `providerID` from the group's `provider_id`,
         // so this is only reachable if a server returns a group without one.
-        guard let optionProvider = self.providerID ?? id.modelIDProviderPrefix else { return false }
+        guard let optionProvider else { return false }
         return optionProvider == selectionProvider
+    }
+
+    private func normalizedModelID(_ modelID: String, providerID: String?) -> String {
+        guard let providerID else { return modelID.bareModelID }
+        let prefix = "@\(providerID):"
+        guard modelID.hasPrefix(prefix) else { return modelID.bareModelID }
+        return String(modelID.dropFirst(prefix.count))
     }
 }
 
