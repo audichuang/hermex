@@ -37,14 +37,13 @@ extension APIClient {
         try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
     }
 
-    /// Writes the reasoning effort (`POST /api/reasoning`). Newer hermes-webui
-    /// builds scope effort writes to the active session and reject the write
-    /// with `400 session_id is required for reasoning effort changes`; the
-    /// pinned upstream reads only `display`/`effort`/`model`/`provider` and
-    /// ignores the extra key, so sending it is safe on both. (#180)
+    /// Writes the reasoning effort (`POST /api/reasoning`). Verified against
+    /// the pinned upstream (`f1d399b4`) and `exp-v0.52.261` (`a00b02f`): both
+    /// ignore a `session_id` key, so no session scoping is needed or sent (#32).
+    /// An empty effort is accepted as "clear override" on develop-era servers
+    /// and clears the override on HEAD.
     func saveReasoningEffort(
         _ effort: String,
-        sessionID: String? = nil,
         model: String? = nil,
         provider: String? = nil
     ) async throws -> ReasoningStatusResponse {
@@ -53,7 +52,6 @@ extension APIClient {
             method: "POST",
             body: ReasoningEffortRequest(
                 effort: effort,
-                sessionId: sessionID,
                 model: model,
                 provider: provider
             )
@@ -199,8 +197,6 @@ private struct DefaultModelRequest: Encodable {
 
 private struct ReasoningEffortRequest: Encodable {
     let effort: String
-    // Encoded as `session_id` by convertToSnakeCase; omitted when nil.
-    let sessionId: String?
     let model: String?
     let provider: String?
 }

@@ -6210,7 +6210,7 @@ final class ChatViewModelSendTests: XCTestCase {
             switch request.url?.path {
             case "/api/reasoning" where request.httpMethod == "POST":
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                XCTAssertNil(body["session_id"])
                 XCTAssertEqual(body["model"] as? String, "gpt-5.4")
                 XCTAssertEqual(body["provider"] as? String, "openai")
                 return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "xhigh"}"#, for: request)

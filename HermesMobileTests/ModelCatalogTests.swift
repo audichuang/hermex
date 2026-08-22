@@ -644,7 +644,7 @@ final class ModelCatalogTests: XCTestCase {
             session: URLSession(configuration: configuration)
         )
 
-        _ = try await client.saveReasoningEffort("", sessionID: "session-abc")
+        _ = try await client.saveReasoningEffort("")
 
         XCTAssertEqual(sentEfforts, [""], "The empty effort is the whole re-enable path.")
     }
