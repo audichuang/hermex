@@ -40,8 +40,8 @@ extension APIClient {
     /// Writes the reasoning effort (`POST /api/reasoning`). Verified against
     /// the pinned upstream (`f1d399b4`) and `exp-v0.52.261` (`a00b02f`): both
     /// ignore a `session_id` key, so no session scoping is needed or sent (#32).
-    /// An empty effort is accepted as "clear override" on develop-era servers
-    /// and clears the override on HEAD.
+    /// Empty effort: the pin rejects with `400` (`effort is required`); HEAD
+    /// clears the override so thinking-toggle models can be re-enabled.
     func saveReasoningEffort(
         _ effort: String,
         model: String? = nil,
