@@ -41,6 +41,8 @@ extension APIClient {
     /// the write to the active session (`session_id` required). Newer servers
     /// also read `model`/`provider`; the pin ignores extra keys, so sending
     /// them is safe on both.
+    /// Empty effort: the pin rejects with `400` (`effort is required`); HEAD
+    /// clears the override so thinking-toggle models can be re-enabled.
     func saveReasoningEffort(
         _ effort: String,
         sessionID: String,
