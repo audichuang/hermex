@@ -1158,7 +1158,6 @@ final class ChatViewModel {
         do {
             let response = try await client.saveReasoningEffort(
                 selectedEffort,
-                sessionID: sessionID,
                 model: currentModel,
                 provider: currentModelProvider
             )
@@ -2932,7 +2931,6 @@ final class ChatViewModel {
             } else if Self.reasoningEffortArgs.contains(reasoning) {
                 let response = try await client.saveReasoningEffort(
                     reasoning,
-                    sessionID: sessionID,
                     model: currentModel,
                     provider: currentModelProvider
                 )
