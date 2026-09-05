@@ -163,7 +163,7 @@ final class SessionNavigationStateTests: XCTestCase {
         state.clearDestination()
         var events: [NewChatReturnEvent] = []
 
-        SessionListNewChatReturn.run(
+        SessionListDestinationReturn.run(
             from: oldDestination,
             to: state.destination,
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
@@ -181,7 +181,7 @@ final class SessionNavigationStateTests: XCTestCase {
         state.clearDestination()
         var events: [NewChatReturnEvent] = []
 
-        SessionListNewChatReturn.run(
+        SessionListDestinationReturn.run(
             from: oldDestination,
             to: state.destination,
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
@@ -196,7 +196,7 @@ final class SessionNavigationStateTests: XCTestCase {
         let secondRoute = PendingNewChatRoute()
         var events: [NewChatReturnEvent] = []
 
-        SessionListNewChatReturn.run(
+        SessionListDestinationReturn.run(
             from: .newChat(firstRoute),
             to: .newChat(secondRoute),
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
@@ -204,6 +204,68 @@ final class SessionNavigationStateTests: XCTestCase {
         )
 
         XCTAssertTrue(events.isEmpty)
+    }
+
+    func testReturningFromExistingChatRefreshesSessions() {
+        var didRefresh = false
+
+        SessionListDestinationReturn.run(
+            from: .session(SessionSummary(sessionId: "running-session")),
+            to: nil,
+            suppressEmptyPlaceholders: { XCTFail("Existing chats do not need placeholder cleanup") },
+            refreshSessions: { didRefresh = true }
+        )
+
+        XCTAssertTrue(didRefresh, "Returning to the session list must refresh running state without a pull gesture")
+    }
+
+    func testReturningFromSettingsRefreshesSessionChanges() {
+        var didRefresh = false
+
+        SessionListDestinationReturn.run(
+            from: .utility(.settings(nil)),
+            to: nil,
+            suppressEmptyPlaceholders: {},
+            refreshSessions: { didRefresh = true }
+        )
+
+        XCTAssertTrue(didRefresh)
+    }
+
+    func testSwitchingSidebarDestinationsRefreshesSessions() {
+        let first = SessionNavigationDestination.session(SessionSummary(sessionId: "first"))
+        let second = SessionNavigationDestination.session(SessionSummary(sessionId: "second"))
+        let settings = SessionNavigationDestination.utility(.settings(nil))
+
+        for (oldValue, newValue) in [(first, second), (first, settings), (settings, second)] {
+            var refreshCount = 0
+            SessionListDestinationReturn.run(
+                from: oldValue,
+                to: newValue,
+                suppressEmptyPlaceholders: { XCTFail("Only new-chat returns need placeholder cleanup") },
+                refreshSessions: { refreshCount += 1 }
+            )
+            XCTAssertEqual(refreshCount, 1, "Sidebar switches must adopt changes from the previous destination")
+        }
+    }
+
+    func testUnchangedDestinationDoesNotRefreshSessions() {
+        let destination = SessionNavigationDestination.session(SessionSummary(sessionId: "same-session"))
+        SessionListDestinationReturn.run(
+            from: destination,
+            to: destination,
+            suppressEmptyPlaceholders: { XCTFail("Unchanged destinations need no cleanup") },
+            refreshSessions: { XCTFail("Unchanged destinations need no refresh") }
+        )
+    }
+
+    func testOpeningDestinationDoesNotRefreshSessions() {
+        SessionListDestinationReturn.run(
+            from: nil,
+            to: .newChat(PendingNewChatRoute()),
+            suppressEmptyPlaceholders: { XCTFail("Opening a chat must not change the list") },
+            refreshSessions: { XCTFail("Opening a chat must not duplicate the initial refresh") }
+        )
     }
 
     func testRemovingSelectedSessionClearsDestinationAndRestorationID() {

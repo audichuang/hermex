@@ -195,6 +195,10 @@ enum ActiveStreamRecoveryState: Equatable {
     case reconnecting
 }
 
+extension Notification.Name {
+    static let sessionActivityDidChange = Notification.Name("Hermex.sessionActivityDidChange")
+}
+
 @MainActor
 @Observable
 final class ChatViewModel {
@@ -5667,6 +5671,10 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: Bool) {
         responseCompletionNeedsTranscriptRefresh = needsTranscriptRefresh
         responseCompletionHapticTrigger += 1
+    }
+
+    func streamCoordinatorDidChangeActiveStream() {
+        NotificationCenter.default.post(name: .sessionActivityDidChange, object: server)
     }
 
     func streamCoordinatorDidFinishStream() {

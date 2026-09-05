@@ -66,6 +66,7 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorDrainQueuedSlashMessageIfIdle()
     func streamCoordinatorRefreshCompletedResponseTitleIfNeeded()
     func streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: Bool)
+    func streamCoordinatorDidChangeActiveStream()
     func streamCoordinatorDidFinishStream()
     func streamCoordinatorDidReceiveErrorMessage(_ message: String)
     /// A non-fatal `warning` frame — the model was swapped for a fallback, or
@@ -118,7 +119,13 @@ final class ChatStreamCoordinator {
     private let timing: ChatStreamCoordinatorTiming
     private var showsLiveActivityResponseExcerpts: Bool
 
-    private(set) var activeStreamID: String?
+    private(set) var activeStreamID: String? {
+        didSet {
+            if activeStreamID != oldValue {
+                delegate?.streamCoordinatorDidChangeActiveStream()
+            }
+        }
+    }
     private(set) var recoveryState: ActiveStreamRecoveryState = .idle
     private(set) var isConnectionSuspended = false
     private(set) var hasCompletedCurrentResponse = false

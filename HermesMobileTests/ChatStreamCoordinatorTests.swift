@@ -1672,6 +1672,8 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         confirmedConnectionHealthCount += 1
     }
 
+    func streamCoordinatorDidChangeActiveStream() {}
+
     func streamCoordinatorDidStartConnection(isReplay: Bool) {
         startConnectionReplayValues.append(isReplay)
     }

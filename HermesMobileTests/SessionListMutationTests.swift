@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 import AVFoundation
 import ImageIO
 import SwiftData
@@ -8,8 +9,231 @@ import UniformTypeIdentifiers
 
 final class SessionListMutationTests: XCTestCase {
     override func tearDown() {
+        ChatViewModel.resetActiveStreamSnapshotsForTesting()
         MockURLProtocol.requestHandler = nil
         super.tearDown()
+    }
+
+    @MainActor
+    func testChatActivityRefreshesNewSessionWithoutManualReload() async throws {
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        var listRequests = 0
+        let client = try makeClient { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"stream_id":"stream-new"}"#, for: request)
+            case "/api/sessions":
+                listRequests += 1
+                let stream = listRequests == 1 ? #", "active_stream_id":"stream-new""# : ""
+                return apiTestJSONResponse("""
+                {"sessions":[{"session_id":"new-session", "title":"Untitled", "message_count":1\(stream)}]}
+                """, for: request)
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let list = SessionListViewModel(server: server, client: client)
+        let otherList = SessionListViewModel(server: try XCTUnwrap(URL(string: "https://example.test:8443")))
+        let otherSubscription = otherList.activityChanges.sink { _ in
+            XCTFail("A different server must not receive this chat's activity")
+        }
+        defer { otherSubscription.cancel() }
+        let stream = ScriptedSSEStreamingClient()
+        let chat = ChatViewModel(
+            session: SessionSummary(sessionId: "new-session", title: "Untitled", messageCount: 0),
+            server: server,
+            client: client,
+            streamClient: stream,
+            approvalStreamClient: ScriptedSSEStreamingClient(),
+            clarifyStreamClient: ScriptedSSEStreamingClient()
+        )
+        var refreshTask: Task<Void, Never>?
+        let subscription = list.activityChanges
+            .sink { _ in
+                refreshTask = Task { @MainActor in
+                    await list.load()
+                }
+            }
+        defer { subscription.cancel() }
+
+        XCTAssertTrue(list.sessions.isEmpty)
+        let didStart = await chat.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        let startRefresh = try XCTUnwrap(refreshTask, "An accepted send must trigger a sidebar update")
+        await startRefresh.value
+        let runningSession = try XCTUnwrap(list.sessions.first)
+        XCTAssertEqual(runningSession.sessionId, "new-session")
+        XCTAssertTrue(SessionRowView.isActiveStreaming(runningSession))
+
+        refreshTask = nil
+        stream.emit(.streamEnd)
+        let finishRefresh = try XCTUnwrap(refreshTask, "Completion must clear the sidebar's running state")
+        await finishRefresh.value
+        XCTAssertFalse(SessionRowView.isActiveStreaming(try XCTUnwrap(list.sessions.first)))
+        XCTAssertEqual(listRequests, 2)
+    }
+
+    @MainActor
+    func testRejectedChatSendDoesNotPublishRunningActivity() async throws {
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let client = try makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse(#"{"error":"Could not start chat"}"#, for: request)
+        }
+        let list = SessionListViewModel(server: server, client: client)
+        let subscription = list.activityChanges.sink { _ in
+            XCTFail("An unaccepted send must not announce a running session")
+        }
+        defer { subscription.cancel() }
+        let chat = ChatViewModel(
+            session: SessionSummary(sessionId: "new-session", title: "Untitled", messageCount: 0),
+            server: server,
+            client: client,
+            streamClient: ScriptedSSEStreamingClient()
+        )
+
+        let didStart = await chat.sendMessage("Keep working")
+
+        XCTAssertFalse(didStart)
+        XCTAssertTrue(list.sessions.isEmpty)
+        XCTAssertNil(chat.activeStreamID)
+    }
+
+    @MainActor
+    func testSameRunReconnectDoesNotPublishActivityWithOrWithoutReplay() async throws {
+        for replayAvailable in [false, true] {
+            let server = try XCTUnwrap(URL(string: "https://example.test"))
+            var startedRuns = 0
+            let client = try makeClient { request in
+                switch request.url?.path {
+                case "/api/chat/start":
+                    startedRuns += 1
+                    return apiTestJSONResponse("{\"stream_id\":\"stream-\(startedRuns)\"}", for: request)
+                case "/api/chat/stream/status":
+                    return apiTestJSONResponse("{\"active\":true,\"replay_available\":\(replayAvailable)}", for: request)
+                case "/api/session":
+                    return apiTestJSONResponse("""
+                    {"session":{"session_id":"same-run-session","active_stream_id":"stream-\(startedRuns)",
+                    "messages":[{"role":"user","content":"Another turn","message_id":"user-2"}]}}
+                    """, for: request)
+                default:
+                    XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
+                    return apiTestJSONResponse("{}", for: request)
+                }
+            }
+            let list = SessionListViewModel(server: server, client: client)
+            var activityChanges = 0
+            let subscription = list.activityChanges.sink { _ in activityChanges += 1 }
+            defer { subscription.cancel() }
+            let stream = ScriptedSSEStreamingClient()
+            let chat = ChatViewModel(
+                session: SessionSummary(sessionId: "same-run-session"),
+                server: server,
+                client: client,
+                streamClient: stream,
+                approvalStreamClient: ScriptedSSEStreamingClient(),
+                clarifyStreamClient: ScriptedSSEStreamingClient()
+            )
+
+            let didStart = await chat.sendMessage("Keep working")
+            XCTAssertTrue(didStart)
+            XCTAssertEqual(activityChanges, 1)
+
+            await chat.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(20))
+
+            XCTAssertEqual(stream.startedURLs.count, 2, "The test must actually reconnect")
+            XCTAssertEqual(chat.activeStreamID, "stream-1")
+            XCTAssertEqual(activityChanges, 1, "Reconnecting the same run must not reload the sidebar")
+
+            stream.emit(.streamEnd)
+            XCTAssertEqual(activityChanges, 2, "Finishing the run must still update the sidebar")
+            let didStartNextRun = await chat.sendMessage("Another turn")
+            XCTAssertTrue(didStartNextRun)
+            XCTAssertEqual(activityChanges, 3, "A new run in the same session must publish again")
+            chat.suspendStreamForNavigation()
+            XCTAssertEqual(activityChanges, 3, "Navigation suspension is not run completion")
+            await chat.reconnectStreamIfNeeded()
+            XCTAssertEqual(stream.startedURLs.count, 4, "Returning to the chat must reattach to the run")
+            XCTAssertEqual(chat.activeStreamID, "stream-2")
+            XCTAssertEqual(activityChanges, 3, "Navigation resume must not announce the same run again")
+            chat.suspendStreamForNavigation()
+        }
+    }
+
+    @MainActor
+    func testOlderListResponseCannotReplaceNewerRunningState() async throws {
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DeferredSessionListURLProtocol.self]
+        let client = APIClient(baseURL: server, session: URLSession(configuration: configuration))
+        let list = SessionListViewModel(server: server, client: client)
+        let firstRequest = expectation(description: "Initial list request")
+        let secondRequest = expectation(description: "Activity refresh request")
+        var requests: [DeferredSessionListURLProtocol] = []
+        DeferredSessionListURLProtocol.onRequest = { request in
+            requests.append(request)
+            (requests.count == 1 ? firstRequest : secondRequest).fulfill()
+        }
+        defer { DeferredSessionListURLProtocol.onRequest = nil }
+
+        let initialLoad = Task { await list.load() }
+        await fulfillment(of: [firstRequest], timeout: 2)
+        let activityRefresh = Task { await list.load() }
+        await fulfillment(of: [secondRequest], timeout: 2)
+        XCTAssertEqual(requests.count, 2)
+        guard requests.count == 2 else { return }
+
+        requests[1].complete(#"{"sessions":[{"session_id":"new-session","active_stream_id":"stream-new"}]}"#)
+        let didRefresh = await activityRefresh.value
+        XCTAssertTrue(didRefresh)
+        requests[0].complete(#"{"sessions":[]}"#)
+        let didApplyStaleResponse = await initialLoad.value
+
+        XCTAssertFalse(didApplyStaleResponse)
+        XCTAssertEqual(list.sessions.first?.activeStreamId, "stream-new")
+        XCTAssertFalse(list.isLoading)
+    }
+
+    @MainActor
+    func testServerStartedGoalPublishesActivityAfterLoadingItsStreamID() async throws {
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let client = try makeClient { request in
+            switch request.url?.path {
+            case "/api/goal":
+                return apiTestJSONResponse(#"{"ok":true,"action":"set","kickoff_prompt":"Keep working"}"#, for: request)
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {"session":{"session_id":"goal-session","active_stream_id":"goal-stream",
+                "messages":[{"role":"user","content":"Keep working","message_id":"user-goal"}]}}
+                """, for: request)
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let list = SessionListViewModel(server: server, client: client)
+        var activityChanges = 0
+        let subscription = list.activityChanges.sink { _ in activityChanges += 1 }
+        defer { subscription.cancel() }
+        let stream = ScriptedSSEStreamingClient()
+        let chat = ChatViewModel(
+            session: SessionSummary(sessionId: "goal-session"),
+            server: server,
+            client: client,
+            streamClient: stream,
+            approvalStreamClient: ScriptedSSEStreamingClient(),
+            clarifyStreamClient: ScriptedSSEStreamingClient()
+        )
+
+        let didSubmit = await chat.submitGoal(args: "Keep working")
+
+        XCTAssertTrue(didSubmit)
+        XCTAssertEqual(chat.activeStreamID, "goal-stream")
+        XCTAssertEqual(stream.startedURLs.count, 1)
+        XCTAssertEqual(activityChanges, 1, "Loading a newly started run before attaching must still refresh the list once")
+        stream.emit(.streamEnd)
+        XCTAssertEqual(activityChanges, 2)
     }
 
     @MainActor
@@ -2944,5 +3168,25 @@ private final class LockedSessionMutationRequestCounts {
         defer { lock.unlock() }
 
         return (loadRequestCount, pinMutationRequestCount)
+    }
+}
+
+private final class DeferredSessionListURLProtocol: URLProtocol {
+    @MainActor static var onRequest: ((DeferredSessionListURLProtocol) -> Void)?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Task { @MainActor in Self.onRequest?(self) }
+    }
+
+    override func stopLoading() {}
+
+    func complete(_ json: String) {
+        let (response, data) = apiTestJSONResponse(json, for: request)
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
     }
 }

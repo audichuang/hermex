@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Observation
 import SwiftData
 import SwiftUI
@@ -81,10 +82,16 @@ final class SessionListViewModel {
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
     private var activeRemoteSearchQuery: String?
+    private var sessionLoadGeneration = 0
 
     private let client: APIClient
     private let sessionMutator: SessionMutator
     private let server: URL
+
+    var activityChanges: some Publisher<Notification, Never> {
+        NotificationCenter.default.publisher(for: .sessionActivityDidChange)
+            .filter { [server] in $0.object as? URL == server }
+    }
 
     init(server: URL, client: APIClient? = nil) {
         self.server = server
@@ -208,15 +215,20 @@ final class SessionListViewModel {
 
     @discardableResult
     func load(modelContext: ModelContext? = nil, animation: Animation? = nil) async -> Bool {
+        sessionLoadGeneration += 1
+        let generation = sessionLoadGeneration
         isLoading = true
         errorMessage = nil
         cacheErrorMessage = nil
         sessionLoadError = nil
         lastError = nil
-        defer { isLoading = false }
+        defer {
+            if generation == sessionLoadGeneration { isLoading = false }
+        }
 
         do {
             let response = try await client.sessions()
+            guard !Task.isCancelled, generation == sessionLoadGeneration else { return false }
             let visibleSessions = (response.sessions ?? [])
                 .filter {
                     Self.nonEmpty($0.sessionId) != nil
@@ -236,7 +248,8 @@ final class SessionListViewModel {
 
             return true
         } catch {
-            guard !isCancellationError(error) else { return false }
+            guard !Task.isCancelled, generation == sessionLoadGeneration,
+                  !isCancellationError(error) else { return false }
 
             lastError = error
             sessionLoadError = error

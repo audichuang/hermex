@@ -40,6 +40,7 @@ struct SessionListView: View {
     @State private var sidebarScrollPosition: String?
     @State private var didCompleteInitialLoad = false
     @State private var returnRefreshID: UUID?
+    @State private var activityRefreshID: UUID?
     @FocusState private var searchFieldIsFocused: Bool
     @AppStorage(SessionSidebarDisclosureSettings.profilesAreExpandedKey)
     private var profilesAreExpanded = SessionSidebarDisclosureSettings.defaultProfilesAreExpanded
@@ -244,6 +245,18 @@ struct SessionListView: View {
                 guard returnRefreshID != nil else { return }
                 await refreshSessionsAndActiveProfile()
             }
+            .task(id: activityRefreshID) {
+                guard activityRefreshID != nil else { return }
+                await viewModel.load(modelContext: modelContext)
+                guard !Task.isCancelled else { return }
+                handleLastError()
+            }
+            .onReceive(viewModel.activityChanges) { _ in
+                // The chat/start request can be accepted after navigation back.
+                // Adopt its running row; the list monitor owns completion after
+                // the chat view suspends SSE. Activity changes only need sessions.
+                activityRefreshID = UUID()
+            }
             .onAppear {
                 openPendingSharedImportIfNeeded()
                 openRequestedNewChatIfNeeded()
@@ -266,7 +279,7 @@ struct SessionListView: View {
                 selectedProjectID = nil
             }
             .onChange(of: navigationState.destination) { oldValue, newValue in
-                SessionListNewChatReturn.run(
+                SessionListDestinationReturn.run(
                     from: oldValue,
                     to: newValue,
                     suppressEmptyPlaceholders: viewModel.removeEmptySidebarPlaceholders,
@@ -1307,20 +1320,20 @@ enum SessionListInitialLoad {
     }
 }
 
-enum SessionListNewChatReturn {
+enum SessionListDestinationReturn {
     static func run(
         from oldValue: SessionNavigationDestination?,
         to newValue: SessionNavigationDestination?,
         suppressEmptyPlaceholders: () -> Void,
         refreshSessions: () -> Void
     ) {
-        guard case .newChat = oldValue else { return }
-        if case .newChat = newValue { return }
+        guard let oldValue, oldValue != newValue else { return }
+        if case .newChat = oldValue, case .newChat = newValue { return }
 
-        // Keep this synchronous so an empty Untitled placeholder cannot flash
-        // during the navigation transition. The refresh then adopts the server's
-        // latest metadata for a new chat that has become contentful.
-        suppressEmptyPlaceholders()
+        if case .newChat = oldValue {
+            // Keep placeholder removal synchronous with the navigation pop.
+            suppressEmptyPlaceholders()
+        }
         refreshSessions()
     }
 }
