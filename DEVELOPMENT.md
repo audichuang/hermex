@@ -108,6 +108,14 @@ Stop any active Xcode Run session for the device before using `devicectl`.
 Keep the device unlocked during install and launch; a locked device can block the
 remote services used by the CLI.
 
+Over Wi-Fi (`xcrun devicectl device info details` reports `transportType: localNetwork`)
+a Debug install can die mid-transfer with `IXRemoteErrorDomain error 6`
+("Connection interrupted"). This is not the locked-device case above. In practice the
+large Debug bundle — most of it `HermesMobile.debug.dylib` — failed this way on repeated
+retries while a Release build installed first try. Attach USB, or build
+`-configuration Release` into its own `-derivedDataPath` and install that instead;
+Debug on device is only needed to attach a debugger.
+
 Build a normally signed Debug app:
 
 ```zsh

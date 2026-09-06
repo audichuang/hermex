@@ -101,10 +101,12 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 - Smallest proof that the change works while iterating: focused XCTest for the behavior you touched, via XcodeBuildMCP `test_sim`. Defaults live in `.xcodebuildmcp/config.yaml` (scheme `HermesMobile`, sim **iPhone 17**); if that sim is missing, pick a nearby iPhone and say which.
 - **Run the full XCTest suite before asking for review or committing a slice.** A failing build or test becomes the current task; fix it before writing more code on top.
 - Behavior changes ship with focused tests for that behavior.
+- Wire and request-body contracts are proven by XCTest on the encoded body, not by Simulator UI; tapping Settings does not prove a POST field is absent.
 - Async flows wait on expectations and scripted fixtures, never on sleeps or polling. A test that needs a timeout to pass is wrong.
+- A composer field the user can change during config load needs a ChatViewModel + URLProtocol race test proving a late load branch cannot clobber the newer value.
 - UI or runtime changes get one integrated pass in the real app: build, install, and launch a signed Debug build (`build_run_sim`), then hand the maintainer a short manual simulator test plan. Capture screenshots or logs when they are evidence. Subagents do not launch their own builds.
 - Physical-device artifacts must come from the exact commit under review. If the main worktree is dirty, use an isolated worktree with gitignored `Config/Local.xcconfig`; verify it remains ignored, and stop any Xcode Run session before terminal `devicectl` install or launch.
-- Xcode string extraction can rewrite `.xcstrings` after `xcodebuild` exits. Re-read `git status`, stage edited paths explicitly, and never use `git add -A` or `git commit -a` after validation.
+- Xcode string extraction can rewrite both `HermesMobile/Resources/Localizable.xcstrings` and `AppShortcuts.xcstrings` after `xcodebuild` exits. Re-read `git status`, stage edited paths explicitly, and never use `git add -A` or `git commit -a` after validation.
 - The project has no file-system synchronized group. Register every new test file in `HermesMobile.xcodeproj/project.pbxproj`; an unregistered file never runs even when the suite is green.
 - Run `scripts/check-swift-file-sizes` when a production Swift file grows. It is a warning, not a gate: use it to notice a missing seam, not to force unrelated refactors into the current issue.
 
@@ -112,6 +114,7 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 
 - Never push a branch, open or update a PR, or merge unless the developer explicitly asks you to do so.
 - One issue → one short `issue/<n>-slug` branch → one PR (`chore/` or `fix/` for approved work without an issue). `master` is the protected internal-TestFlight candidate: keep it buildable, never do feature work on it.
+- Upstream squash-merges. Before resolving a rebase conflict, check whether the contributor commit already landed as a squash; if so, `git rebase --skip` it instead of replaying the older implementation over maintainer edits.
 - Conventional commit titles, plain language: `fix(chat): recover the active stream after foregrounding`.
 - Body: follow the PR template. `Fixes #<n>`, the problem in a sentence or two, then how you fixed it and exactly how it was tested. End with the model and harness that did the work.
 - UI changes need before/after images. Motion or timing needs a short video.
@@ -151,6 +154,7 @@ Canonical vocabulary: `CONTEXT.md`.
 - Complexity belongs at the networking boundary. `Endpoint` and the `APIClient` extensions absorb the server contract, view models own screen state, views stay dumb.
 - The server owns execution. The app owns mobile interaction, presentation, drafts, credentials, and the read-only offline cache. Do not move server responsibilities into this repo.
 - Make async ownership explicit. Cancellation, stale results, reconnects, and duplicate events are normal mobile conditions; never mutate state after the owning view or task is gone.
+- Composer config load publishes snapshots while the user can still change Profile, model catalog, or workspace search. An in-flight load must not wait on the user update that started it, and must not republish a field a newer user-driven refresh already replaced. HTTP success does not count as applied.
 - Optimistic UI only when failure has a clear rollback. Never show success before the server says the operation succeeded.
 - Destructive and privacy-sensitive actions stay deliberate: file writes, Git operations, server administration, and credential changes get copy that states the real consequence.
 - Comments describe how a thing is used, and move when the code moves. To be used mostly to describe functions, not to annotate every line of behavior.
