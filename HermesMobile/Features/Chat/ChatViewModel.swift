@@ -909,7 +909,8 @@ final class ChatViewModel {
             }
         }
 
-        if let live = try? await client.modelsLive() {
+        if let live = try? await client.modelsLive(),
+           modelCatalogGroups.canApplyLiveModels(from: live) {
             modelCatalogGeneration &+= 1
             modelCatalogGroups = modelCatalogGroups.mergingLiveModels(from: live)
         }

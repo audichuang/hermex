@@ -851,11 +851,9 @@ extension Array where Element == ModelCatalogGroup {
     /// Returns `self` unchanged when the provider matches no group or the live
     /// list is empty, so an odd live response can never blank out the cached picker.
     func mergingLiveModels(from response: ModelsLiveResponse) -> [ModelCatalogGroup] {
-        guard let provider = response.normalizedProvider else { return self }
-
+        guard canApplyLiveModels(from: response),
+              let provider = response.normalizedProvider else { return self }
         let liveModels = response.liveOptions
-        guard !liveModels.isEmpty else { return self }
-
         return map { group in
             guard group.providerID == provider else { return group }
             return ModelCatalogGroup(
@@ -866,6 +864,17 @@ extension Array where Element == ModelCatalogGroup {
                 extraModels: group.extraModels
             )
         }
+    }
+
+    /// Live is only a catalog update when it can replace an existing provider
+    /// group. HTTP success with no provider, no models, or no matching group
+    /// must not take update rights from a pending `/api/models` load.
+    func canApplyLiveModels(from response: ModelsLiveResponse) -> Bool {
+        guard let provider = response.normalizedProvider,
+              !response.liveOptions.isEmpty else {
+            return false
+        }
+        return contains { $0.providerID == provider }
     }
 }
 
