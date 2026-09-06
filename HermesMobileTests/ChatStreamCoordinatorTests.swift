@@ -1872,7 +1872,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(coordinator.latestRunEnding?.ending, .completed)
 
         coordinator.start(streamID: "stream-error")
-        streamClient.emit(.error("server failed"))
+        streamClient.emit(.error(ErrorStreamEvent(message: "server failed")))
         XCTAssertEqual(coordinator.latestRunEnding?.ending, .failed)
     }
 
