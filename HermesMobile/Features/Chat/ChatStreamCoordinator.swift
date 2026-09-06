@@ -157,6 +157,10 @@ final class ChatStreamCoordinator {
     private(set) var liveTokensPerSecond: Double?
     @ObservationIgnored private var lastRecoveryStatusCheckDate: Date?
     @ObservationIgnored private var hasInMemorySnapshotForActiveStream = false
+    /// True after `start()` on this coordinator. Suspend keeps it so a
+    /// same-process reconnect can replay from `lastEventID` (#8). A cold
+    /// reopen that only restored a disk snapshot stays false.
+    @ObservationIgnored private var didAttachLiveStream = false
     private(set) var isReplayConnection = false
     // Foreground activation and view appearance can both request recovery for the
     // same suspended stream. Share one recovery task so callers cannot duplicate
@@ -260,6 +264,7 @@ final class ChatStreamCoordinator {
         if !isSameRun, replayAfterSeq == nil {
             lastEventID = nil
         }
+        didAttachLiveStream = true
 
         // Resume from this connection's own cursor when it has one. Rejoining a
         // run that is still going used to drop it and attach bare, so the server
@@ -476,7 +481,11 @@ final class ChatStreamCoordinator {
                           runGeneration: runGeneration
                       )
                 else { return }
-
+                // A cursor this process already streamed is the resume floor
+                // (#8). A cursor that only appeared because we materialized a
+                // disk snapshot belongs to origin's ordinary attach — sending
+                // it as replay duplicates the snapshot onto the transcript.
+                let shouldResumeLiveCursor = didAttachLiveStream && lastEventID != nil
                 if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
                     restoreSnapshotIfAvailable(streamID: streamID)
                 }
@@ -494,7 +503,11 @@ final class ChatStreamCoordinator {
                     ? 0
                     : nil
                 isConnectionSuspended = false
-                start(streamID: streamID, replayAfterSeq: replayAfterSeq, resumesFromLastEvent: true)
+                start(
+                    streamID: streamID,
+                    replayAfterSeq: replayAfterSeq,
+                    resumesFromLastEvent: shouldResumeLiveCursor
+                )
             } else if response.replayAvailable == true {
                 guard reconnectTaskIsCurrent(
                     reconnectTaskID: reconnectTaskID,
@@ -996,6 +1009,7 @@ final class ChatStreamCoordinator {
         recordRunEndingIfRunning(.completed)
         activeStreamID = nil
         hasInMemorySnapshotForActiveStream = false
+        didAttachLiveStream = false
         lastEventID = nil
         setLiveTokensPerSecondIfChanged(nil)
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
@@ -1056,6 +1070,7 @@ final class ChatStreamCoordinator {
         delegate?.streamCoordinatorRemoveSnapshot(streamID: finishedStreamID)
         activeStreamID = nil
         hasInMemorySnapshotForActiveStream = false
+        didAttachLiveStream = false
         lastEventID = nil
         setLiveTokensPerSecondIfChanged(nil)
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil

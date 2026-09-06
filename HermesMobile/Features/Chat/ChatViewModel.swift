@@ -1499,7 +1499,8 @@ final class ChatViewModel {
 
             let loadedMessages = session?.messages ?? []
             let loadedActiveStreamID = session?.activeStreamId?.trimmingCharacters(in: .whitespacesAndNewlines)
-            var reloadedMessages = loadedMessages            if let modelContext {
+            var reloadedMessages = loadedMessages
+            if let modelContext {
                 do {
                     let cachedMessages = try CacheStore.cachedMessages(
                         serverURL: server,
@@ -1573,29 +1574,8 @@ final class ChatViewModel {
             toolCallAnchorMessageID = nil
             reasoningAnchorMessageID = nil
             attachmentCoordinator.removeAllLocalPreviews()
-            if runtimeJournalSnapshot == nil,
-               let loadedActiveStreamID,
-               !loadedActiveStreamID.isEmpty {
-                let localSnapshot = ActiveChatStreamSnapshotStore.shared.snapshot(
-                    server: server,
-                    sessionID: sessionID,
-                    streamID: loadedActiveStreamID
-                )
-                if localSnapshot?.activeStreamLastEventID == nil,
-                   localSnapshot?.hasVisibleStreamState != true {
-                    // Paginated responses omit the journal snapshot upstream. Apply
-                    // their transcript first, then fetch metadata only when a local
-                    // snapshot cannot already restore this run (#8).
-                    runtimeJournalSnapshot = try? await client.session(
-                        id: sessionID,
-                        includeMessages: false,
-                        messageLimit: nil
-                    ).session?.runtimeJournalSnapshot
-                }
-            }
             streamCoordinator.reconcileSessionLoad(
                 loadedActiveStreamID: loadedActiveStreamID,
-                runtimeJournalSnapshot: runtimeJournalSnapshot,
                 preparation: streamLoadPreparation,
                 usedCacheFallback: false,
                 runStartedAt: Self.activeRunStartDate(
@@ -1638,7 +1618,6 @@ final class ChatViewModel {
                         attachmentCoordinator.removeAllLocalPreviews()
                         streamCoordinator.reconcileSessionLoad(
                             loadedActiveStreamID: nil,
-                            runtimeJournalSnapshot: nil,
                             preparation: streamLoadPreparation,
                             usedCacheFallback: true
                         )
@@ -1964,7 +1943,8 @@ final class ChatViewModel {
             .map { messages.index(after: $0) } ?? messages.startIndex
         guard !Self.loadedMessagesContainEquivalentUserMessage(
             Array(messages[tailStart...]),
-            localMessage: pendingMessage
+            localMessage: pendingMessage,
+            knownMessageIDsBeforeLoad: nil
         ) else {
             return
         }
@@ -4652,7 +4632,8 @@ final class ChatViewModel {
     }
 
     @discardableResult
-    private func restoreActiveStreamSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {        guard let sessionID,
+    private func restoreActiveStreamSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {
+        guard let sessionID,
               let snapshot = ActiveChatStreamSnapshotStore.shared.snapshot(
                 server: server,
                 sessionID: sessionID,
@@ -6182,7 +6163,8 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     @discardableResult
-    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {        restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
+    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {
+        restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
     }
 
     @discardableResult
