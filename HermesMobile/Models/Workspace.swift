@@ -19,6 +19,11 @@ struct WorkspaceRoot: Decodable, Equatable, Sendable {
         case name
     }
 
+    init(path: String?, name: String? = nil) {
+        self.path = path
+        self.name = name
+    }
+
     init(from decoder: Decoder) throws {
         if let stringValue = try? decoder.singleValueContainer().decode(String.self) {
             path = stringValue
@@ -31,6 +36,7 @@ struct WorkspaceRoot: Decodable, Equatable, Sendable {
         name = try container.decodeIfPresent(String.self, forKey: .name)
     }
 }
+
 
 /// Response shape shared by the four workspace-registry mutation routes
 /// (`/api/workspaces/add|remove|rename|reorder`). Verified against upstream

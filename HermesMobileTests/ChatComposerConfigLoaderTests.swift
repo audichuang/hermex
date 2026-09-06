@@ -76,14 +76,15 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertNil(result.state.supportsReasoningEffort)
         XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/workspace"])
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        XCTAssertEqual(requestPaths, [
-            "/api/profiles",
-            "/api/profile/switch",
-            "/api/models",
-            "/api/reasoning",
-            "/api/workspaces",
-            "/api/commands"
-        ])
+        XCTAssertTrue(requestPaths.contains("/api/profiles"))
+        XCTAssertTrue(requestPaths.contains("/api/profile/switch"))
+        XCTAssertTrue(requestPaths.contains("/api/models"))
+        XCTAssertTrue(requestPaths.contains("/api/reasoning"))
+        XCTAssertTrue(requestPaths.contains("/api/workspaces"))
+        XCTAssertTrue(requestPaths.contains("/api/commands"))
+        assertProfileResolutionPrecedesCatalogs(requestPaths)
+        assertReasoningFollowsResolvedModel(requestPaths)
+
     }
 
     func testLoadKeepsSessionModelOverrideWhenProfileHasDifferentDefault() async throws {
@@ -189,6 +190,10 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                     headerFields: ["Content-Type": "application/json"]
                 )
                 return (try XCTUnwrap(response), Data(#"{"error":"models unavailable"}"#.utf8))
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
             case "/api/commands":
                 return apiTestJSONResponse(#"{"commands": [{"name": "status"}]}"#, for: request)
             default:
@@ -205,9 +210,14 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.selectedProfileName, "default")
         XCTAssertEqual(result.state.profileOptions.map(\.name), ["default"])
         XCTAssertEqual(result.state.currentModel, "gpt-5.4")
-        XCTAssertNil(result.state.currentModelProvider)
+        XCTAssertEqual(result.state.currentModelProvider, "openai")
+        XCTAssertEqual(result.state.currentWorkspace, "/tmp/workspace")
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        XCTAssertEqual(requestPaths, ["/api/profiles", "/api/models", "/api/commands"])
+        XCTAssertTrue(requestPaths.contains("/api/profiles"))
+        XCTAssertTrue(requestPaths.contains("/api/models"))
+        XCTAssertTrue(requestPaths.contains("/api/workspaces"))
+        XCTAssertTrue(requestPaths.contains("/api/commands"))
+        assertProfileResolutionPrecedesCatalogs(requestPaths)
     }
 
     func testLoadStoresSingleProfileModeFromProfilesResponse() async throws {
@@ -244,7 +254,35 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertNil(result.configurationError)
         XCTAssertTrue(result.state.isSingleProfileMode)
     }
+
+    private func assertProfileResolutionPrecedesCatalogs(_ requestPaths: [String]) {
+        guard let profilesIndex = requestPaths.firstIndex(of: "/api/profiles") else {
+            return XCTFail("Expected /api/profiles")
+        }
+
+        let catalogStart = requestPaths.firstIndex(of: "/api/profile/switch") ?? profilesIndex
+        for path in ["/api/models", "/api/workspaces", "/api/commands", "/api/reasoning"] {
+            guard let index = requestPaths.firstIndex(of: path) else { continue }
+            XCTAssertGreaterThan(index, catalogStart, "\(path) must follow profile resolution")
+        }
+    }
+
+    private func assertReasoningFollowsResolvedModel(_ requestPaths: [String]) {
+        guard let reasoningIndex = requestPaths.firstIndex(of: "/api/reasoning") else {
+            return XCTFail("Expected /api/reasoning")
+        }
+
+        let switchIndex = requestPaths.firstIndex(of: "/api/profile/switch")
+        let modelsIndex = requestPaths.firstIndex(of: "/api/models")
+        let resolvedBeforeReasoning = (switchIndex.map { $0 < reasoningIndex } ?? false)
+            || (modelsIndex.map { $0 < reasoningIndex } ?? false)
+        XCTAssertTrue(
+            resolvedBeforeReasoning,
+            "Reasoning must follow a resolved model/provider"
+        )
+    }
 }
+
 
 /// Pure gating logic for the composer reasoning-effort menu (issue #18):
 /// building the option list from `supported_efforts` and deciding whether

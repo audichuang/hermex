@@ -84,6 +84,9 @@ struct MessageComposerView: View {
     let workspaceRoots: [WorkspaceRoot]
     let selectedWorkspacePath: String?
     let workspaceSuggestions: [String]
+    var workspaceRecentPaths: [String] = []
+    var isLoadingWorkspaceSuggestions = false
+    var workspaceSuggestionsErrorMessage: String?
     /// Server base URL for the workspace-registry manager; nil hides the
     /// Manage affordance in the workspace picker.
     let workspaceManagementServer: URL?
@@ -102,6 +105,7 @@ struct MessageComposerView: View {
     /// When false the model has no effort control — hide the reasoning menu.
     let showsReasoningControl: Bool
     let isUpdatingConfiguration: Bool
+    var configurationPendingMessage: String?
     let pendingAttachments: [PendingAttachment]
     let isUploadingAttachment: Bool
     let attachmentUploadCount: Int
@@ -118,6 +122,7 @@ struct MessageComposerView: View {
     let onSelectModel: (ModelCatalogOption) -> Void
     let onModelPickerOpen: () async -> Void
     let onLoadWorkspaceSuggestions: (String) async -> Void
+    var onRetryWorkspaceSuggestions: () async -> Void = {}
     let onWorkspaceRegistryChanged: () async -> Void
     let onLoadPersonalitySuggestions: () async -> Void
     let onLoadSkillSuggestions: () async -> Void
@@ -143,6 +148,8 @@ struct MessageComposerView: View {
     @State private var noticeMessage: String?
     @State private var showsAllModelsSheet = false
     @State private var showsWorkspaceSheet = false
+    @State private var modelPickerDetent: PresentationDetent = .large
+    @State private var workspacePickerDetent: PresentationDetent = .large
     @State private var optimisticWorkspacePath: String?
     @State private var favoriteModelKeys = ModelFavoritesStore.shared.favoriteKeys
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
@@ -437,30 +444,38 @@ struct MessageComposerView: View {
                     recentModelKeys = ModelRecentsStore.shared.removeRecent(for: option)
                 }
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large, .medium], selection: $modelPickerDetent)
             .presentationDragIndicator(.visible)
             .task {
+                favoriteModelKeys = ModelFavoritesStore.shared.favoriteKeys
+                recentModelKeys = ModelRecentsStore.shared.recentKeys
                 await onModelPickerOpen()
             }
         }
+
         .sheet(isPresented: $showsWorkspaceSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
             ComposerWorkspacePickerSheet(
                 workspaceRoots: workspaceRoots,
                 selectedWorkspacePath: displayedWorkspacePath,
+                recentPaths: workspaceRecentPaths,
                 suggestions: workspaceSuggestions,
+                isLoadingSuggestions: isLoadingWorkspaceSuggestions,
+                suggestionsErrorMessage: workspaceSuggestionsErrorMessage,
                 managementServer: isOfflineReadOnly ? nil : workspaceManagementServer,
                 onLoadSuggestions: onLoadWorkspaceSuggestions,
+                onRetrySuggestions: onRetryWorkspaceSuggestions,
                 onSelect: { path in
-                    optimisticWorkspacePath = path
                     showsWorkspaceSheet = false
                     await onSelectWorkspace(path)
                 },
                 onRegistryChanged: onWorkspaceRegistryChanged
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large, .medium], selection: $workspacePickerDetent)
             .presentationDragIndicator(.visible)
         }
         .fileImporter(
+
+
             isPresented: $showFileImporter,
             allowedContentTypes: [.item],
             allowsMultipleSelection: true
@@ -793,19 +808,13 @@ struct MessageComposerView: View {
 
     private var modelMenu: some View {
         ComposerModelMenu(
-            modelGroups: modelGroups,
-            selectedModelID: selectedModelID,
-            selectedModelProviderID: selectedModelProviderID,
             selectedModelTitle: selectedModelTitle,
             isLoadingModels: isLoadingModels,
-            favoriteModelKeys: favoriteModelKeys,
-            recentModelKeys: recentModelKeys,
             isDisabled: isConfigurationControlDisabled,
             maxWidth: modelControlMaxWidth,
             color: metaControlColor,
             controlFont: metaControlFont,
-            chevronFont: metaChevronFont,
-            onSelectModel: selectModel
+            chevronFont: metaChevronFont
         ) {
             prepareForComposerPresentation()
             showsAllModelsSheet = true
@@ -828,9 +837,9 @@ struct MessageComposerView: View {
     }
 
     private func selectModel(_ option: ModelCatalogOption) {
-        recentModelKeys = ModelRecentsStore.shared.recordRecent(option)
         onSelectModel(option)
     }
+
 
     private var composerStatus: (text: String, isError: Bool, isDismissible: Bool)? {
         if isOfflineReadOnly {
@@ -850,8 +859,9 @@ struct MessageComposerView: View {
         } else if let configurationErrorMessage {
             return (configurationErrorMessage, true, false)
         } else if isUpdatingConfiguration {
-            return (String(localized: "Updating composer settings..."), false, false)
+            return (configurationPendingMessage ?? String(localized: "Updating composer settings..."), false, false)
         }
+
 
         return nil
     }

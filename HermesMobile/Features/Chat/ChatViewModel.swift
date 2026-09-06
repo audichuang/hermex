@@ -329,6 +329,11 @@ final class ChatViewModel {
     private(set) var agentCommands: [AgentCommand] = []
     private(set) var workspaceRoots: [WorkspaceRoot] = []
     private(set) var workspaceSuggestions: [String] = []
+    private(set) var workspaceRecentPaths: [String] = []
+    private(set) var isLoadingWorkspaceSuggestions = false
+    private(set) var workspaceSuggestionsErrorMessage: String?
+    private var workspaceSuggestionFetchToken = 0
+    private var lastWorkspaceSuggestionPrefix = ""
     private(set) var personalitySuggestions: [String] = ["none"]
     private(set) var skillSlashSuggestions: [SkillSlashSuggestion] = []
     private(set) var profileOptions: [ProfileSummary] = []
@@ -354,7 +359,18 @@ final class ChatViewModel {
         )
     }
     private(set) var isLoadingComposerConfiguration = false
-    private(set) var isUpdatingComposerConfiguration = false
+    private(set) var isUpdatingComposerConfiguration = false {
+        didSet {
+            if oldValue, !isUpdatingComposerConfiguration {
+                let waiters = composerUpdateWaiters
+                composerUpdateWaiters.removeAll()
+                waiters.forEach { $0.resume() }
+            }
+        }
+    }
+    private var composerUpdateWaiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var pendingComposerModel: ModelCatalogOption?
+    private(set) var pendingWorkspacePath: String?
     private(set) var composerConfigurationErrorMessage: String?
     var pendingAttachments: [PendingAttachment] { attachmentCoordinator.pendingAttachments }
     var isUploadingAttachment: Bool { attachmentCoordinator.isUploadingAttachment }
@@ -401,6 +417,7 @@ final class ChatViewModel {
     private let listenAudioSession: any ListenAudioSessionControlling
     private let listenRemoteControlCenter: any ListenRemoteControlControlling
     private let userDefaults: UserDefaults
+    private let workspaceRecentsStore: WorkspaceRecentsStore
     private let pollingIntervals: ChatPollingIntervals
     // Real-time window over which rapid streaming updates coalesce into a single
     // scroll trigger / first content flush. Injectable so tests can drive
@@ -508,7 +525,8 @@ final class ChatViewModel {
         listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
         serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
         draftAttachmentStore: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        workspaceRecentsStore: WorkspaceRecentsStore = WorkspaceRecentsStore()
     ) {
         sessionID = session.sessionId
         currentWorkspace = session.workspace
@@ -550,6 +568,8 @@ final class ChatViewModel {
         self.listenAudioSession = listenAudioSession ?? ListenAudioSessionController()
         self.listenRemoteControlCenter = listenRemoteControlCenter ?? ListenRemoteControlController()
         self.userDefaults = userDefaults
+        self.workspaceRecentsStore = workspaceRecentsStore
+
         self.listenPlaybackSpeed = ListenPlaybackSpeed.stored(in: userDefaults)
         self.serverTTSAudioPlayerFactory = serverTTSAudioPlayerFactory
             ?? { try ServerTTSAudioPlayer(data: $0) }
@@ -610,6 +630,20 @@ final class ChatViewModel {
     var selectedWorkspacePath: String? {
         currentWorkspace
     }
+
+    var composerPendingUpdateMessage: String? {
+        if let pendingComposerModel {
+            return String(localized: "Switching to \(pendingComposerModel.displayName)...")
+        }
+        if let pendingWorkspacePath {
+            return String(localized: "Switching workspace to \(pendingWorkspacePath.lastPathComponentFallback)...")
+        }
+        if isUpdatingComposerConfiguration {
+            return String(localized: "Updating composer settings...")
+        }
+        return nil
+    }
+
 
     var selectedProfileTitle: String {
         let profileName = selectedProfileName ?? currentProfile
@@ -779,17 +813,34 @@ final class ChatViewModel {
 
         repeat {
             needsComposerConfigurationReload = false
+            if isUpdatingComposerConfiguration {
+                await withCheckedContinuation { continuation in
+                    composerUpdateWaiters.append(continuation)
+                }
+            }
 
+
+            let loadGeneration = composerConfigurationInteractionGeneration
+            let expectedSessionID = sessionID
             let initialState = composerConfigurationState
             let result = await ChatComposerConfigLoader(client: client)
-                .loadConfiguration(from: initialState)
+                .loadConfiguration(from: initialState) { proposed in
+                    await MainActor.run {
+                        guard self.sessionID == expectedSessionID,
+                              self.composerConfigurationInteractionGeneration == loadGeneration else {
+                            return false
+                        }
+                        self.applyComposerConfigurationState(proposed)
+                        return true
+                    }
+                }
 
-            guard composerConfigurationState == initialState else {
+
+            if sessionID != expectedSessionID
+                || composerConfigurationInteractionGeneration != loadGeneration {
                 needsComposerConfigurationReload = true
                 continue
             }
-
-            applyComposerConfigurationState(result.state)
 
             if let error = result.configurationError {
                 lastError = error
@@ -797,6 +848,7 @@ final class ChatViewModel {
             }
         } while needsComposerConfigurationReload
     }
+
 
     /// Refreshes the model catalog when a picker opens: refetch `/api/models`
     /// (so the sheet stops pinning the chat-load-time snapshot), then overlay
@@ -851,7 +903,9 @@ final class ChatViewModel {
         workspaceSuggestions = state.workspaceSuggestions
         profileOptions = state.profileOptions
         isSingleProfileMode = state.isSingleProfileMode
+        refreshWorkspaceRecents()
     }
+
 
     func refreshApprovalBypassState() async {
         await pendingActionCoordinator.refreshApprovalBypassState()
@@ -885,9 +939,13 @@ final class ChatViewModel {
         }
 
         isUpdatingComposerConfiguration = true
+        pendingComposerModel = option
         composerConfigurationErrorMessage = nil
         lastError = nil
-        defer { isUpdatingComposerConfiguration = false }
+        defer {
+            isUpdatingComposerConfiguration = false
+            pendingComposerModel = nil
+        }
 
         do {
             let response = try await client.updateSession(
@@ -901,6 +959,7 @@ final class ChatViewModel {
             currentModelProvider = response.session?.modelProvider ?? option.providerID
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
+            ModelRecentsStore.shared.recordRecent(option)
             // Still inside the isUpdatingComposerConfiguration window, so the
             // effort menu stays disabled until the new model's gating lands —
             // no interactable flash of the previous model's options (issue #18).
@@ -911,6 +970,7 @@ final class ChatViewModel {
             composerConfigurationErrorMessage = error.localizedDescription
             return false
         }
+
     }
 
     /// Re-queries `GET /api/reasoning` for the current model/provider and updates
@@ -952,8 +1012,6 @@ final class ChatViewModel {
         }
     }
 
-    /// Refetches the workspace registry after the manager sheet mutated it
-    /// (issue #22), so the picker reflects adds/removes/renames/reorders.
     func refreshWorkspaceRoots() async {
         guard !isViewingCachedData else { return }
 
@@ -961,25 +1019,69 @@ final class ChatViewModel {
             let response = try await client.workspaces()
             workspaceRoots = response.workspaces ?? []
             workspaceSuggestions = workspaceRoots.compactMap(\.path)
+            refreshWorkspaceRecents()
         } catch {
             lastError = error
         }
     }
 
     func loadWorkspaceSuggestions(prefix: String) async {
+        lastWorkspaceSuggestionPrefix = prefix
+        workspaceSuggestionFetchToken += 1
+        let token = workspaceSuggestionFetchToken
+        let expectedSessionID = sessionID
+        let expectedProfile = selectedProfileName ?? currentProfile
+        let expectedServer = server
+
         guard !isViewingCachedData else {
             workspaceSuggestions = workspaceRoots.compactMap(\.path)
+            workspaceSuggestionsErrorMessage = nil
+            isLoadingWorkspaceSuggestions = false
             return
         }
 
+        isLoadingWorkspaceSuggestions = true
+        workspaceSuggestionsErrorMessage = nil
+
         do {
             let response = try await client.workspaceSuggestions(prefix: prefix)
+            guard token == workspaceSuggestionFetchToken,
+                  !Task.isCancelled,
+                  sessionID == expectedSessionID,
+                  server == expectedServer,
+                  (selectedProfileName ?? currentProfile) == expectedProfile,
+                  lastWorkspaceSuggestionPrefix == prefix else { return }
             workspaceSuggestions = response.suggestions ?? []
+        } catch is CancellationError {
+            return
         } catch {
+            guard token == workspaceSuggestionFetchToken,
+                  !Task.isCancelled,
+                  sessionID == expectedSessionID,
+                  lastWorkspaceSuggestionPrefix == prefix else { return }
             lastError = error
-            composerConfigurationErrorMessage = error.localizedDescription
+            workspaceSuggestionsErrorMessage = error.localizedDescription
+        }
+
+        if token == workspaceSuggestionFetchToken {
+            isLoadingWorkspaceSuggestions = false
         }
     }
+
+    func retryWorkspaceSuggestions() async {
+        await loadWorkspaceSuggestions(prefix: lastWorkspaceSuggestionPrefix)
+    }
+
+    private func refreshWorkspaceRecents() {
+        let paths = workspaceRecentsStore.recents(
+            server: server,
+            profileName: selectedProfileName ?? currentProfile
+        )
+        workspaceRecentPaths = paths.filter {
+            WorkspaceRecentsStore.isWithinTrustedRoots($0, roots: workspaceRoots)
+        }
+    }
+
 
     func loadPersonalitySuggestions() async {
         guard !hasLoadedPersonalitySuggestions else { return }
@@ -1046,12 +1148,14 @@ final class ChatViewModel {
             return false
         }
 
-        let previousWorkspace = currentWorkspace
-        currentWorkspace = workspace
+        pendingWorkspacePath = workspace
         isUpdatingComposerConfiguration = true
         composerConfigurationErrorMessage = nil
         lastError = nil
-        defer { isUpdatingComposerConfiguration = false }
+        defer {
+            isUpdatingComposerConfiguration = false
+            pendingWorkspacePath = nil
+        }
 
         do {
             let response = try await client.updateSession(
@@ -1064,13 +1168,19 @@ final class ChatViewModel {
             currentWorkspace = response.session?.workspace ?? workspace
             currentModel = response.session?.model ?? currentModel
             currentModelProvider = response.session?.modelProvider ?? currentModelProvider
+            workspaceRecentsStore.record(
+                currentWorkspace ?? workspace,
+                server: server,
+                profileName: selectedProfileName ?? currentProfile
+            )
+            refreshWorkspaceRecents()
             return true
         } catch {
-            currentWorkspace = previousWorkspace
             lastError = error
             composerConfigurationErrorMessage = error.localizedDescription
             return false
         }
+
     }
 
     func switchProfile(

@@ -5519,15 +5519,24 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-        XCTAssertEqual(requestPaths, [
-            "/api/profiles",
-            "/api/profile/switch",
-            "/api/models",
-            "/api/reasoning",
-            "/api/workspaces",
-            "/api/commands",
-            "/api/chat/start"
-        ])
+        XCTAssertTrue(requestPaths.contains("/api/profiles"))
+        XCTAssertTrue(requestPaths.contains("/api/profile/switch"))
+        XCTAssertTrue(requestPaths.contains("/api/models"))
+        XCTAssertTrue(requestPaths.contains("/api/reasoning"))
+        XCTAssertTrue(requestPaths.contains("/api/workspaces"))
+        XCTAssertTrue(requestPaths.contains("/api/commands"))
+        XCTAssertEqual(requestPaths.last, "/api/chat/start")
+        if let profilesIndex = requestPaths.firstIndex(of: "/api/profiles"),
+           let switchIndex = requestPaths.firstIndex(of: "/api/profile/switch") {
+            XCTAssertLessThan(profilesIndex, switchIndex)
+            for path in ["/api/models", "/api/workspaces", "/api/commands", "/api/reasoning"] {
+                guard let index = requestPaths.firstIndex(of: path) else { continue }
+                XCTAssertGreaterThan(index, switchIndex)
+            }
+        } else {
+            XCTFail("Profile resolution must run before catalogs")
+        }
+
     }
 
     @MainActor
@@ -5699,7 +5708,11 @@ final class ChatViewModelSendTests: XCTestCase {
         let selectWorkspaceTask = Task { @MainActor in
             await viewModel.selectWorkspacePath(selectedWorkspace)
         }
-        try await waitUntil { viewModel.selectedWorkspacePath == selectedWorkspace }
+        try await waitUntil {
+            viewModel.pendingWorkspacePath == selectedWorkspace
+                || viewModel.selectedWorkspacePath == selectedWorkspace
+        }
+
         releaseProfilesIfNeeded()
 
         let didSelectWorkspace = await selectWorkspaceTask.value

@@ -25,6 +25,8 @@ struct KeychainStore: KeychainStoring {
         // URL is treated as a credential, so the registry
         // lives in the Keychain, not UserDefaults (#15).
         case servers = "servers"
+        // JSON-encoded recent workspace paths, scoped by server URL and Profile.
+        case recentWorkspaces = "recent_workspaces"
     }
 
     private let keychain: Keychain

@@ -16,6 +16,8 @@ struct ComposerModelPickerSheet: View {
     @State private var customProviderID = ""
     @State private var sectionExpansion = ComposerModelPickerSectionExpansionState()
     @State private var overflowExpansion = ModelPickerOverflowExpansionState()
+    @State private var showsCustomModelEntry = false
+
 
     private let currentCustomGroupID = "current-custom-model"
     private let savedCustomGroupID = "saved-custom-models"
@@ -23,9 +25,9 @@ struct ComposerModelPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                customModelEntry
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
-                    .listRowSeparator(.hidden)
+                if searchQuery.isEmpty {
+                    shortcutSections
+                }
 
                 ForEach(filteredModelGroups) { group in
                     modelGroupDisclosure(group)
@@ -33,10 +35,14 @@ struct ComposerModelPickerSheet: View {
                         .listRowSeparator(.hidden)
                 }
 
-                if filteredModelGroups.isEmpty && !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if filteredModelGroups.isEmpty && !searchQuery.isEmpty {
                     ContentUnavailableView.search(text: searchText)
                         .listRowSeparator(.hidden)
                 }
+
+                advancedCustomModelEntry
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
+                    .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -65,15 +71,57 @@ struct ComposerModelPickerSheet: View {
         .adaptiveFormPresentation()
     }
 
+    @ViewBuilder
+    private var shortcutSections: some View {
+        if let current = shortcuts.current {
+            Section("Current") {
+                modelOptionRow(current, allowsDelete: false)
+            }
+        }
+
+        if !shortcuts.favorites.isEmpty {
+            Section("Favorites") {
+                ForEach(shortcuts.favorites, id: \.self) { option in
+                    modelOptionRow(option, allowsDelete: false)
+                }
+            }
+        }
+
+        if !shortcuts.recents.isEmpty {
+            Section("Recent") {
+                ForEach(shortcuts.recents, id: \.self) { option in
+                    modelOptionRow(option, allowsDelete: false)
+                }
+            }
+        }
+    }
+
+    private var advancedCustomModelEntry: some View {
+        DisclosureGroup(isExpanded: $showsCustomModelEntry) {
+            customModelEntry
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Advanced")
+                    .font(AppFont.subheadline(weight: .semibold))
+                Text("Enter a custom model ID")
+                    .font(AppFont.caption())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 6)
+        }
+        .tint(Color(.secondaryLabel))
+        .accessibilityHint("Shows the custom model form")
+    }
+
     private var customModelEntry: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Custom Model")
-                .font(.system(size: 13, weight: .semibold))
+                .font(AppFont.subheadline(weight: .semibold))
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 7) {
                 TextField("Exact model ID", text: $customModelID)
-                    .font(.system(size: 14, weight: .regular))
+                    .font(AppFont.body())
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(.horizontal, 10)
@@ -82,7 +130,7 @@ struct ComposerModelPickerSheet: View {
 
                 HStack(spacing: 8) {
                     TextField("Provider ID", text: $customProviderID)
-                        .font(.system(size: 14, weight: .regular))
+                        .font(AppFont.body())
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .padding(.horizontal, 10)
@@ -98,8 +146,8 @@ struct ComposerModelPickerSheet: View {
                             }
                         } label: {
                             Image(systemName: "chevron.down.circle")
-                                .font(.system(size: 18, weight: .regular))
-                                .frame(width: 34, height: 34)
+                                .font(AppFont.title3())
+                                .frame(minWidth: 44, minHeight: 44)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Choose provider ID")
@@ -114,10 +162,10 @@ struct ComposerModelPickerSheet: View {
                     dismiss()
                 } label: {
                     Label("Use Custom", systemImage: "plus.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(AppFont.subheadline(weight: .semibold))
+                        .frame(minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.small)
                 .disabled(customOption == nil)
 
                 Button {
@@ -125,8 +173,8 @@ struct ComposerModelPickerSheet: View {
                     onToggleFavorite(customOption)
                 } label: {
                     Image(systemName: isCustomOptionFavorite ? "star.fill" : "star")
-                        .font(.system(size: 15, weight: .regular))
-                        .frame(width: 30, height: 30)
+                        .font(AppFont.body())
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(isCustomOptionFavorite ? Color.yellow : Color(.tertiaryLabel))
@@ -139,13 +187,14 @@ struct ComposerModelPickerSheet: View {
         .padding(.vertical, 2)
     }
 
+
     private func modelGroupDisclosure(_ group: ModelCatalogGroup) -> some View {
         let displayedModels = overflowExpansion.displayedModels(in: group)
         let totalModelCount = group.allModels.count
 
         return DisclosureGroup(
             isExpanded: Binding(
-                get: { sectionExpansion.isExpanded(groupID: group.id) },
+                get: { sectionExpansion.isExpanded(groupID: group.id, defaultExpandedGroupID: defaultExpandedGroupID) },
                 set: { isExpanded in
                     sectionExpansion.setExpanded(isExpanded, groupID: group.id)
                 }
@@ -172,7 +221,7 @@ struct ComposerModelPickerSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Text(group.name)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
@@ -181,7 +230,7 @@ struct ComposerModelPickerSheet: View {
                         ? "\(displayedModels.count) / \(totalModelCount)"
                         : "\(displayedModels.count)"
                 )
-                    .font(.system(size: 12, weight: .medium))
+                    .font(AppFont.caption(weight: .medium))
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(
                         Text("Showing \(displayedModels.count) of \(totalModelCount) models")
@@ -212,16 +261,17 @@ struct ComposerModelPickerSheet: View {
                         ? String(localized: "Show fewer models")
                         : String(localized: "Show all models")
                 )
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
 
                 Spacer(minLength: 0)
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .accessibilityHidden(true)
             }
             .padding(.leading, 28)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -235,19 +285,19 @@ struct ComposerModelPickerSheet: View {
             } label: {
                 HStack(spacing: 9) {
                     Image(systemName: isSelected(option) ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 15, weight: .regular))
+                        .font(AppFont.body())
                         .foregroundStyle(isSelected(option) ? Color.accentColor : Color(.tertiaryLabel))
-                        .frame(width: 18)
+                        .frame(width: 22)
 
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(option.displayName)
-                            .font(.system(size: 14, weight: .regular))
+                            .font(AppFont.body())
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
+                            .lineLimit(2)
 
                         if option.id != option.displayName {
                             Text(option.id)
-                                .font(.system(size: 11, weight: .regular))
+                                .font(AppFont.caption())
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -255,7 +305,7 @@ struct ComposerModelPickerSheet: View {
 
                         if let providerID = option.providerID, !providerID.isEmpty {
                             Text(providerID)
-                                .font(.system(size: 11, weight: .regular))
+                                .font(AppFont.caption())
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -264,18 +314,19 @@ struct ComposerModelPickerSheet: View {
 
                     Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(modelAccessibilityLabel(option))
 
             Button {
                 onToggleFavorite(option)
             } label: {
                 Image(systemName: isFavorite(option) ? "star.fill" : "star")
-                    .font(.system(size: 15, weight: .regular))
+                    .font(AppFont.body())
                     .foregroundStyle(isFavorite(option) ? Color.yellow : Color(.tertiaryLabel))
-                    .frame(width: 30, height: 30)
+                    .frame(minWidth: 44, minHeight: 44)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isFavorite(option) ? "Remove \(option.displayName) from favorites" : "Add \(option.displayName) to favorites")
@@ -285,9 +336,9 @@ struct ComposerModelPickerSheet: View {
                     onDeleteSavedCustom(option)
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 15, weight: .regular))
+                        .font(AppFont.body())
                         .foregroundStyle(Color.red)
-                        .frame(width: 30, height: 30)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete saved custom model \(option.displayName)")
@@ -296,6 +347,18 @@ struct ComposerModelPickerSheet: View {
         .padding(.leading, 2)
         .padding(.vertical, 3)
     }
+
+    private func modelAccessibilityLabel(_ option: ModelCatalogOption) -> String {
+        var parts = [option.displayName]
+        if let providerID = option.providerID, !providerID.isEmpty {
+            parts.append(providerID)
+        }
+        if isSelected(option) {
+            parts.append(String(localized: "Selected"))
+        }
+        return parts.joined(separator: ", ")
+    }
+
 
     private func isFavorite(_ option: ModelCatalogOption) -> Bool {
         favoriteModelKeys.contains(option.favoriteKey)
@@ -309,31 +372,59 @@ struct ComposerModelPickerSheet: View {
         option.matchesSelection(modelID: selectedModelID, providerID: selectedModelProviderID)
     }
 
+    private var searchQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var shortcuts: ComposerModelPickerShortcuts {
+        ComposerModelPickerShortcuts.make(
+            modelGroups: modelGroups,
+            selectedModelID: selectedModelID,
+            selectedModelProviderID: selectedModelProviderID,
+            favoriteKeys: favoriteModelKeys,
+            recentKeys: recentModelKeys
+        )
+    }
+
+    private var defaultExpandedGroupID: String? {
+        ComposerModelPickerShortcuts.defaultExpandedGroupID(
+            in: modelGroups,
+            selectedModelID: selectedModelID,
+            selectedModelProviderID: selectedModelProviderID
+        )
+    }
+
     private var filteredModelGroups: [ModelCatalogGroup] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseGroups: [ModelCatalogGroup]
-
-        if query.isEmpty {
-            baseGroups = modelGroups
-        } else {
-            baseGroups = modelGroups.compactMap { group in
-                let filteredModels = group.allModels.filter { option in
-                    matches(option, query: query)
-                }
-
-                guard !filteredModels.isEmpty else { return nil }
-
-                return ModelCatalogGroup(
-                    id: group.id,
-                    name: group.name,
-                    providerID: group.providerID,
-                    models: filteredModels
-                )
-            }
+        let baseGroups = Self.catalogGroups(modelGroups, matching: searchQuery)
+        if searchQuery.isEmpty {
+            return baseGroups
         }
-
         return customModelGroups + baseGroups
     }
+
+    static func catalogGroups(
+        _ modelGroups: [ModelCatalogGroup],
+        matching searchQuery: String
+    ) -> [ModelCatalogGroup] {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return modelGroups }
+
+        return modelGroups.compactMap { group in
+            let groupMatches = group.name.localizedCaseInsensitiveContains(query)
+                || (group.providerID?.localizedCaseInsensitiveContains(query) ?? false)
+            let filteredModels = groupMatches
+                ? group.allModels
+                : group.allModels.filter { matches($0, query: query) }
+            guard !filteredModels.isEmpty else { return nil }
+            return ModelCatalogGroup(
+                id: group.id,
+                name: group.name,
+                providerID: group.providerID,
+                models: filteredModels
+            )
+        }
+    }
+
 
     private var customModelGroups: [ModelCatalogGroup] {
         var groups: [ModelCatalogGroup] = []
@@ -471,6 +562,10 @@ struct ComposerModelPickerSheet: View {
     }
 
     private func matches(_ option: ModelCatalogOption, query: String) -> Bool {
+        Self.matches(option, query: query)
+    }
+
+    static func matches(_ option: ModelCatalogOption, query: String) -> Bool {
         option.displayName.localizedCaseInsensitiveContains(query)
             || option.id.localizedCaseInsensitiveContains(query)
             || (option.providerID?.localizedCaseInsensitiveContains(query) ?? false)
@@ -485,11 +580,15 @@ private struct ModelProviderChoice: Identifiable, Hashable {
 struct ComposerWorkspacePickerSheet: View {
     let workspaceRoots: [WorkspaceRoot]
     let selectedWorkspacePath: String?
+    let recentPaths: [String]
     let suggestions: [String]
+    var isLoadingSuggestions = false
+    var suggestionsErrorMessage: String?
     /// Server base URL used to open the registry manager; nil hides the
     /// Manage affordance (e.g. offline cached mode).
     var managementServer: URL?
     let onLoadSuggestions: (String) async -> Void
+    var onRetrySuggestions: () async -> Void = {}
     let onSelect: (String) async -> Void
     /// Called after the registry manager closes having changed the registry,
     /// so the owner can refetch `workspaceRoots`.
@@ -504,36 +603,77 @@ struct ComposerWorkspacePickerSheet: View {
         NavigationStack {
             List {
                 Section {
-                    TextField("Workspace path", text: $prefix)
+                    TextField("Search name or path", text: $prefix)
+                        .font(AppFont.body())
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .submitLabel(.search)
                 } footer: {
-                    Text("Suggestions are limited to trusted workspace roots from the server.")
+                    Text("Local names and paths filter immediately. Path suggestions stay inside trusted workspace roots.")
                 }
 
-                if let effectiveSelectedWorkspacePath, !effectiveSelectedWorkspacePath.isEmpty {
+                if let current = content.current {
                     Section("Current") {
-                        workspaceButton(path: effectiveSelectedWorkspacePath, name: String(localized: "Current Workspace"))
+                        workspaceButton(current)
                     }
                 }
 
-                if !savedWorkspaceRows.isEmpty {
+                if !content.recents.isEmpty {
+                    Section("Recent") {
+                        ForEach(content.recents) { row in
+                            workspaceButton(row)
+                        }
+                    }
+                }
+
+                if !content.saved.isEmpty {
                     Section("Saved Workspaces") {
-                        ForEach(savedWorkspaceRows) { row in
-                            workspaceButton(path: row.path, name: row.name)
+                        ForEach(content.saved) { row in
+                            workspaceButton(row)
                         }
                     }
                 }
 
-                if !suggestionRows.isEmpty {
+                if !content.suggestions.isEmpty {
                     Section("Suggestions") {
-                        ForEach(suggestionRows, id: \.self) { path in
-                            workspaceButton(path: path, name: nil)
+                        ForEach(content.suggestions) { row in
+                            workspaceButton(row)
                         }
                     }
                 }
 
-                if savedWorkspaceRows.isEmpty && suggestionRows.isEmpty {
+                if isLoadingSuggestions {
+                    Section {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Loading path suggestions...")
+                                .font(AppFont.subheadline())
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+
+                if let suggestionsErrorMessage, !suggestionsErrorMessage.isEmpty {
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(suggestionsErrorMessage)
+                                .font(AppFont.subheadline())
+                                .foregroundStyle(.primary)
+                            Button("Retry") {
+                                Task {
+                                    await onRetrySuggestions()
+                                }
+                            }
+                            .font(AppFont.body())
+                            .frame(minHeight: 44)
+                        }
+                    }
+                }
+
+                if shouldShowNoResults {
+                    ContentUnavailableView.search(text: prefix)
+                } else if content.isEmpty && !isLoadingSuggestions && suggestionsErrorMessage == nil {
                     ContentUnavailableView {
                         Label("No Workspaces", systemImage: "folder")
                     } description: {
@@ -577,57 +717,72 @@ struct ComposerWorkspacePickerSheet: View {
         .adaptiveFormPresentation()
     }
 
-    private func workspaceButton(path: String, name: String?) -> some View {
+    private var content: ComposerWorkspacePickerContent {
+        ComposerWorkspacePickerContent.make(
+            query: prefix,
+            currentPath: effectiveSelectedWorkspacePath,
+            savedRoots: workspaceRoots,
+            recentPaths: recentPaths,
+            suggestions: suggestions
+        )
+    }
+
+    private var shouldShowNoResults: Bool {
+        !prefix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && content.isEmpty
+            && !isLoadingSuggestions
+            && suggestionsErrorMessage == nil
+    }
+
+    private func workspaceButton(_ row: ComposerWorkspacePickerRow) -> some View {
         Button {
             guard acceptedWorkspacePath == nil else { return }
-            acceptedWorkspacePath = path
+            acceptedWorkspacePath = row.path
             dismiss()
             Task {
-                await onSelect(path)
+                await onSelect(row.path)
             }
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: path == effectiveSelectedWorkspacePath ? "checkmark.circle.fill" : "folder")
-                    .foregroundStyle(path == effectiveSelectedWorkspacePath ? Color.accentColor : Color(.secondaryLabel))
-                    .padding(.top, 2)
+                Image(systemName: row.isCurrent ? "checkmark.circle.fill" : "folder")
+                    .font(AppFont.body())
+                    .foregroundStyle(row.isCurrent ? Color.accentColor : Color(.secondaryLabel))
+                    .frame(minWidth: 44, minHeight: 44, alignment: .top)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(name?.isEmpty == false ? name ?? path.lastPathComponentFallback : path.lastPathComponentFallback)
-                        .font(.body)
-                        .foregroundStyle(.primary)
+                    HStack(spacing: 6) {
+                        Text(row.displayName)
+                            .font(AppFont.body())
+                            .foregroundStyle(.primary)
+                        if row.isCurrent {
+                            Text("Current")
+                                .font(AppFont.caption(weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
-                    Text(path)
-                        .font(.caption)
+                    Text(row.path)
+                        .font(AppFont.caption())
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
 
                 Spacer(minLength: 0)
             }
+            .frame(minHeight: 44)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
         .disabled(acceptedWorkspacePath != nil)
+        .accessibilityLabel(workspaceAccessibilityLabel(row))
     }
 
-    private var savedWorkspaceRows: [WorkspacePickerRow] {
-        workspaceRoots.compactMap { root in
-            guard let path = root.path, !path.isEmpty else { return nil }
-            return WorkspacePickerRow(path: path, name: root.name)
+    private func workspaceAccessibilityLabel(_ row: ComposerWorkspacePickerRow) -> String {
+        var parts = [row.displayName, row.path]
+        if row.isCurrent {
+            parts.append(String(localized: "Current"))
         }
-        .deduplicated()
-    }
-
-    private var suggestionRows: [String] {
-        let savedPaths = Set(savedWorkspaceRows.map(\.path))
-        var seen = Set<String>()
-        return suggestions.compactMap { path in
-            guard !path.isEmpty,
-                  !savedPaths.contains(path),
-                  path != effectiveSelectedWorkspacePath,
-                  seen.insert(path).inserted else { return nil }
-            return path
-        }
+        return parts.joined(separator: ", ")
     }
 
     private var effectiveSelectedWorkspacePath: String? {
@@ -635,18 +790,6 @@ struct ComposerWorkspacePickerSheet: View {
     }
 }
 
-private struct WorkspacePickerRow: Identifiable, Hashable {
-    var id: String { path }
-    let path: String
-    let name: String?
-}
-
-private extension Array where Element == WorkspacePickerRow {
-    func deduplicated() -> [WorkspacePickerRow] {
-        var seen = Set<String>()
-        return filter { seen.insert($0.path).inserted }
-    }
-}
 
 extension String {
     var lastPathComponentFallback: String {

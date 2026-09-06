@@ -412,6 +412,9 @@ struct ChatView: View {
             workspaceRoots: viewModel.workspaceRoots,
             selectedWorkspacePath: viewModel.selectedWorkspacePath,
             workspaceSuggestions: viewModel.workspaceSuggestions,
+            workspaceRecentPaths: viewModel.workspaceRecentPaths,
+            isLoadingWorkspaceSuggestions: viewModel.isLoadingWorkspaceSuggestions,
+            workspaceSuggestionsErrorMessage: viewModel.workspaceSuggestionsErrorMessage,
             workspaceManagementServer: server,
             personalitySuggestions: viewModel.personalitySuggestions,
             skillSuggestions: viewModel.skillSlashSuggestions,
@@ -426,6 +429,7 @@ struct ChatView: View {
             supportsThinkingToggle: viewModel.supportsThinkingToggle,
             showsReasoningControl: viewModel.showsReasoningEffortControl,
             isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration,
+            configurationPendingMessage: viewModel.composerPendingUpdateMessage,
             pendingAttachments: viewModel.pendingAttachments,
             // An in-flight draft restore counts as an upload in progress: until
             // it finishes, the composer does not yet hold the attachments the
@@ -460,9 +464,13 @@ struct ChatView: View {
             onLoadWorkspaceSuggestions: { prefix in
                 await viewModel.loadWorkspaceSuggestions(prefix: prefix)
             },
+            onRetryWorkspaceSuggestions: {
+                await viewModel.retryWorkspaceSuggestions()
+            },
             onWorkspaceRegistryChanged: {
                 await viewModel.refreshWorkspaceRoots()
             },
+
             onLoadPersonalitySuggestions: {
                 await viewModel.loadPersonalitySuggestions()
             },
