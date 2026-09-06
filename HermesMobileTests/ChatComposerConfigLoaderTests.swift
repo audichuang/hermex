@@ -401,6 +401,75 @@ extension ChatComposerConfigLoaderTests {
         )
     }
 
+    @MainActor
+    func testReviewLateCommandsPreserveCompletedLiveModelRefresh() async throws {
+        let catalogsStarted = expectation(description: "all independent catalogs started")
+        catalogsStarted.expectedFulfillmentCount = 3
+        let workspacePublished = expectation(description: "workspace branch published")
+        let modelsPublished = expectation(description: "models branch published")
+        let requests = ReviewComposerRequests()
+        let client = makeReviewClient(requests: requests, started: catalogsStarted)
+        defer { ReviewComposerURLProtocol.onRequest = nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let session = try decoder.decode(
+            SessionSummary.self,
+            from: Data(#"{"session_id":"review-session"}"#.utf8)
+        )
+        let viewModel = ChatViewModel(
+            session: session,
+            server: URL(string: "https://example.test")!,
+            client: client,
+            workspaceRecentsStore: WorkspaceRecentsStore(keychain: InMemoryKeychainStore()),
+            modelRecentsStore: ModelRecentsStore(
+                defaults: UserDefaults(suiteName: "review.recents.\(UUID().uuidString)") ?? .standard
+            )
+        )
+        let load = Task { await viewModel.loadComposerConfiguration() }
+        await fulfillment(of: [catalogsStarted], timeout: 3)
+
+        withObservationTracking {
+            _ = viewModel.workspaceRoots
+        } onChange: {
+            workspacePublished.fulfill()
+        }
+        try requests.get("/api/workspaces").complete(json: #"{"workspaces":[{"path":"/work"}]}"#)
+        await fulfillment(of: [workspacePublished], timeout: 3)
+        XCTAssertEqual(viewModel.workspaceSuggestions, ["/work"])
+
+        withObservationTracking {
+            _ = viewModel.modelCatalogGroups
+        } onChange: {
+            modelsPublished.fulfill()
+        }
+        try requests.get("/api/models").complete(json: #"{"groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"test-model","name":"Test Model"}]}]}"#)
+        await fulfillment(of: [modelsPublished], timeout: 3)
+        XCTAssertFalse(viewModel.modelCatalogGroups.isEmpty)
+
+        ReviewComposerURLProtocol.onRequest = { request in
+            switch request.request.url?.path {
+            case "/api/models":
+                request.complete(json: #"{"groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"test-model","name":"Test Model"}]}]}"#)
+            case "/api/models/live":
+                request.complete(json: #"{"provider":"openai","models":[{"id":"live-only-model","label":"Live Model"}],"count":1}"#)
+            default:
+                XCTFail("Unexpected refresh request: \(request.request.url?.path ?? "nil")")
+                request.complete(status: 500, json: "{}")
+            }
+        }
+        await viewModel.refreshModelCatalogForPickerOpen()
+        XCTAssertEqual(viewModel.modelCatalogGroups.flatMap(\.allModels).map(\.id), ["live-only-model"])
+        XCTAssertTrue(viewModel.isLoadingComposerConfiguration)
+        try requests.get("/api/commands").complete(json: #"{"commands":[{"name":"status"}]}"#)
+        await load.value
+        XCTAssertEqual(
+            viewModel.modelCatalogGroups.flatMap(\.allModels).map(\.id),
+            ["live-only-model"],
+            "Late commands must not replace a completed live picker refresh with the initial catalog"
+        )
+    }
+
+
     func testReviewAuthenticationFailureSurvivesEarlierCatalogFailure() async throws {
         let catalogsStarted = expectation(description: "all independent catalogs started")
         catalogsStarted.expectedFulfillmentCount = 3

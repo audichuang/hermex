@@ -335,6 +335,7 @@ final class ChatViewModel {
     private var workspaceSuggestionFetchToken = 0
     private var lastWorkspaceSuggestionPrefix = ""
     private var workspaceSuggestionsGeneration = 0
+    private var modelCatalogGeneration = 0
     private(set) var personalitySuggestions: [String] = ["none"]
     private(set) var skillSlashSuggestions: [SkillSlashSuggestion] = []
     private(set) var profileOptions: [ProfileSummary] = []
@@ -833,6 +834,7 @@ final class ChatViewModel {
             let loadGeneration = composerConfigurationInteractionGeneration
             let expectedSessionID = sessionID
             let suggestionGenerationAtStart = workspaceSuggestionsGeneration
+            let catalogGenerationAtStart = modelCatalogGeneration
             let initialState = composerConfigurationState
             let result = await ChatComposerConfigLoader(client: client)
                 .loadConfiguration(from: initialState) { proposed in
@@ -843,7 +845,8 @@ final class ChatViewModel {
                         }
                         self.applyComposerConfigurationState(
                             proposed,
-                            suggestionGeneration: suggestionGenerationAtStart
+                            suggestionGeneration: suggestionGenerationAtStart,
+                            catalogGeneration: catalogGenerationAtStart
                         )
                         return true
                     }
@@ -872,11 +875,13 @@ final class ChatViewModel {
         if let response = try? await client.models() {
             let groups = response.catalogGroups
             if !groups.isEmpty {
+                modelCatalogGeneration &+= 1
                 modelCatalogGroups = groups
             }
         }
 
         if let live = try? await client.modelsLive() {
+            modelCatalogGeneration &+= 1
             modelCatalogGroups = modelCatalogGroups.mergingLiveModels(from: live)
         }
     }
@@ -902,7 +907,8 @@ final class ChatViewModel {
     }
     private func applyComposerConfigurationState(
         _ state: ChatComposerConfigState,
-        suggestionGeneration: Int? = nil
+        suggestionGeneration: Int? = nil,
+        catalogGeneration: Int? = nil
     ) {
         currentWorkspace = state.currentWorkspace
         currentModel = state.currentModel
@@ -913,7 +919,9 @@ final class ChatViewModel {
         supportedReasoningEfforts = state.supportedReasoningEfforts
         supportsReasoningEffort = state.supportsReasoningEffort
         supportsThinkingToggle = state.supportsThinkingToggle
-        modelCatalogGroups = state.modelCatalogGroups
+        if catalogGeneration == nil || catalogGeneration == modelCatalogGeneration {
+            modelCatalogGroups = state.modelCatalogGroups
+        }
         agentCommands = state.agentCommands
         workspaceRoots = state.workspaceRoots
         if suggestionGeneration == nil || suggestionGeneration == workspaceSuggestionsGeneration {
