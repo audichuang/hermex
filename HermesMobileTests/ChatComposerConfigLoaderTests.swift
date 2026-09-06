@@ -467,6 +467,70 @@ extension ChatComposerConfigLoaderTests {
             ["live-only-model"],
             "Late commands must not replace a completed live picker refresh with the initial catalog"
         )
+
+        ReviewComposerURLProtocol.onRequest = { request in
+            if request.request.url?.path == "/api/models" {
+                request.complete(json: #"{"groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"second-refresh-model","name":"Second Model"}]}]}"#)
+            } else {
+                request.complete(status: 500, json: "{}")
+            }
+        }
+        await viewModel.refreshModelCatalogForPickerOpen()
+        XCTAssertEqual(viewModel.modelCatalogGroups.flatMap(\.allModels).map(\.id), ["second-refresh-model"])
+        ReviewComposerURLProtocol.onRequest = { request in
+            request.complete(status: 500, json: "{}")
+        }
+        await viewModel.refreshModelCatalogForPickerOpen()
+        XCTAssertEqual(
+            viewModel.modelCatalogGroups.flatMap(\.allModels).map(\.id),
+            ["second-refresh-model"],
+            "A failed subsequent refresh must retain the last successful catalog"
+        )
+    }
+
+    @MainActor
+    func testReviewFailedPickerCatalogDoesNotBlockPendingInitialCatalog() async throws {
+        let catalogsStarted = expectation(description: "all independent catalogs started")
+        catalogsStarted.expectedFulfillmentCount = 3
+        let requests = ReviewComposerRequests()
+        let client = makeReviewClient(requests: requests, started: catalogsStarted)
+        defer { ReviewComposerURLProtocol.onRequest = nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let session = try decoder.decode(
+            SessionSummary.self,
+            from: Data(#"{"session_id":"review-session"}"#.utf8)
+        )
+        let viewModel = ChatViewModel(
+            session: session,
+            server: URL(string: "https://example.test")!,
+            client: client,
+            workspaceRecentsStore: WorkspaceRecentsStore(keychain: InMemoryKeychainStore()),
+            modelRecentsStore: ModelRecentsStore(
+                defaults: UserDefaults(suiteName: "review.recents.\(UUID().uuidString)") ?? .standard
+            )
+        )
+        let load = Task { await viewModel.loadComposerConfiguration() }
+        await fulfillment(of: [catalogsStarted], timeout: 3)
+
+        ReviewComposerURLProtocol.onRequest = { request in
+            if request.request.url?.path == "/api/models/live" {
+                request.complete(json: #"{"provider":"openai","models":[{"id":"live-only-model","label":"Live Model"}],"count":1}"#)
+            } else {
+                request.complete(status: 500, json: "{}")
+            }
+        }
+        await viewModel.refreshModelCatalogForPickerOpen()
+        XCTAssertTrue(viewModel.modelCatalogGroups.isEmpty)
+        try requests.get("/api/models").complete(json: #"{"groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"initial-model","name":"Initial Model"}]}]}"#)
+        try requests.get("/api/workspaces").complete(json: #"{"workspaces":[]}"#)
+        try requests.get("/api/commands").complete(json: #"{"commands":[]}"#)
+        await load.value
+        XCTAssertEqual(
+            viewModel.modelCatalogGroups.flatMap(\.allModels).map(\.id),
+            ["initial-model"],
+            "A live response that applied nothing must not suppress the pending initial catalog"
+        )
     }
 
 
@@ -564,4 +628,64 @@ private final class ReviewComposerURLProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 }
+
+extension ChatComposerConfigLoaderTests {
+    @MainActor
+    func testReviewIdenticalApplicableLiveResponseStillProtectsCurrentCatalog() async throws {
+        let catalogsStarted = expectation(description: "independent catalogs are pending")
+        catalogsStarted.expectedFulfillmentCount = 3
+        let requests = ReviewComposerRequests()
+        let client = makeReviewClient(requests: requests, started: catalogsStarted)
+        let deferredHandler = ReviewComposerURLProtocol.onRequest
+        defer { ReviewComposerURLProtocol.onRequest = nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let session = try decoder.decode(SessionSummary.self, from: Data(#"{"session_id":"review-session"}"#.utf8))
+        let viewModel = ChatViewModel(
+            session: session,
+            server: URL(string: "https://example.test")!,
+            client: client,
+            workspaceRecentsStore: WorkspaceRecentsStore(keychain: InMemoryKeychainStore()),
+            modelRecentsStore: ModelRecentsStore(
+                defaults: UserDefaults(suiteName: "review.recents.\(UUID().uuidString)") ?? .standard
+            )
+        )
+
+        ReviewComposerURLProtocol.onRequest = { request in
+            if request.request.url?.path == "/api/models" {
+                request.complete(json: #"{"groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"catalog-c","name":"Catalog C"}]}]}"#)
+            } else {
+                request.complete(json: #"{"provider":"openai","models":[{"id":"catalog-c","label":"Catalog C"}],"count":1}"#)
+            }
+        }
+        await viewModel.refreshModelCatalogForPickerOpen()
+        let confirmedCatalog = viewModel.modelCatalogGroups
+        XCTAssertEqual(confirmedCatalog.flatMap(\.allModels).map(\.id), ["catalog-c"])
+
+        ReviewComposerURLProtocol.onRequest = deferredHandler
+        let load = Task { await viewModel.loadComposerConfiguration() }
+        await fulfillment(of: [catalogsStarted], timeout: 3)
+
+        ReviewComposerURLProtocol.onRequest = { request in
+            if request.request.url?.path == "/api/models/live" {
+                request.complete(json: #"{"provider":"openai","models":[{"id":"catalog-c","label":"Catalog C"}],"count":1}"#)
+            } else {
+                request.complete(status: 500, json: "{}")
+            }
+        }
+        await viewModel.refreshModelCatalogForPickerOpen()
+        XCTAssertEqual(viewModel.modelCatalogGroups, confirmedCatalog)
+
+        try requests.get("/api/models").complete(json: #"{"groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"catalog-a","name":"Catalog A"}]}]}"#)
+        try requests.get("/api/workspaces").complete(json: #"{"workspaces":[]}"#)
+        try requests.get("/api/commands").complete(json: #"{"commands":[]}"#)
+        await load.value
+        XCTAssertEqual(
+            viewModel.modelCatalogGroups,
+            confirmedCatalog,
+            "An applicable identical live response must protect C from older catalog A"
+        )
+    }
+}
+
 
