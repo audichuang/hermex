@@ -63,6 +63,17 @@ final class TasksViewModel {
         return runningJobs[jobID]
     }
 
+    func filteredJobs(searchText: String) -> [CronJob] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return jobs }
+
+        return jobs.filter { job in
+            [job.displayName, job.prompt, job.profile, job.model, job.provider, job.jobId]
+                .compactMap { $0 }
+                .contains { $0.localizedStandardContains(query) }
+        }
+    }
+
     func clearActionError() {
         actionErrorMessage = nil
     }

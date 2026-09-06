@@ -27,6 +27,7 @@ final class TaskDetailViewModel {
     }
 
     func load() async {
+        guard !isLoading, !isMutating else { return }
         guard let jobID = job.jobId else {
             errorMessage = String(localized: "Missing job identifier.")
             return
@@ -40,11 +41,31 @@ final class TaskDetailViewModel {
         // Optional endpoint: failure must not break the detail view, and a
         // nil result keeps the editor's free-text deliver fallback.
         async let deliveryOptionsResponse = try? client.cronDeliveryOptions()
+        async let statusResponse = client.cronStatus(jobID: jobID)
+        async let jobsResponse = client.crons()
 
         do {
             let response = try await client.cronOutput(jobID: jobID, limit: 5)
+            guard !Task.isCancelled else { return }
             outputs = response.outputs ?? []
         } catch {
+            guard !Task.isCancelled else { return }
+            lastError = error
+            errorMessage = error.localizedDescription
+        }
+
+        do {
+            let (status, jobs) = try await (statusResponse, jobsResponse)
+            guard !Task.isCancelled else { return }
+            if let running = status.running {
+                runningElapsed = running ? (status.elapsed ?? 0) : nil
+            }
+            if let refreshedJob = jobs.jobs?.first(where: { $0.jobId == jobID }) {
+                job = refreshedJob
+            }
+            actionErrorMessage = nil
+        } catch {
+            guard !Task.isCancelled else { return }
             lastError = error
             errorMessage = error.localizedDescription
         }
@@ -105,6 +126,7 @@ final class TaskDetailViewModel {
     }
 
     func delete() async -> Bool {
+        guard !isLoading, !isMutating else { return false }
         guard let jobID = job.jobId else {
             actionErrorMessage = String(localized: "Missing job identifier.")
             return false
@@ -135,6 +157,7 @@ final class TaskDetailViewModel {
     private func mutateJob(
         action: (String) async throws -> CronMutationResponse
     ) async -> Bool {
+        guard !isLoading, !isMutating else { return false }
         guard let jobID = job.jobId else {
             actionErrorMessage = String(localized: "Missing job identifier.")
             return false

@@ -6,6 +6,7 @@ struct TasksView: View {
 
     @State private var viewModel: TasksViewModel
     @State private var isPresentingCreateTask = false
+    @State private var searchText = ""
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
         self.server = server
@@ -16,6 +17,7 @@ struct TasksView: View {
     var body: some View {
         content
             .navigationTitle("Tasks")
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tasks")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
@@ -86,6 +88,7 @@ struct TasksView: View {
                 Text("Scheduled jobs from the Hermes server will appear here.")
             }
         } else {
+            let filteredJobs = viewModel.filteredJobs(searchText: searchText)
             List {
                 Section {
                     HStack {
@@ -97,7 +100,11 @@ struct TasksView: View {
                 }
 
                 Section("Scheduled Jobs") {
-                    ForEach(viewModel.jobs) { job in
+                    if filteredJobs.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                    }
+
+                    ForEach(filteredJobs) { job in
                         NavigationLink {
                             TaskDetailView(
                                 job: job,
@@ -135,27 +142,28 @@ struct TasksView: View {
 private struct CronJobRowView: View {
     let job: CronJob
     let runningElapsed: Double?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(job.displayName)
-                    .font(.headline)
-                    .lineLimit(2)
-
-                Spacer(minLength: 8)
-
-                StatusBadge(
-                    text: runningElapsed == nil ? job.status.label : String(localized: "Running"),
-                    color: statusColor
-                )
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    title
+                    Spacer(minLength: 8)
+                    status
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    title
+                    status
+                }
             }
 
             if let prompt = job.prompt, !prompt.isEmpty {
                 Text(prompt)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                    .accessibilityHidden(true)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -165,13 +173,8 @@ private struct CronJobRowView: View {
                 )
 
                 CronJobMetadataRow(
-                    title: String(localized: "Next"),
+                    title: String(localized: "Next Run"),
                     value: job.nextRunAt?.formatted ?? String(localized: "Not available")
-                )
-
-                CronJobMetadataRow(
-                    title: String(localized: "Last"),
-                    value: job.lastRunAt?.formatted ?? String(localized: "Never")
                 )
 
                 if let runningElapsed {
@@ -179,27 +182,6 @@ private struct CronJobRowView: View {
                         title: String(localized: "Elapsed"),
                         value: Self.elapsedText(runningElapsed)
                     )
-                }
-
-                CronJobMetadataRow(
-                    title: String(localized: "Deliver"),
-                    value: job.deliver ?? "local"
-                )
-
-                if let model = job.model, !model.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Model"), value: model)
-                }
-
-                if let provider = job.provider, !provider.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Provider"), value: provider)
-                }
-
-                if let profile = job.profile, !profile.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Profile"), value: profile)
-                }
-
-                if let skills = job.skills, !skills.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Skills"), value: skills.joined(separator: ", "))
                 }
 
                 if let error = job.lastError ?? job.lastDeliveryError, !error.isEmpty {
@@ -211,6 +193,20 @@ private struct CronJobRowView: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+    }
+
+    private var title: some View {
+        Text(job.displayName)
+            .font(.headline)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+    }
+
+    private var status: some View {
+        StatusBadge(
+            text: runningElapsed == nil ? job.status.label : String(localized: "Running"),
+            color: statusColor
+        )
+        .fixedSize()
     }
 
     private var statusColor: Color {

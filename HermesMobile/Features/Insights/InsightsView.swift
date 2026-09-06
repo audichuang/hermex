@@ -5,6 +5,8 @@ struct InsightsView: View {
     let onAPIError: (Error) -> Void
 
     @State private var viewModel: InsightsViewModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title3) private var metricMinimumWidth = 150
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
         self.server = server
@@ -66,20 +68,29 @@ struct InsightsView: View {
                 }
 
                 Section {
-                    AnalyticsCard(title: String(localized: "Sessions"), value: "\(viewModel.sessionCount)", icon: "bubble.left.and.bubble.right", color: .blue)
-                    AnalyticsCard(title: String(localized: "Messages"), value: formatTokens(viewModel.totalMessages), icon: "text.bubble", color: .cyan)
-                    AnalyticsCard(title: String(localized: "Input Tokens"), value: formatTokens(viewModel.totalInputTokens), icon: "arrow.down.circle", color: .green)
-                    AnalyticsCard(title: String(localized: "Output Tokens"), value: formatTokens(viewModel.totalOutputTokens), icon: "arrow.up.circle", color: .orange)
-                    AnalyticsCard(title: String(localized: "Total Tokens"), value: formatTokens(viewModel.totalTokens), icon: "sum", color: .purple)
-                    AnalyticsCard(title: String(localized: "Estimated Cost"), value: viewModel.estimatedCost.formattedCost(collapsingZeroCents: true), icon: "dollarsign.circle", color: .indigo)
+                    LazyVGrid(
+                        columns: dynamicTypeSize.isAccessibilitySize
+                            ? [GridItem(.flexible(), alignment: .leading)]
+                            : [GridItem(.adaptive(minimum: metricMinimumWidth), alignment: .leading)],
+                        alignment: .leading,
+                        spacing: 20
+                    ) {
+                        AnalyticsCard(title: String(localized: "Sessions"), value: "\(viewModel.sessionCount)", icon: "bubble.left.and.bubble.right", color: .blue)
+                        AnalyticsCard(title: String(localized: "Messages"), value: formatTokens(viewModel.totalMessages), icon: "text.bubble", color: .cyan)
+                        AnalyticsCard(title: String(localized: "Input Tokens"), value: formatTokens(viewModel.totalInputTokens), icon: "arrow.down.circle", color: .green)
+                        AnalyticsCard(title: String(localized: "Output Tokens"), value: formatTokens(viewModel.totalOutputTokens), icon: "arrow.up.circle", color: .orange)
+                        AnalyticsCard(title: String(localized: "Total Tokens"), value: formatTokens(viewModel.totalTokens), icon: "sum", color: .purple)
+                        AnalyticsCard(title: String(localized: "Estimated Cost"), value: viewModel.estimatedCost.formattedCost(collapsingZeroCents: true), icon: "dollarsign.circle", color: .indigo)
 
-                    if let cacheHitPercent = viewModel.totalCacheHitPercent {
-                        AnalyticsCard(title: String(localized: "Cache Hit Rate"), value: formatPercent(cacheHitPercent), icon: "bolt.circle", color: .teal)
-                    }
+                        if let cacheHitPercent = viewModel.totalCacheHitPercent {
+                            AnalyticsCard(title: String(localized: "Cache Hit Rate"), value: formatPercent(cacheHitPercent), icon: "bolt.circle", color: .teal)
+                        }
 
-                    if let cacheReadTokens = viewModel.totalCacheReadTokens {
-                        AnalyticsCard(title: String(localized: "Cache Read Tokens"), value: formatTokens(cacheReadTokens), icon: "arrow.counterclockwise.circle", color: .mint)
+                        if let cacheReadTokens = viewModel.totalCacheReadTokens {
+                            AnalyticsCard(title: String(localized: "Cache Read Tokens"), value: formatTokens(cacheReadTokens), icon: "arrow.counterclockwise.circle", color: .mint)
+                        }
                     }
+                    .padding(.vertical, 8)
                 } header: {
                     Text(viewModel.periodTitle)
                         .textCase(.uppercase)
@@ -198,26 +209,24 @@ private struct AnalyticsCard: View {
     let color: Color
 
     var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundStyle(color)
-                .frame(width: 40, height: 40)
-                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+                    .accessibilityHidden(true)
                 Text(title)
-                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-
-                Text(value)
-                    .font(.title3)
-                    .fontWeight(.semibold)
             }
+            .font(.subheadline)
 
-            Spacer()
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
         }
-        .padding(.vertical, 8)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .combine)
     }
 }

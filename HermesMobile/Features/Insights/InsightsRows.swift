@@ -2,15 +2,23 @@ import SwiftUI
 
 struct ModelBreakdownRow: View {
     let model: InsightsModelBreakdown
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .footnote) private var metricMinimumWidth = 140
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(model.model ?? String(localized: "Unknown Model"))
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 12) {
+            LazyVGrid(
+                columns: dynamicTypeSize.isAccessibilitySize
+                    ? [GridItem(.flexible(), alignment: .leading)]
+                    : [GridItem(.adaptive(minimum: metricMinimumWidth), alignment: .leading)],
+                alignment: .leading,
+                spacing: 6
+            ) {
                 Text("\(formatTokens(model.totalTokens ?? tokenTotal)) tokens")
                 Text("\(model.sessions ?? 0) sessions")
 
@@ -26,8 +34,9 @@ struct ModelBreakdownRow: View {
                     Text("\(insightsFormattedPercent(cacheHitPercent)) cache")
                 }
             }
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 4)
     }
@@ -39,6 +48,8 @@ struct ModelBreakdownRow: View {
 
 struct DailyTokenRow: View {
     let day: InsightsDailyToken
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .footnote) private var metricMinimumWidth = 140
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -46,7 +57,13 @@ struct DailyTokenRow: View {
                 .font(.subheadline)
                 .fontWeight(.medium)
 
-            HStack(spacing: 12) {
+            LazyVGrid(
+                columns: dynamicTypeSize.isAccessibilitySize
+                    ? [GridItem(.flexible(), alignment: .leading)]
+                    : [GridItem(.adaptive(minimum: metricMinimumWidth), alignment: .leading)],
+                alignment: .leading,
+                spacing: 6
+            ) {
                 Text("\(formatTokens(totalTokens)) tokens")
                 Text("\(day.sessions ?? 0) sessions")
 
@@ -54,8 +71,9 @@ struct DailyTokenRow: View {
                     Text(cost.formattedCost())
                 }
             }
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 4)
     }

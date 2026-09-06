@@ -70,7 +70,7 @@ struct TaskDetailView: View {
                         Label("Refresh", systemImage: "arrow.clockwise")
                     }
                 }
-                .disabled(viewModel.isLoading)
+                .disabled(viewModel.isLoading || viewModel.isMutating)
 
                 Menu {
                     Button {
@@ -175,6 +175,12 @@ struct TaskDetailView: View {
                 .font(.footnote)
                 .foregroundStyle(.red)
         }
+
+        if let errorMessage = viewModel.errorMessage, !viewModel.outputs.isEmpty {
+            Text(errorMessage)
+                .font(.footnote)
+                .foregroundStyle(.red)
+        }
     }
 
     @ViewBuilder
@@ -186,7 +192,7 @@ struct TaskDetailView: View {
             )
 
             CronJobMetadataRow(
-                title: String(localized: "Next"),
+                title: String(localized: "Next Run"),
                 value: viewModel.job.nextRunAt?.formatted ?? String(localized: "Not available")
             )
 
@@ -283,7 +289,7 @@ struct TaskDetailView: View {
     }
 
     private var isActionDisabled: Bool {
-        viewModel.isMutating || viewModel.job.jobId == nil
+        viewModel.isMutating || viewModel.isLoading || viewModel.job.jobId == nil
     }
 
     private var pauseResumeTitle: String {

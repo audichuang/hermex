@@ -132,6 +132,8 @@ struct SessionSidebarUtilityRows: View {
     private static let rowSpacing: CGFloat = 2
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var utilityMinimumWidth = 150
     let viewModel: SessionListViewModel
     let topPadding: CGFloat
     let automatedVisibility: AutomatedSessionVisibility
@@ -205,7 +207,13 @@ struct SessionSidebarUtilityRows: View {
     }
 
     private var utilityLinks: some View {
-        VStack(alignment: .leading, spacing: Self.rowSpacing) {
+        LazyVGrid(
+            columns: dynamicTypeSize.isAccessibilitySize
+                ? [GridItem(.flexible(), alignment: .leading)]
+                : [GridItem(.adaptive(minimum: utilityMinimumWidth), alignment: .leading)],
+            alignment: .leading,
+            spacing: Self.rowSpacing
+        ) {
             if sectionVisibility.tasks {
                 SidebarNavButton(title: String(localized: "Tasks"), assetImage: "LucideCalendarClock") {
                     openDestination(.tasks)
@@ -1099,13 +1107,13 @@ struct SidebarNavButton: View {
 
     var body: some View {
         HapticButton(action: action) {
-            HStack(spacing: 18) {
+            HStack(spacing: 10) {
                 SidebarUtilityIcon(assetImage: assetImage)
 
                 Text(title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 0)
             }
@@ -1134,7 +1142,7 @@ struct SidebarDisclosureButton<Accessory: View>: View {
                 Text(title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 0)
 

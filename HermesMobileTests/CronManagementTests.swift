@@ -202,6 +202,27 @@ final class CronManagementViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testTaskSearchMatchesVisibleAndDetailFieldsWithoutChangingJobs() throws {
+        let viewModel = TasksViewModel(server: try XCTUnwrap(URL(string: "https://example.test")))
+        let first = try decodeCronJob(#"{"id":"first","name":"Café digest","prompt":"整理每日摘要","profile":"Research","model":"gpt-test","provider":"provider-test"}"#)
+        let second = try decodeCronJob(#"{"id":"second","name":"Backup"}"#)
+        viewModel.apply(.upsert(first))
+        viewModel.apply(.upsert(second))
+        let original = viewModel.jobs
+
+        for query in ["  CAFE\n", "每日摘要", "research", "GPT-TEST", "provider-test", "first"] {
+            XCTAssertEqual(viewModel.filteredJobs(searchText: query).map(\.jobId), ["first"], query)
+        }
+        XCTAssertEqual(viewModel.filteredJobs(searchText: "   \n"), original)
+        XCTAssertEqual(viewModel.filteredJobs(searchText: "a"), original, "Filtering keeps the existing display order.")
+        XCTAssertTrue(viewModel.filteredJobs(searchText: "missing").isEmpty)
+        XCTAssertEqual(viewModel.jobs, original, "Search must not mutate the server-backed list.")
+
+        viewModel.apply(.delete(jobID: "first"))
+        XCTAssertTrue(viewModel.filteredJobs(searchText: "cafe").isEmpty, "Search follows mutations without a stale cache.")
+    }
+
+    @MainActor
     func testTasksViewModelCreateInsertsReturnedJob() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/crons/create")
@@ -328,6 +349,75 @@ final class CronManagementViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.lastMutation)
         // The refusal must not be mistaken for "started": no optimistic timer.
         XCTAssertNil(viewModel.runningElapsed)
+    }
+
+    @MainActor
+    func testDetailRefreshReconcilesRunningAndCompletedJobWithOutput() async throws {
+        var statusJSON = #"{"job_id":"job123","running":true,"elapsed":42.5}"#
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/crons/status":
+                XCTAssertEqual(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "job123")
+                return apiTestJSONResponse(statusJSON, for: request)
+            case "/api/crons":
+                return apiTestJSONResponse(#"{"jobs":[{"id":"other","name":"Other"},{"id":"job123","name":"Updated","last_status":"success","last_run_at":"2026-09-06T00:00:00Z"}]}"#, for: request)
+            case "/api/crons/output":
+                return apiTestJSONResponse(#"{"outputs":[{"content":"UI-CRON-OK"}]}"#, for: request)
+            case "/api/crons/delivery-options":
+                return apiTestJSONResponse(#"{"platforms":[]}"#, for: request)
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let viewModel = TaskDetailViewModel(
+            job: try decodeCronJob(#"{"id":"job123","name":"Old"}"#),
+            runningElapsed: 0,
+            server: URL(string: "https://example.test")!,
+            client: client
+        )
+
+        await viewModel.load()
+        XCTAssertEqual(viewModel.runningElapsed, 42.5)
+        XCTAssertEqual(viewModel.job.name, "Updated")
+        XCTAssertNotNil(viewModel.job.lastRunAt)
+        XCTAssertEqual(viewModel.outputs.first?.content, "UI-CRON-OK")
+
+        statusJSON = #"{"job_id":"job123"}"#
+        await viewModel.load()
+        XCTAssertEqual(viewModel.runningElapsed, 42.5, "Missing status must not imply completion.")
+
+        statusJSON = #"{"job_id":"job123","running":false,"elapsed":0}"#
+        await viewModel.load()
+        XCTAssertNil(viewModel.runningElapsed, "A completed job must stop displaying Running / 0s.")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testDetailStatusFailureKeepsOutputAndPreviousRunningState() async throws {
+        let client = makeClient { request in
+            if request.url?.path == "/api/crons/status" {
+                throw URLError(.notConnectedToInternet)
+            }
+            if request.url?.path == "/api/crons/output" {
+                return apiTestJSONResponse(#"{"outputs":[{"content":"Saved output"}]}"#, for: request)
+            }
+            return apiTestJSONResponse("{}", for: request)
+        }
+        let viewModel = TaskDetailViewModel(
+            job: try decodeCronJob(#"{"id":"job123","name":"Original"}"#),
+            runningElapsed: 12,
+            server: URL(string: "https://example.test")!,
+            client: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.runningElapsed, 12)
+        XCTAssertEqual(viewModel.job.name, "Original")
+        XCTAssertEqual(viewModel.outputs.first?.content, "Saved output")
+        XCTAssertNotNil(viewModel.errorMessage)
+        XCTAssertFalse(viewModel.isLoading)
     }
 
     func testCronMutationResponseSurfacesStatusOnlyForKnownRefusals() throws {
