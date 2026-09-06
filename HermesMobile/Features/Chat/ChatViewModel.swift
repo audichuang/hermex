@@ -355,6 +355,7 @@ final class ChatViewModel {
     private(set) var agentCommands: [AgentCommand] = []
     private(set) var workspaceRoots: [WorkspaceRoot] = []
     private(set) var workspaceSuggestions: [String] = []
+    private var modelCatalogGeneration = 0
     private(set) var personalitySuggestions: [String] = ["none"]
     private(set) var skillSlashSuggestions: [SkillSlashSuggestion] = []
     /// The same skills in the shape the chip tokenizer needs, kept beside the
@@ -854,6 +855,7 @@ final class ChatViewModel {
         repeat {
             needsComposerConfigurationReload = false
 
+            let catalogGenerationAtStart = modelCatalogGeneration
             let initialState = composerConfigurationState
             let result = await ChatComposerConfigLoader(client: client)
                 .loadConfiguration(from: initialState)
@@ -863,7 +865,7 @@ final class ChatViewModel {
                 continue
             }
 
-            applyComposerConfigurationState(result.state)
+            applyComposerConfigurationState(result.state, catalogGeneration: catalogGenerationAtStart)
 
             if let error = result.configurationError {
                 lastError = error
@@ -880,11 +882,13 @@ final class ChatViewModel {
         if let response = try? await client.models() {
             let groups = response.catalogGroups
             if !groups.isEmpty {
+                modelCatalogGeneration &+= 1
                 modelCatalogGroups = groups
             }
         }
 
         if let live = try? await client.modelsLive() {
+            modelCatalogGeneration &+= 1
             modelCatalogGroups = modelCatalogGroups.mergingLiveModels(from: live)
         }
     }
@@ -907,8 +911,10 @@ final class ChatViewModel {
             isSingleProfileMode: isSingleProfileMode
         )
     }
-
-    private func applyComposerConfigurationState(_ state: ChatComposerConfigState) {
+    private func applyComposerConfigurationState(
+        _ state: ChatComposerConfigState,
+        catalogGeneration: Int? = nil
+    ) {
         currentWorkspace = state.currentWorkspace
         currentModel = state.currentModel
         currentModelProvider = state.currentModelProvider
@@ -917,7 +923,9 @@ final class ChatViewModel {
         selectedReasoningEffort = state.selectedReasoningEffort
         supportedReasoningEfforts = state.supportedReasoningEfforts
         supportsReasoningEffort = state.supportsReasoningEffort
-        modelCatalogGroups = state.modelCatalogGroups
+        if catalogGeneration == nil || catalogGeneration == modelCatalogGeneration {
+            modelCatalogGroups = state.modelCatalogGroups
+        }
         agentCommands = state.agentCommands
         workspaceRoots = state.workspaceRoots
         workspaceSuggestions = state.workspaceSuggestions
