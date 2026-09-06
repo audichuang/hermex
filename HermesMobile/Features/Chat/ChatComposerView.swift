@@ -150,7 +150,6 @@ struct MessageComposerView: View {
     @State private var showsWorkspaceSheet = false
     @State private var modelPickerDetent: PresentationDetent = .large
     @State private var workspacePickerDetent: PresentationDetent = .large
-    @State private var optimisticWorkspacePath: String?
     @State private var favoriteModelKeys = ModelFavoritesStore.shared.favoriteKeys
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
     @State private var keyboardIsVisible = false
@@ -456,7 +455,7 @@ struct MessageComposerView: View {
         .sheet(isPresented: $showsWorkspaceSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
             ComposerWorkspacePickerSheet(
                 workspaceRoots: workspaceRoots,
-                selectedWorkspacePath: displayedWorkspacePath,
+                selectedWorkspacePath: selectedWorkspacePath,
                 recentPaths: workspaceRecentPaths,
                 suggestions: workspaceSuggestions,
                 isLoadingSuggestions: isLoadingWorkspaceSuggestions,
@@ -514,26 +513,12 @@ struct MessageComposerView: View {
         } message: {
             Text(noticeMessage ?? "")
         }
-        .onChange(of: selectedWorkspacePath) { _, newValue in
-            if optimisticWorkspacePath == newValue {
-                optimisticWorkspacePath = nil
-            }
-        }
-        .onChange(of: isUpdatingConfiguration) { _, isUpdating in
-            if !isUpdating {
-                optimisticWorkspacePath = nil
-            }
-        }
-        .onChange(of: configurationErrorMessage) { _, newValue in
-            if newValue != nil {
-                optimisticWorkspacePath = nil
-            }
-        }
         .onChange(of: showPhotoPicker) { _, isPresented in
             if !isPresented, selectedPhotoItems.isEmpty {
                 restoreFocusAfterPresentationDismissalSettles()
             }
         }
+
         .onChange(of: showFileImporter) { _, isPresented in
             if !isPresented {
                 restoreFocusAfterPresentationDismissalSettles()
@@ -923,7 +908,7 @@ struct MessageComposerView: View {
     }
 
     private var workspaceTitle: String {
-        guard let selectedWorkspacePath = displayedWorkspacePath,
+        guard let selectedWorkspacePath,
               !selectedWorkspacePath.isEmpty
         else {
             return String(localized: "Workspace")
@@ -938,9 +923,6 @@ struct MessageComposerView: View {
         return selectedWorkspacePath.lastPathComponentFallback
     }
 
-    private var displayedWorkspacePath: String? {
-        optimisticWorkspacePath ?? selectedWorkspacePath
-    }
 
     private var isConfigurationControlDisabled: Bool {
         isOfflineReadOnly || isSending || isCompressingSession || isWaitingForStream || isUpdatingConfiguration

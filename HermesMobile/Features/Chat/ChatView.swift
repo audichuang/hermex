@@ -423,7 +423,7 @@ struct ChatView: View {
             isSingleProfileMode: viewModel.isSingleProfileMode,
             selectedProfileName: viewModel.selectedProfileName,
             selectedProfileTitle: viewModel.selectedProfileTitle,
-            isLoadingModels: viewModel.isLoadingComposerConfiguration,
+            isLoadingModels: viewModel.showsModelCatalogLoading,
             selectedReasoningEffort: viewModel.selectedReasoningEffort,
             supportedReasoningEfforts: viewModel.supportedReasoningEfforts,
             supportsThinkingToggle: viewModel.supportsThinkingToggle,

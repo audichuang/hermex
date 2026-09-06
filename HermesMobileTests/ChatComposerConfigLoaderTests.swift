@@ -1,5 +1,7 @@
 import XCTest
+import Observation
 @testable import HermesMobile
+
 
 final class ChatComposerConfigLoaderTests: APIClientTestCase {
     func testLoadUsesSessionProfileDefaultAndRefreshesCommands() async throws {
@@ -340,3 +342,157 @@ final class ReasoningEffortGatingTests: XCTestCase {
         ))
     }
 }
+
+extension ChatComposerConfigLoaderTests {
+    @MainActor
+    func testReviewLateCommandsPreserveCompletedWorkspaceSearch() async throws {
+        let catalogsStarted = expectation(description: "all independent catalogs started")
+        catalogsStarted.expectedFulfillmentCount = 3
+        let workspacePublished = expectation(description: "workspace branch published")
+        let modelsPublished = expectation(description: "models branch published")
+        let requests = ReviewComposerRequests()
+        let client = makeReviewClient(requests: requests, started: catalogsStarted)
+        defer { ReviewComposerURLProtocol.onRequest = nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let session = try decoder.decode(
+            SessionSummary.self,
+            from: Data(#"{"session_id":"review-session"}"#.utf8)
+        )
+        let viewModel = ChatViewModel(
+            session: session,
+            server: URL(string: "https://example.test")!,
+            client: client,
+            workspaceRecentsStore: WorkspaceRecentsStore(keychain: InMemoryKeychainStore()),
+            modelRecentsStore: ModelRecentsStore(
+                defaults: UserDefaults(suiteName: "review.recents.\(UUID().uuidString)") ?? .standard
+            )
+        )
+        let load = Task { await viewModel.loadComposerConfiguration() }
+        await fulfillment(of: [catalogsStarted], timeout: 3)
+
+        withObservationTracking {
+            _ = viewModel.workspaceRoots
+        } onChange: {
+            workspacePublished.fulfill()
+        }
+        try requests.get("/api/workspaces").complete(json: #"{"workspaces":[{"path":"/work"}]}"#)
+        await fulfillment(of: [workspacePublished], timeout: 3)
+        XCTAssertEqual(viewModel.workspaceSuggestions, ["/work"])
+
+        withObservationTracking {
+            _ = viewModel.modelCatalogGroups
+        } onChange: {
+            modelsPublished.fulfill()
+        }
+        try requests.get("/api/models").complete(json: #"{"groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"test-model","name":"Test Model"}]}]}"#)
+        await fulfillment(of: [modelsPublished], timeout: 3)
+        XCTAssertFalse(viewModel.modelCatalogGroups.isEmpty)
+
+        await viewModel.loadWorkspaceSuggestions(prefix: "/work/new")
+        XCTAssertEqual(viewModel.workspaceSuggestions, ["/work/new-query-result"])
+        XCTAssertTrue(viewModel.isLoadingComposerConfiguration)
+        try requests.get("/api/commands").complete(json: #"{"commands":[{"name":"status"}]}"#)
+        await load.value
+        XCTAssertEqual(
+            viewModel.workspaceSuggestions,
+            ["/work/new-query-result"],
+            "Late commands must not republish the old registry over completed search results"
+        )
+    }
+
+    func testReviewAuthenticationFailureSurvivesEarlierCatalogFailure() async throws {
+        let catalogsStarted = expectation(description: "all independent catalogs started")
+        catalogsStarted.expectedFulfillmentCount = 3
+        let modelFailureApplied = expectation(description: "model failure applied before 401")
+        let requests = ReviewComposerRequests()
+        let client = makeReviewClient(requests: requests, started: catalogsStarted)
+        defer { ReviewComposerURLProtocol.onRequest = nil }
+        let projection = ReviewComposerProjection()
+        let load = Task {
+            await ChatComposerConfigLoader(client: client).loadConfiguration(from: .init()) { state in
+                if await projection.apply(state) == 2 { modelFailureApplied.fulfill() }
+                return true
+            }
+        }
+        await fulfillment(of: [catalogsStarted], timeout: 3)
+        try requests.get("/api/models").complete(status: 500, json: #"{"error":"unavailable"}"#)
+        await fulfillment(of: [modelFailureApplied], timeout: 3)
+        try requests.get("/api/workspaces").complete(status: 401, json: #"{"error":"unauthorized"}"#)
+        try requests.get("/api/commands").complete(json: #"{"commands":[]}"#)
+        let result = await load.value
+        guard let error = result.configurationError as? APIError,
+              case .unauthorized = error else {
+            return XCTFail("Expected unauthorized to reach the login-expiry handler; got \(String(describing: result.configurationError))")
+        }
+    }
+
+    private func makeReviewClient(
+        requests: ReviewComposerRequests,
+        started: XCTestExpectation
+    ) -> APIClient {
+        ReviewComposerURLProtocol.onRequest = { request in
+            if request.request.url?.path == "/api/profiles" {
+                request.complete(json: #"{"active":"default","profiles":[{"name":"default"}]}"#)
+            } else if request.request.url?.path == "/api/workspaces/suggest" {
+                request.complete(json: #"{"suggestions":["/work/new-query-result"]}"#)
+            } else {
+                requests.append(request)
+                started.fulfill()
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ReviewComposerURLProtocol.self]
+        return APIClient(
+            baseURL: URL(string: "https://example.test")!,
+            session: URLSession(configuration: configuration)
+        )
+    }
+}
+
+private actor ReviewComposerProjection {
+    private var count = 0
+    func apply(_ state: ChatComposerConfigState) -> Int {
+        count += 1
+        return count
+    }
+}
+
+private final class ReviewComposerRequests: @unchecked Sendable {
+    private let lock = NSLock()
+    private var requests: [String: ReviewComposerURLProtocol] = [:]
+
+    func append(_ request: ReviewComposerURLProtocol) {
+        lock.lock()
+        defer { lock.unlock() }
+        requests[request.request.url!.path] = request
+    }
+
+    func get(_ path: String) throws -> ReviewComposerURLProtocol {
+        lock.lock()
+        defer { lock.unlock() }
+        return try XCTUnwrap(requests[path], "Missing request: \(path)")
+    }
+}
+
+private final class ReviewComposerURLProtocol: URLProtocol {
+    static var onRequest: ((ReviewComposerURLProtocol) -> Void)?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.onRequest?(self) }
+    override func stopLoading() {}
+
+    func complete(status: Int = 200, json: String) {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: status,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(json.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
+

@@ -14,6 +14,50 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testProfileSwitchCompletesComposerReloadWithoutWaitingOnItself() async throws {
+        let switchRequested = expectation(description: "profile switch request received")
+        let completed = expectation(description: "profile switch and composer reload completed")
+        let viewModel = try makeViewModel(
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "default")
+        ) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                XCTAssertEqual(request.httpMethod, "POST")
+                switchRequested.fulfill()
+                return apiTestJSONResponse(#"{"active":"work","default_model":"gpt-5.4"}"#, for: request)
+            case "/api/profiles":
+                return apiTestJSONResponse(#"{"active":"work","profiles":[{"name":"work","model":"gpt-5.4","provider":"openai"}]}"#, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model":"gpt-5.4"}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces":[]}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands":[]}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort":"medium"}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let profile = try JSONDecoder().decode(
+            ProfileSummary.self,
+            from: Data(#"{"name":"work","model":"gpt-5.4","provider":"openai"}"#.utf8)
+        )
+        let switching = Task { @MainActor in
+            let outcome = await viewModel.switchProfile(profile, startNewSession: false)
+            XCTAssertNotNil(outcome)
+            XCTAssertFalse(viewModel.isUpdatingComposerConfiguration)
+            XCTAssertFalse(viewModel.isLoadingComposerConfiguration)
+            completed.fulfill()
+        }
+        defer { switching.cancel() }
+
+        await fulfillment(of: [switchRequested, completed], timeout: 2)
+    }
+
+
+    @MainActor
     func testOpeningSessionDoesNotCreateSpeechSynthesizer() throws {
         var createdSynthesizers = 0
 
@@ -8590,8 +8634,13 @@ final class ChatViewModelSendTests: XCTestCase {
             listenRemoteControlCenter: listenRemoteControlCenter ?? SpyListenRemoteControlCenter(),
             serverTTSAudioPlayerFactory: serverTTSAudioPlayerFactory,
             draftAttachmentStore: draftAttachmentStore,
-            userDefaults: userDefaults
+            userDefaults: userDefaults,
+            workspaceRecentsStore: WorkspaceRecentsStore(keychain: InMemoryKeychainStore()),
+            modelRecentsStore: ModelRecentsStore(
+                defaults: UserDefaults(suiteName: "ChatViewModelSendTests.recents.\(UUID().uuidString)") ?? .standard
+            )
         )
+
 
         if let spyStreamClient = resolvedStreamClient as? SpySSEStreamingClient {
             spyStreamClient.flushPendingStreamingContent = { [weak viewModel] in

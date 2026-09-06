@@ -264,12 +264,23 @@ struct ChatComposerConfigLoader {
             state.supportsReasoningEffort = response.supportsReasoningEffort
             state.supportsThinkingToggle = response.supportsThinkingToggle
         case let .failed(error):
-            if configurationError == nil {
-                configurationError = error
-            }
+            configurationError = Self.preferringAuthenticationFailure(
+                existing: configurationError,
+                incoming: error
+            )
         case .commandsFailed:
             state.agentCommands = []
         }
+    }
+
+    private static func preferringAuthenticationFailure(existing: Error?, incoming: Error) -> Error {
+        if case APIError.unauthorized = incoming {
+            return incoming
+        }
+        if let existing, case APIError.unauthorized = existing {
+            return existing
+        }
+        return existing ?? incoming
     }
 
     private static func profileSummary(

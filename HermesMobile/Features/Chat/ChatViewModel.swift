@@ -334,6 +334,7 @@ final class ChatViewModel {
     private(set) var workspaceSuggestionsErrorMessage: String?
     private var workspaceSuggestionFetchToken = 0
     private var lastWorkspaceSuggestionPrefix = ""
+    private var workspaceSuggestionsGeneration = 0
     private(set) var personalitySuggestions: [String] = ["none"]
     private(set) var skillSlashSuggestions: [SkillSlashSuggestion] = []
     private(set) var profileOptions: [ProfileSummary] = []
@@ -359,6 +360,10 @@ final class ChatViewModel {
         )
     }
     private(set) var isLoadingComposerConfiguration = false
+    var showsModelCatalogLoading: Bool {
+        isLoadingComposerConfiguration && Self.nonEmpty(currentModel) == nil
+    }
+
     private(set) var isUpdatingComposerConfiguration = false {
         didSet {
             if oldValue, !isUpdatingComposerConfiguration {
@@ -371,6 +376,7 @@ final class ChatViewModel {
     private var composerUpdateWaiters: [CheckedContinuation<Void, Never>] = []
     private(set) var pendingComposerModel: ModelCatalogOption?
     private(set) var pendingWorkspacePath: String?
+
     private(set) var composerConfigurationErrorMessage: String?
     var pendingAttachments: [PendingAttachment] { attachmentCoordinator.pendingAttachments }
     var isUploadingAttachment: Bool { attachmentCoordinator.isUploadingAttachment }
@@ -418,6 +424,7 @@ final class ChatViewModel {
     private let listenRemoteControlCenter: any ListenRemoteControlControlling
     private let userDefaults: UserDefaults
     private let workspaceRecentsStore: WorkspaceRecentsStore
+    private let modelRecentsStore: ModelRecentsStore
     private let pollingIntervals: ChatPollingIntervals
     // Real-time window over which rapid streaming updates coalesce into a single
     // scroll trigger / first content flush. Injectable so tests can drive
@@ -526,7 +533,8 @@ final class ChatViewModel {
         serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
         draftAttachmentStore: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
         userDefaults: UserDefaults = .standard,
-        workspaceRecentsStore: WorkspaceRecentsStore = WorkspaceRecentsStore()
+        workspaceRecentsStore: WorkspaceRecentsStore = WorkspaceRecentsStore(),
+        modelRecentsStore: ModelRecentsStore = ModelRecentsStore.shared
     ) {
         sessionID = session.sessionId
         currentWorkspace = session.workspace
@@ -569,6 +577,7 @@ final class ChatViewModel {
         self.listenRemoteControlCenter = listenRemoteControlCenter ?? ListenRemoteControlController()
         self.userDefaults = userDefaults
         self.workspaceRecentsStore = workspaceRecentsStore
+        self.modelRecentsStore = modelRecentsStore
 
         self.listenPlaybackSpeed = ListenPlaybackSpeed.stored(in: userDefaults)
         self.serverTTSAudioPlayerFactory = serverTTSAudioPlayerFactory
@@ -800,7 +809,7 @@ final class ChatViewModel {
         }
     }
 
-    func loadComposerConfiguration() async {
+    func loadComposerConfiguration(waitsForInFlightUserUpdate: Bool = true) async {
         if isLoadingComposerConfiguration {
             needsComposerConfigurationReload = true
             return
@@ -813,15 +822,17 @@ final class ChatViewModel {
 
         repeat {
             needsComposerConfigurationReload = false
-            if isUpdatingComposerConfiguration {
+            if waitsForInFlightUserUpdate, isUpdatingComposerConfiguration {
                 await withCheckedContinuation { continuation in
                     composerUpdateWaiters.append(continuation)
                 }
             }
 
 
+
             let loadGeneration = composerConfigurationInteractionGeneration
             let expectedSessionID = sessionID
+            let suggestionGenerationAtStart = workspaceSuggestionsGeneration
             let initialState = composerConfigurationState
             let result = await ChatComposerConfigLoader(client: client)
                 .loadConfiguration(from: initialState) { proposed in
@@ -830,7 +841,10 @@ final class ChatViewModel {
                               self.composerConfigurationInteractionGeneration == loadGeneration else {
                             return false
                         }
-                        self.applyComposerConfigurationState(proposed)
+                        self.applyComposerConfigurationState(
+                            proposed,
+                            suggestionGeneration: suggestionGenerationAtStart
+                        )
                         return true
                     }
                 }
@@ -886,8 +900,10 @@ final class ChatViewModel {
             isSingleProfileMode: isSingleProfileMode
         )
     }
-
-    private func applyComposerConfigurationState(_ state: ChatComposerConfigState) {
+    private func applyComposerConfigurationState(
+        _ state: ChatComposerConfigState,
+        suggestionGeneration: Int? = nil
+    ) {
         currentWorkspace = state.currentWorkspace
         currentModel = state.currentModel
         currentModelProvider = state.currentModelProvider
@@ -900,7 +916,9 @@ final class ChatViewModel {
         modelCatalogGroups = state.modelCatalogGroups
         agentCommands = state.agentCommands
         workspaceRoots = state.workspaceRoots
-        workspaceSuggestions = state.workspaceSuggestions
+        if suggestionGeneration == nil || suggestionGeneration == workspaceSuggestionsGeneration {
+            workspaceSuggestions = state.workspaceSuggestions
+        }
         profileOptions = state.profileOptions
         isSingleProfileMode = state.isSingleProfileMode
         refreshWorkspaceRecents()
@@ -959,7 +977,8 @@ final class ChatViewModel {
             currentModelProvider = response.session?.modelProvider ?? option.providerID
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
-            ModelRecentsStore.shared.recordRecent(option)
+            modelRecentsStore.recordRecent(option)
+
             // Still inside the isUpdatingComposerConfiguration window, so the
             // effort menu stays disabled until the new model's gating lands —
             // no interactable flash of the previous model's options (issue #18).
@@ -1040,6 +1059,7 @@ final class ChatViewModel {
             return
         }
 
+
         isLoadingWorkspaceSuggestions = true
         workspaceSuggestionsErrorMessage = nil
 
@@ -1051,7 +1071,9 @@ final class ChatViewModel {
                   server == expectedServer,
                   (selectedProfileName ?? currentProfile) == expectedProfile,
                   lastWorkspaceSuggestionPrefix == prefix else { return }
+            workspaceSuggestionsGeneration &+= 1
             workspaceSuggestions = response.suggestions ?? []
+
         } catch is CancellationError {
             return
         } catch {
@@ -1231,7 +1253,8 @@ final class ChatViewModel {
             }
             pendingExplicitModelPick = false
 
-            await loadComposerConfiguration()
+            await loadComposerConfiguration(waitsForInFlightUserUpdate: false)
+
 
             guard startNewSession else {
                 return ProfileSwitchOutcome(session: nil)

@@ -287,7 +287,7 @@ struct ComposerModelPickerSheet: View {
                     Image(systemName: isSelected(option) ? "checkmark.circle.fill" : "circle")
                         .font(AppFont.body())
                         .foregroundStyle(isSelected(option) ? Color.accentColor : Color(.tertiaryLabel))
-                        .frame(width: 22)
+
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(option.displayName)
