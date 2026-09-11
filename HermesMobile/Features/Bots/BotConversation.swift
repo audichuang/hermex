@@ -5,6 +5,10 @@ import Observation
     enum ConnectionState { case disconnected, recovering, connected }
     enum TurnState { case unknown, idle, submitting, running, needsAttention, stopping, uncertain, interrupted }
     struct StopAction: Equatable { let generation: Int; let revision: Int; let runtime: String }
+    /// The identity an answer is bound to, captured when the user taps and
+    /// revalidated at the socket write so a stale card cannot answer a newer
+    /// request or a replaced runtime.
+    struct AnswerAction: Equatable { let generation: Int; let runtime: String; let requestID: String }
 
     let profile: BotProfile
     let connection: BotConnection
@@ -27,6 +31,17 @@ import Observation
     private(set) var plan: BotPlan?
     /// `status.update` text while the bot works (compacting, compressing); nil once ready.
     private(set) var workStatus: String?
+    /// The approval or question from the last snapshot's `pending_approval` /
+    /// `pending_clarify`. Snapshot-owned, so an answer given in Desktop clears it
+    /// on the next read without the phone polling for it.
+    private(set) var blockingRequest: BotPendingRequest?
+    /// A credential prompt or a Desktop-renderer task. Neither appears in a
+    /// snapshot, so they live and die with the event stream.
+    private(set) var streamRequest: BotStreamRequest?
+    /// Set while an answer is in flight, to keep the card's controls inert.
+    private(set) var answeringRequestID: String?
+    /// The verdict on the request currently on screen, if it has one.
+    private(set) var requestResolution: BotRequestResolution?
     private var tip: String?
     private var generation = 0
     private var turnRevision = 0
@@ -60,6 +75,37 @@ import Observation
     }
 
     var mayEditDraft: Bool { hydrated && !uncertainSend && !localOperation }
+
+    /// The one request blocking this conversation. A clarify or approval wins over
+    /// a stream request: it is the outer blocker, and the host resolves the inner
+    /// one on its own deadline either way.
+    var pendingRequest: BotPendingRequest? {
+        blockingRequest ?? streamRequest?.pending
+    }
+
+    /// True when the user may answer the request on screen.
+    var mayAnswer: Bool {
+        guard let request = pendingRequest, request.isAnswerable else { return false }
+        return mayDispatchAnswer(for: request.requestID)
+    }
+
+    /// True when the request on screen can be called off from here. Separate
+    /// from `mayAnswer`: a Desktop task is never answerable, but the one kind
+    /// with a person in the loop can still be declined rather than waited out.
+    var mayDecline: Bool {
+        guard case .desktopTask(let task)? = pendingRequest, task.kind.isDeclinable else { return false }
+        return mayDispatchAnswer(for: task.requestID)
+    }
+
+    /// A resolved or expired request stays inert; an uncertain one is actionable
+    /// again once reconnected, because a second deliberate tap is the user's
+    /// decision, not an automatic replay.
+    private func mayDispatchAnswer(for requestID: String?) -> Bool {
+        guard connectionState == .connected, !localOperation, answeringRequestID == nil,
+              let id = requestID else { return false }
+        if let resolution = requestResolution, resolution.requestID == id { return !resolution.blocksFurtherAnswers }
+        return true
+    }
 
     func editDraft(_ text: String) {
         guard mayEditDraft else { return }
@@ -155,7 +201,14 @@ import Observation
             }
             missed.removeFirst(start)
         }
-        for event in missed { applyActivity(type: event["type"].text ?? "", payload: event["payload"]) }
+        for event in missed {
+            let type = event["type"].text ?? ""
+            // Credential and Desktop-task prompts reach no snapshot, so while the
+            // ring still holds them replay is the only way back to one after a
+            // reconnect. Dropping them here left a blocked bot looking idle.
+            if applyStreamRequest(type: type, payload: event["payload"]) { continue }
+            applyActivity(type: type, payload: event["payload"])
+        }
     }
 
     /// Feeds activity events to the live reducer, plan and work status. Returns
@@ -164,7 +217,7 @@ import Observation
     private func applyActivity(type: String, payload: BotJSON) -> Bool {
         switch type {
         case "message.start":
-            liveActivity = BotTurnActivity(); workStatus = nil
+            liveActivity = BotTurnActivity(); workStatus = nil; streamRequest = nil
             return false
         case "todo.updated":
             if let next = BotPlan(payload), next.revision >= (plan?.revision ?? 0) { plan = next }
@@ -200,11 +253,16 @@ import Observation
         }
         if !running {
             uncertainStop = false; stopAcknowledged = false; workStatus = nil
+            streamRequest = nil
             // Only a full snapshot carries the settled rows, so live rows wait for it
             // instead of vanishing on the inflight read that first reports idle.
             if full { liveActivity.clearTurnWork() }
         }
-        let attention = snapshot["pending_approval"] != .null || snapshot["pending_clarify"] != .null
+        applyPendingRequest(snapshot)
+        // A request the phone cannot address still blocks the bot. Claiming the
+        // turn is running would be the lie; attention without a card is the truth.
+        let attention = pendingRequest != nil
+            || snapshot["pending_approval"] != .null || snapshot["pending_clarify"] != .null
         let continuation = snapshot["auto_continue"] != .null && snapshot["auto_continue"].flag != false
         let queued = snapshot["queued"] != .null
         if attention { turn = .needsAttention }
@@ -214,6 +272,21 @@ import Observation
         else if running || continuation || queued { turn = .running }
         else if inflight["error"] != .null || snapshot["status"].text == "interrupted" { turn = .interrupted }
         else { turn = .idle }
+    }
+
+    /// Installs the snapshot's pending approval or question. A clarify outranks an
+    /// approval because approvals resolve inside a tool batch while a clarify blocks
+    /// the whole turn. A different request id drops the previous request's verdict
+    /// so a new card is never born inert.
+    private func applyPendingRequest(_ snapshot: BotJSON) {
+        let question = BotQuestionRequest(snapshot["pending_clarify"]).map(BotPendingRequest.question)
+        let approval = BotApprovalRequest(snapshot["pending_approval"]).map(BotPendingRequest.approval)
+        let next = question ?? approval
+        if next?.requestID != blockingRequest?.requestID {
+            answeringRequestID = nil
+            if requestResolution?.requestID != next?.requestID { requestResolution = nil }
+        }
+        blockingRequest = next
     }
 
     func send() async {
@@ -294,6 +367,163 @@ import Observation
         }
     }
 
+    /// Captures what an answer or a decline is validated against, or nil when
+    /// the request on screen cannot be acted on right now.
+    func prepareAnswer() -> AnswerAction? {
+        guard mayAnswer || mayDecline, let runtime, let id = pendingRequest?.requestID else { return nil }
+        return AnswerAction(generation: generation, runtime: runtime, requestID: id)
+    }
+
+    /// Answers a command approval with one of the choices the host itself offered.
+    func respond(_ action: AnswerAction, choice: BotApprovalRequest.Choice) async {
+        guard case .approval(let request)? = pendingRequest, request.requestID == action.requestID,
+              request.choices.contains(choice), action == prepareAnswer() else { return }
+        await deliver(action) {
+            let reply = try await self.request("approval.respond", [
+                "session_id": .string(action.runtime), "request_id": .string(action.requestID),
+                "choice": .string(choice.rawValue)
+            ], owner: action.generation, validateDispatch: self.answerGuard(action))
+            // `resolved` counts what the host actually unblocked. Zero means the
+            // queue no longer held this request: an action failure, not a delivery one.
+            return (reply["resolved"].integer ?? 0) > 0 ? .answered : .alreadyResolved
+        }
+    }
+
+    /// Answers a clarify question. A batch sends one `clarify.respond` per question
+    /// id in order; the host locks each answer and the last one releases the turn.
+    func answerQuestion(_ action: AnswerAction, _ answers: [BotQuestionAnswer]) async {
+        guard case .question(let request)? = pendingRequest, request.requestID == action.requestID,
+              !answers.isEmpty, action == prepareAnswer() else { return }
+        let offered = Set(request.questions.compactMap(\.wireID))
+        guard answers.allSatisfy({ answer in
+            answer.questionID.map(offered.contains) ?? !request.isBatch
+        }) else { return }
+        // The host locks every answer it is handed and reads an empty one as a
+        // skip, so a partial batch would silently skip the questions the user
+        // never touched. All of them, or none: `skipQuestion` is the none.
+        if request.isBatch {
+            let outstanding = Set(request.questions.filter { !$0.isAnswered }.compactMap(\.wireID))
+            guard Set(answers.compactMap(\.questionID)) == outstanding else { return }
+        }
+        await dispatchAnswers(answers, for: action)
+    }
+
+    /// Declines to answer, the way Desktop's cancel does: one unkeyed empty answer
+    /// releases the whole request, batch or not. It is a real answer, so it is
+    /// deliberate and never automatic.
+    func skipQuestion(_ action: AnswerAction) async {
+        guard case .question(let request)? = pendingRequest, request.requestID == action.requestID,
+              action == prepareAnswer() else { return }
+        await dispatchAnswers([BotQuestionAnswer(questionID: nil, text: "")], for: action)
+    }
+
+    /// Sends the value the user typed for a `sudo.request` or `secret.request`.
+    /// The value is passed straight to the dispatch and never stored on the model,
+    /// so nothing retains it once the write completes.
+    func answerCredential(_ action: AnswerAction, value: String) async {
+        guard case .credential(let request)? = pendingRequest, request.requestID == action.requestID,
+              action == prepareAnswer() else { return }
+        await deliver(action) {
+            let reply = try await self.request(request.kind.respondMethod, [
+                "request_id": .string(action.requestID),
+                request.kind.valueKey: .string(value)
+            ], owner: action.generation, validateDispatch: self.answerGuard(action))
+            // The host tolerates a late answer to a prompt it already dropped and
+            // says so rather than erroring; nothing was applied.
+            return reply["status"].text == "expired" ? .alreadyResolved : .answered
+        }
+    }
+
+    /// Declines to supply the value. An empty string is the host's own skip: the
+    /// secret tool records a skip and the sudo command is left to fail, which is
+    /// the honest outcome and far better than parking the bot until it times out.
+    func skipCredential(_ action: AnswerAction) async {
+        await answerCredential(action, value: "")
+    }
+
+    /// Calls off a Desktop task the phone cannot answer but can decline. The
+    /// host reads `declined` as a final no and its tool is told never to re-ask,
+    /// so the bot moves on now instead of parking for the full deadline.
+    func declineDesktopTask(_ action: AnswerAction) async {
+        guard case .desktopTask(let task)? = pendingRequest, task.requestID == action.requestID,
+              task.kind.isDeclinable, action == prepareAnswer() else { return }
+        await deliver(action) {
+            let reply = try await self.request(task.kind.respondMethod, [
+                "request_id": .string(action.requestID),
+                "result": .string(BotDesktopTaskRequest.declinedResult)
+            ], owner: action.generation, validateDispatch: self.answerGuard(action))
+            return reply["status"].text == "expired" ? .alreadyResolved : .answered
+        }
+    }
+
+    private func dispatchAnswers(_ answers: [BotQuestionAnswer], for action: AnswerAction) async {
+        await deliver(action) {
+            for answer in answers {
+                var params: [String: BotJSON] = [
+                    "request_id": .string(action.requestID), "answer": .string(answer.text)
+                ]
+                if let id = answer.questionID { params["question_id"] = .string(id) }
+                let reply = try await self.request("clarify.respond", params, owner: action.generation,
+                                                   validateDispatch: self.answerGuard(action))
+                // A late answer to a prompt the host already dropped comes back as
+                // `expired`; nothing was locked, so the rest have nothing to lock either.
+                if reply["status"].text == "expired" { return .alreadyResolved }
+            }
+            return .answered
+        }
+    }
+
+    /// Revalidates at the socket write, after any executor delay: the same
+    /// connection, the same runtime, and still the same request on screen.
+    private func answerGuard(_ action: AnswerAction) -> () throws -> Void {
+        { [weak self] in
+            guard let self else { throw BotFailure.stale }
+            try self.check(action.generation)
+            guard self.runtime == action.runtime,
+                  self.pendingRequest?.requestID == action.requestID else { throw BotFailure.stale }
+        }
+    }
+
+    /// Runs one answer dispatch under the rules every request kind shares. The
+    /// closure returns the host's verdict; a throw is a delivery problem, and only
+    /// a lost socket leaves the outcome unknown.
+    private func deliver(_ action: AnswerAction,
+                         _ dispatch: () async throws -> BotRequestResolution.Outcome) async {
+        localOperation = true
+        answeringRequestID = action.requestID
+        errorMessage = nil
+        do {
+            let outcome = try await dispatch()
+            guard action.generation == generation, !Task.isCancelled else { return }
+            localOperation = false; answeringRequestID = nil
+            requestResolution = BotRequestResolution(requestID: action.requestID, outcome: outcome)
+            // Snapshots clear an approval or question; a stream request has no
+            // snapshot to clear it and the host emits `.expire` only on timeout,
+            // so an answered one is retired here or the card would outlive it.
+            if streamRequest?.pending.requestID == action.requestID { streamRequest = nil }
+            // The host owns what happens next; read the snapshot instead of
+            // assuming the turn resumed.
+            turnRevision += 1
+            turn = .unknown
+            fullSnapshotNeeded = true; snapshotDirty = true; scheduleRefresh()
+        } catch {
+            guard action.generation == generation, !Task.isCancelled else { return }
+            localOperation = false; answeringRequestID = nil
+            // A stale action is rejected before the write, so nothing is in doubt.
+            if error as? BotFailure == .stale { return }
+            if case BotFailure.rejected(let code) = error {
+                // The host replied over a live socket, so the answer definitively
+                // did not take effect and the connection is still usable.
+                errorMessage = [401, 403, -32601].contains(code)
+                    ? BotFailure.rejected(code).localizedDescription
+                    : String(localized: "The bot could not accept that answer. Check this bot in Desktop.")
+                return
+            }
+            requestResolution = BotRequestResolution(requestID: action.requestID, outcome: .uncertain)
+            disconnected(error)
+        }
+    }
+
     /// Explicitly discard a held ambiguous prompt after the user checks Desktop.
     /// The old text is never restored to the sendable composer.
     func discardUncertainSubmission() async {
@@ -319,7 +549,7 @@ import Observation
         guard let next = event["seq"].integer, next > 0 else {
             replayWasReset = true; snapshotDirty = true; fullSnapshotNeeded = true
             turnRevision += 1
-            liveActivity = BotTurnActivity()
+            liveActivity = BotTurnActivity(); streamRequest = nil
             if !localOperation { turn = .unknown }
             scheduleRefresh(); return
         }
@@ -327,17 +557,20 @@ import Observation
         let discontinuity = next != sequence + 1
         if discontinuity {
             replayWasReset = true; fullSnapshotNeeded = true; turnRevision += 1
-            // Missed events may hold tool rows or a notice's clear; partial or stale
-            // activity is worse than none.
-            liveActivity = BotTurnActivity()
+            // Missed events may hold tool rows, a notice's clear or a stream
+            // request's expiry; partial or stale state is worse than none.
+            liveActivity = BotTurnActivity(); streamRequest = nil
             if !localOperation { turn = .unknown }
         }
         sequence = next
         let type = event["type"].text ?? ""
+        let streamRequestChanged = applyStreamRequest(type: type, payload: event["payload"])
         // Activity events never change the inflight text, so a continuous stream
         // during known work updates local state without another snapshot read.
-        if applyActivity(type: type, payload: event["payload"]), !discontinuity, turn == .running { return }
-        if ["message.start", "message.complete", "session.info", "error", "approval.request", "clarify.request"].contains(type) {
+        if !streamRequestChanged, applyActivity(type: type, payload: event["payload"]),
+           !discontinuity, turn == .running { return }
+        if streamRequestChanged
+            || ["message.start", "message.complete", "session.info", "error", "approval.request", "clarify.request"].contains(type) {
             turnRevision += 1
             fullSnapshotNeeded = true
             // Current state is pending reconciliation; don't dispatch new work.
@@ -346,6 +579,25 @@ import Observation
         if type == "message.delta", !discontinuity, !localOperation, !uncertainSend, !uncertainStop { turn = .running }
         snapshotDirty = true
         scheduleRefresh()
+    }
+
+    /// Tracks the credential or Desktop-task request the event stream is
+    /// announcing or tearing down. These never reach a resume snapshot, so the
+    /// stream is the only record of them; returns true when the current one changed.
+    private func applyStreamRequest(type: String, payload: BotJSON) -> Bool {
+        if let request = BotStreamRequest.requested(eventType: type, payload: payload) {
+            guard streamRequest != request else { return false }
+            // A new prompt inherits nothing from the one it replaces.
+            answeringRequestID = nil
+            if requestResolution?.requestID != request.pending.requestID { requestResolution = nil }
+            streamRequest = request
+            return true
+        }
+        if let prefix = BotStreamRequest.expiredPrefix(eventType: type), streamRequest?.eventPrefix == prefix {
+            streamRequest = nil
+            return true
+        }
+        return false
     }
 
     private func scheduleRefresh() {
@@ -377,6 +629,9 @@ import Observation
     private func disconnected(_ error: Error) {
         wire.close()
         refreshTask?.cancel(); refreshTask = nil
+        // A stream request lives only in the stream, so a lost socket makes its
+        // state unknowable. The card goes rather than lying about it.
+        streamRequest = nil; answeringRequestID = nil
         connectionState = .disconnected
         turn = uncertainSend || uncertainStop ? .uncertain : .unknown
         turnRevision += 1
@@ -388,6 +643,7 @@ import Observation
         refreshTask?.cancel(); refreshTask = nil
         wire.close()
         localOperation = false
+        streamRequest = nil; answeringRequestID = nil
         connectionState = .disconnected; turn = .unknown
         Task { try? await drafts.flush() }
     }

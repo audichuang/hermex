@@ -20,7 +20,7 @@ import XCTest
         let wire = BotFixtureWire()
         let model = make(wire)
         await model.recover()
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}))
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}, onShowRequest: {}))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let ready = try screenshot(window, name: "ready-no-status")
@@ -41,7 +41,7 @@ import XCTest
         XCTAssertFalse(model.mayEditDraft)
         await model.recover()
         model.editDraft("Persistent text")
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}))
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}, onShowRequest: {}))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
@@ -76,12 +76,160 @@ import XCTest
         await model.recover()
         XCTAssertTrue(model.uncertainStop)
         XCTAssertEqual(model.turn, .needsAttention)
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}))
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}, onShowRequest: {}))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let status = try screenshot(window, name: "attention-over-uncertain-stop")
-        XCTAssertTrue(status.contains("Needs attention"))
+        XCTAssertTrue(status.contains("Waiting for your answer"))
         XCTAssertFalse(status.contains("Outcome unknown"))
+    }
+
+    /// The approval card offers exactly what the host offered: this request was
+    /// smart-denied, so there is no session or permanent allow to hand out.
+    func testApprovalCardShowsOnlyTheHostsChoicesAndGoesInertOnceAnswered() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.pendingApproval = BotFixtureWire.approval(command: "rm -rf build", choices: ["once", "deny"])
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-approval-card")
+        XCTAssertTrue(shown.contains("Approval required"), shown)
+        XCTAssertTrue(shown.contains("recursive delete"), shown)
+        XCTAssertTrue(shown.contains("Allow once"), shown)
+        XCTAssertTrue(shown.contains("Deny"), shown)
+        XCTAssertFalse(shown.contains("Always allow"), shown)
+        XCTAssertFalse(shown.contains("Allow session"), shown)
+        // Identity, so two hosts with equal Profile names never look alike.
+        XCTAssertTrue(shown.contains("Fixture Mac"), shown)
+
+        wire.approvalResolved = 0
+        await model.respond(try XCTUnwrap(model.prepareAnswer()), choice: .once)
+        await renderFrames()
+        let answered = try screenshot(window, name: "bot-approval-card-already-answered")
+        XCTAssertTrue(answered.contains("already answered"), answered)
+        XCTAssertFalse(model.mayAnswer)
+    }
+
+    /// The question card is the Sessions clarification vocabulary: the question
+    /// block, the host's choices, and a free-text response field.
+    func testQuestionCardShowsChoicesWithoutTheHostsPresentationLabel() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.pendingClarify = BotFixtureWire.clarify()
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-question-card")
+        XCTAssertTrue(shown.contains("Clarification Required"), shown)
+        XCTAssertTrue(shown.contains("Which mailbox first?"), shown)
+        XCTAssertTrue(shown.contains("Primary"), shown)
+        XCTAssertTrue(shown.contains("Follow-ups"), shown)
+        XCTAssertTrue(shown.contains("Type a response"), shown)
+        // "(Recommended)" is the host's presentation suffix, shown as a tag.
+        XCTAssertFalse(shown.contains("Primary (Recommended)"), shown)
+    }
+
+    /// A sudo prompt is answered here, not at the Mac: a masked field, a Skip,
+    /// and the handling line stated before anything is typed.
+    func testSudoCardOffersAMaskedFieldAndSaysWhereTheValueGoes() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire)
+        // Inactive so the view's own recovery task cannot race the injected event:
+        // a credential prompt lives only in the stream, so a reconnect drops it.
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("sudo.request"),
+            "payload": .object(["request_id": .string("sudo-1")])
+        ]))
+        // The event only puts the turn in doubt; the coalesced snapshot settles it.
+        await awaitSnapshot(model)
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-sudo-card")
+        XCTAssertTrue(shown.contains("Administrator password needed"), shown)
+        XCTAssertTrue(shown.contains("never saves it"), shown)
+        XCTAssertTrue(shown.contains("Skip"), shown)
+        XCTAssertTrue(shown.contains("Fixture Mac"), shown)
+        // Nothing here tells the user to go and find a desk.
+        XCTAssertFalse(shown.contains("Only Hermes Desktop"), shown)
+        XCTAssertTrue(model.mayAnswer)
+
+        let fields = descendants(window).compactMap { $0 as? UITextField }
+        XCTAssertFalse(fields.isEmpty, "Expected the credential field")
+        XCTAssertTrue(fields.allSatisfy(\.isSecureTextEntry), "A credential field is never in the clear")
+    }
+
+    /// A secret prompt shows the host's own words and the name the value is
+    /// saved under, so the user knows which key to paste.
+    func testSecretCardNamesTheVariableItWillBeSavedAs() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("secret.request"),
+            "payload": .object(["request_id": .string("sec-1"), "env_var": .string("TAVILY_API_KEY"),
+                                "prompt": .string("Paste your Tavily key")])
+        ]))
+        await awaitSnapshot(model)
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-secret-card")
+        XCTAssertTrue(shown.contains("Secret needed"), shown)
+        XCTAssertTrue(shown.contains("Paste your Tavily key"), shown)
+        XCTAssertTrue(shown.contains("TAVILY_API_KEY"), shown)
+    }
+
+    /// A Desktop-renderer task has no input because there is no answer a person
+    /// gives — here or at the Mac. It says so, and keeps Stop.
+    func testDesktopTaskCardReportsTheWaitInsteadOfSendingTheUserToADesk() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("terminal.read.request"),
+            "payload": .object(["request_id": .string("term-1")])
+        ]))
+        // Stop only becomes offerable once the snapshot settles on needs-attention.
+        await awaitSnapshot(model)
+        await renderFrames()
+        XCTAssertTrue(model.mayStop)
+        let shown = try screenshot(window, name: "bot-desktop-task-card")
+        XCTAssertTrue(shown.contains("Hermes Desktop is handling this"), shown)
+        XCTAssertTrue(shown.contains("reading a terminal"), shown)
+        XCTAssertTrue(shown.contains("nothing to do"), shown)
+        XCTAssertTrue(shown.contains("Stop current work"), shown)
+        XCTAssertFalse(shown.contains("Type a response"), shown)
+        XCTAssertFalse(shown.contains("Allow once"), shown)
+        XCTAssertFalse(model.mayAnswer)
+    }
+
+    /// The MCP setup card is the one Desktop task with a way out that is not
+    /// Stop: skipping calls off the request and leaves the bot's work running.
+    func testMCPSetupCardOffersSkipAlongsideStop() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("mcp.setup.request"),
+            "payload": .object(["request_id": .string("mcp-1"), "server": .string("tavily")])
+        ]))
+        await awaitSnapshot(model)
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-mcp-setup-card")
+        XCTAssertTrue(shown.contains("Waiting on Hermes Desktop"), shown)
+        XCTAssertTrue(shown.contains("Skip it here"), shown)
+        XCTAssertTrue(shown.contains("Skip this setup"), shown)
+        XCTAssertTrue(shown.contains("Stop current work"), shown)
+        XCTAssertTrue(model.mayDecline)
     }
 
     func testTextOnlyEditorRejectsAttachmentProviders() {
@@ -171,15 +319,18 @@ import XCTest
             "session_id": .string("runtime"), "seq": .number(1), "type": .string("tool.start"),
             "payload": .object(["tool_id": .string("t1"), "name": .string("write_file"), "args": .object(["path": .string("reply-delivery.md")])])
         ]))
-        await renderFrames()
-        let shown = try screenshot(window, name: "bot-activity-cards-on")
+        // A live tool row lands without a following snapshot (activity events
+        // during known work skip the refresh), so nothing signals when the
+        // LazyVStack has materialized it — any fixed frame count is a guess.
+        let shown = try await screenshot(window, name: "bot-activity-cards-on",
+                                         awaiting: ["Ran", "Thinking", "Updated", "Plan"])
         XCTAssertTrue(shown.contains("Ran"), shown)
         XCTAssertTrue(shown.contains("Thinking"), shown)
         XCTAssertTrue(shown.contains("Updated"), shown)
         XCTAssertTrue(shown.contains("Plan"), shown)
         XCTAssertTrue(shown.contains("1 of 2"), shown)
         defaults.set(false, forKey: key)
-        await renderFrames()
+        await renderFrames(12)
         let hidden = try screenshot(window, name: "bot-activity-cards-off")
         XCTAssertFalse(hidden.contains("Thinking"), hidden)
         XCTAssertFalse(hidden.contains("Updated"), hidden)
@@ -206,12 +357,35 @@ import XCTest
         [view] + view.subviews.flatMap(descendants)
     }
 
-    private func renderFrames() async {
+    /// Waits for the conversation's coalesced snapshot read to land. Every
+    /// `applySnapshot` republishes the turn state, so it is the arrival signal.
+    private func awaitSnapshot(_ model: BotConversation) async {
+        let applied = expectation(description: "Snapshot applied")
+        withObservationTracking { _ = String(describing: model.turn) } onChange: { applied.fulfill() }
+        await fulfillment(of: [applied], timeout: 5)
+    }
+
+    private func renderFrames(_ target: Int = 3) async {
         let rendered = expectation(description: "Layout committed")
-        let driver = BotRenderFrameDriver { rendered.fulfill() }
+        let driver = BotRenderFrameDriver(target: target) { rendered.fulfill() }
         driver.start()
         await fulfillment(of: [rendered], timeout: 10)
         driver.stop()
+    }
+
+    /// Captures once layout has produced every `expected` string, or gives up
+    /// and returns the last read so the assertion fails with what was on screen.
+    /// Rows that arrive without a state change to wait on settle at their own
+    /// pace, so this waits on the content under test instead of a frame count.
+    private func screenshot(_ window: UIWindow, name: String,
+                            awaiting expected: [String]) async throws -> String {
+        var text = ""
+        for _ in 0..<8 {
+            await renderFrames(4)
+            text = try screenshot(window, name: name)
+            if expected.allSatisfy(text.contains) { break }
+        }
+        return text
     }
 
     @discardableResult

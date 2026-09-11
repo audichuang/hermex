@@ -475,11 +475,18 @@ import Vision
     }
 }
 
+/// Drives real display-link frames so a capture happens after layout, never
+/// after a wall-clock sleep. `target` is how many frames to let pass: a view
+/// whose content arrives from a live event needs more than the default.
 @MainActor final class BotRenderFrameDriver: NSObject {
     private let completion: () -> Void
+    private let target: Int
     private var link: CADisplayLink?
     private var frames = 0
-    init(completion: @escaping () -> Void) { self.completion = completion }
+    init(target: Int = 3, completion: @escaping () -> Void) {
+        self.target = target
+        self.completion = completion
+    }
     func start() {
         link = CADisplayLink(target: self, selector: #selector(tick))
         link?.add(to: .main, forMode: .common)
@@ -487,7 +494,7 @@ import Vision
     func stop() { link?.invalidate(); link = nil }
     @objc private func tick() {
         frames += 1
-        if frames == 3 { stop(); completion() }
+        if frames == target { stop(); completion() }
     }
 }
 
@@ -506,7 +513,17 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var tip = "tip"
     var running = false
     var inflight = BotJSON.null
+    /// Shorthand for "a command approval is blocking this session"; set
+    /// `pendingApproval` directly to control the payload.
     var attention = false
+    var pendingApproval: BotJSON?
+    var pendingClarify = BotJSON.null
+    /// What `approval.respond` reports unblocking, and what `clarify.respond` reports.
+    var approvalResolved = 1
+    var clarifyStatus = "ok"
+    /// What `sudo.respond` / `secret.respond` report; "ok" or "expired".
+    var credentialStatus = "ok"
+    var respondFailure: BotFailure?
     var todoState = BotJSON.null
     var history: [BotJSON] = [.object(["role": .string("assistant"), "text": .string("saved")])]
     var replay = BotFixtureWire.replay()
@@ -533,10 +550,23 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             await beforeResume?()
             return .object([
                 "session_id": .string("runtime"), "session_key": .string(tip), "running": .bool(running),
-                "messages": .array(history), "inflight": inflight, "pending_approval": attention ? .object(["id": .string("approval")]) : .null,
+                "messages": .array(history), "inflight": inflight,
+                "pending_approval": pendingApproval ?? (attention ? BotFixtureWire.approval() : .null),
+                "pending_clarify": pendingClarify,
                 "todo_state": todoState,
                 "info": .object(["profile_name": .string("inbox-triage")])
             ])
+        case "approval.respond":
+            if let respondFailure { throw respondFailure }
+            if approvalResolved > 0 { attention = false; pendingApproval = nil }
+            return .object(["resolved": .number(Double(approvalResolved))])
+        case "clarify.respond":
+            if let respondFailure { throw respondFailure }
+            if clarifyStatus == "ok" { pendingClarify = .null }
+            return .object(["status": .string(clarifyStatus)])
+        case "sudo.respond", "secret.respond", "mcp.setup.respond":
+            if let respondFailure { throw respondFailure }
+            return .object(["status": .string(credentialStatus)])
         case "session.events.since": return replay
         case "prompt.submit":
             await beforeSubmit?()
@@ -549,6 +579,27 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         default: throw BotFailure.unsupported
         }
     }
+    /// The gateway's `_approval_request_payload` shape, as it reaches both the
+    /// `approval.request` event and the resume snapshot.
+    static func approval(id: String = "req-1", command: String = "rm -rf build",
+                         choices: [String] = ["once", "session", "always", "deny"]) -> BotJSON {
+        .object([
+            "request_id": .string(id), "command": .string(command),
+            "description": .string("recursive delete"), "pattern_key": .string("rm"),
+            "choices": .array(choices.map(BotJSON.string))
+        ])
+    }
+
+    /// The single-question `clarify.request` / `pending_clarify` shape.
+    static func clarify(id: String = "clr-1", question: String = "Which mailbox first?",
+                        choices: [String] = ["Primary (Recommended)", "Follow-ups"],
+                        multiSelect: Bool = false) -> BotJSON {
+        .object([
+            "request_id": .string(id), "question": .string(question),
+            "choices": .array(choices.map(BotJSON.string)), "multi_select": .bool(multiSelect)
+        ])
+    }
+
     static func replay(latest: Int = 0, truncated: Bool = false, epoch: String = "epoch", events: [BotJSON] = []) -> BotJSON {
         .object(["latest_seq": .number(Double(latest)), "truncated": .bool(truncated), "epoch": .string(epoch), "events": .array(events)])
     }

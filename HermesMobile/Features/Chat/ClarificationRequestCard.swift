@@ -150,7 +150,7 @@ struct ClarificationRequestBar: View {
         .padding(.trailing, 8)
         .padding(.vertical, 8)
         .frame(maxWidth: 560)
-        .clarificationSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
+        .pendingRequestCardSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
         .accessibilityElement(children: .contain)
     }
 }
@@ -165,7 +165,6 @@ struct ClarificationRequestCard: View {
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
-    @ScaledMetric(relativeTo: .body) private var submitButtonSize: CGFloat = 40
     @ScaledMetric(relativeTo: .body) private var collapseButtonSize: CGFloat = 28
     @State private var bodyContentHeight: CGFloat?
 
@@ -177,7 +176,7 @@ struct ClarificationRequestCard: View {
     var body: some View {
         cardContent
             .frame(maxWidth: 560, alignment: .leading)
-            .clarificationSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
+            .pendingRequestCardSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
             // Ideal height regardless of what the bar-sized overlay proposes.
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityElement(children: .contain)
@@ -227,13 +226,7 @@ struct ClarificationRequestCard: View {
             .font(.subheadline)
             .foregroundStyle(.primary)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(questionBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(.primary.opacity(0.06), lineWidth: 1)
-            )
+            .pendingRequestBlockSurface()
     }
 
     private var choicesList: some View {
@@ -275,27 +268,16 @@ struct ClarificationRequestCard: View {
             TextField("Type a response", text: $draftResponse, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .tint(actionButtonBackground)
-                .background(textFieldBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(textFieldBorder)
+                .tint(PendingRequestSubmitButton.fill(canSubmit: canSubmit, colorScheme: colorScheme))
+                .pendingRequestFieldSurface()
                 .disabled(isResponding)
 
-            Button {
-                submitDraft()
-            } label: {
-                submitButtonLabel
-                    .frame(width: submitButtonSize, height: submitButtonSize)
-                    .background(actionButtonBackground)
-                    .foregroundStyle(actionButtonForeground)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.chatTactile(.icon))
-            .disabled(isResponding || trimmedDraft.isEmpty)
-            .accessibilityLabel("Submit clarification")
+            PendingRequestSubmitButton(isBusy: isResponding, canSubmit: canSubmit, action: submitDraft)
+                .accessibilityLabel("Submit clarification")
         }
     }
+
+    private var canSubmit: Bool { !isResponding && !trimmedDraft.isEmpty }
 
     @ViewBuilder
     private var footer: some View {
@@ -355,18 +337,6 @@ struct ClarificationRequestCard: View {
     }
 
     @ViewBuilder
-    private var submitButtonLabel: some View {
-        if isResponding {
-            ProgressView()
-                .tint(actionButtonForeground)
-                .scaleEffect(0.82)
-        } else {
-            Image(systemName: "arrow.up")
-                .font(.system(size: 15, weight: .semibold))
-        }
-    }
-
-    @ViewBuilder
     private func choiceButton(_ choice: String) -> some View {
         Button {
             onSubmit(choice)
@@ -379,39 +349,10 @@ struct ClarificationRequestCard: View {
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .foregroundStyle(.primary)
-                .choiceButtonSurface(reduceTransparency: reduceTransparency)
+                .pendingRequestChoiceSurface(reduceTransparency: reduceTransparency)
         }
         .buttonStyle(.chatTactile(.capsule))
         .disabled(isResponding)
-    }
-
-    private var questionBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.07) : Color.black.opacity(0.04)
-    }
-
-    private var textFieldBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.055) : Color.black.opacity(0.045)
-    }
-
-    private var textFieldBorder: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .stroke(.primary.opacity(colorScheme == .dark ? 0.13 : 0.10), lineWidth: 1)
-    }
-
-    private var actionButtonBackground: Color {
-        if isResponding || trimmedDraft.isEmpty {
-            return colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.12)
-        }
-
-        return colorScheme == .dark ? .white : .black
-    }
-
-    private var actionButtonForeground: Color {
-        if isResponding || trimmedDraft.isEmpty {
-            return Color(.secondaryLabel)
-        }
-
-        return colorScheme == .dark ? .black : .white
     }
 
     private var progressFill: Color {
@@ -468,44 +409,5 @@ struct ClarificationRequestCard: View {
     private func nonEmpty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed?.isEmpty == false ? trimmed : nil
-    }
-}
-
-private extension View {
-    /// Opaque on purpose: the bar and card float over live transcript text,
-    /// and a translucent surface would render the question on top of whatever
-    /// message happens to sit underneath.
-    func clarificationSurface(cornerRadius: CGFloat) -> some View {
-        background(
-            Color(.secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(.primary.opacity(0.10), lineWidth: 1)
-        )
-    }
-
-    @ViewBuilder
-    func choiceButtonSurface(reduceTransparency: Bool) -> some View {
-        if reduceTransparency {
-            background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color(.separator), lineWidth: 1)
-                )
-        } else if #available(iOS 26.0, *) {
-            // Fixed corner radius (not .capsule): a capsule's radius grows with the
-            // button's height, so on tall multi-line options the curved ends bow
-            // inward and clip the text. A fixed radius keeps the outline clear of
-            // the label at any line count and matches the fallbacks below.
-            glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
-        } else {
-            background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(.primary.opacity(0.10), lineWidth: 1)
-                )
-        }
     }
 }
