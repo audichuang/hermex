@@ -35,6 +35,7 @@ struct SessionListView: View {
     @State private var projectPendingDeletion: ProjectSummary?
     @State private var projectPendingRename: ProjectSummary?
     @State private var searchText = ""
+    @State private var showsBots = false
     @State private var isSearchVisible = false
     @State private var isSearchFocused = false
     @State private var searchChromeIsExpanded = false
@@ -72,6 +73,7 @@ struct SessionListView: View {
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
     @AppStorage(SessionIdentitySettings.initialsKey) private var identityInitials = ""
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
 
     init(
         authManager: AuthManager,
@@ -111,6 +113,10 @@ struct SessionListView: View {
 
     var body: some View {
         navigationContainer
+            .onChange(of: pendingDeepLinkedSessionID) { if pendingDeepLinkedSessionID != nil { showsBots = false } }
+            .onChange(of: requestedNewChat) { if requestedNewChat != nil { showsBots = false } }
+            .onChange(of: pendingSharedImport?.reservationID) { if pendingSharedImport != nil { showsBots = false } }
+            .onChange(of: isBotModeEnabled) { if !isBotModeEnabled { showsBots = false } }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if hasWaitingSharedImport {
                     waitingSharedImportBanner
@@ -328,9 +334,17 @@ struct SessionListView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var showsBotsInbox: Bool {
+        BotModeGate.showsBotsInbox(isEnabled: isBotModeEnabled, userPickedBots: showsBots)
+    }
+
     @ViewBuilder
     private var navigationContainer: some View {
-        if horizontalSizeClass == .regular {
+        if showsBotsInbox {
+            NavigationStack {
+                BotsInboxView(server: server) { showsBots = false }
+            }
+        } else if horizontalSizeClass == .regular {
             NavigationSplitView {
                 sessionListSurface
                     .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
@@ -460,6 +474,15 @@ struct SessionListView: View {
         List {
             header
                 .sessionsTopChromeListRow()
+
+            if isBotModeEnabled {
+                Picker("Screen", selection: $showsBots) {
+                    Text("Sessions").tag(false)
+                    Text("Bots").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .sessionsScreenListRow()
+            }
 
             if viewModel.isViewingCachedData {
                 OfflineCacheBanner()

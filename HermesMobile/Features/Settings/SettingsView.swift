@@ -94,6 +94,7 @@ struct SettingsView: View {
     @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsChatFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
+    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -389,6 +390,16 @@ struct SettingsView: View {
                     )
 
                     SettingsFootnote(String(localized: "Turn off the entries you never use to shorten the top of the session list. Each one is the only way into its screen, so turn it back on here when you need it again."))
+                }
+
+                SettingsCard(title: String(localized: "Preview")) {
+                    SettingsToggleRow(
+                        title: String(localized: "Bot Mode (beta)"),
+                        systemImage: "cpu",
+                        isOn: $isBotModeEnabled
+                    )
+
+                    SettingsFootnote(String(localized: "Bot Mode is unfinished. It adds a Sessions/Bots switch to the session list and a Bot connection row to each server."))
                 }
 
                 SettingsCard(title: String(localized: "Sessions")) {
@@ -2104,6 +2115,7 @@ private struct ServerDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
     @State private var displayName: String
     @State private var initials: String
     @State private var colorHex: String
@@ -2133,6 +2145,11 @@ private struct ServerDetailView: View {
                     SettingsValueRow(title: String(localized: "Status")) {
                         SettingsStatusPill(label: isActive ? String(localized: "Active") : String(localized: "Inactive"))
                     }
+                }
+
+                if isBotModeEnabled, let server = URL(string: account.urlString) {
+                    NavigationLink("Bot connection") { BotConnectionView(server: server) }
+                        .frame(minHeight: 44)
                 }
 
                 SettingsCard(title: String(localized: "Identity")) {
