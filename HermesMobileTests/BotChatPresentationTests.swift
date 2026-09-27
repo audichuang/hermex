@@ -199,7 +199,11 @@ import XCTest
             .environment(\.scenePhase, .active))
         defer { close(window) }
         // The view debounces its query before reading the cache, so wait on the hit itself.
-        let after = try await screenshot(window, name: "528-after-opening-room", awaiting: ["Comms", "chief-of-staff"])
+        // The hit sits near the top; the simulator's Vision misreads its title
+        // ("Comage chier-of-statt") in a full-height frame that is mostly blank.
+        let results = CGRect(x: 0, y: 0, width: window.bounds.width, height: window.bounds.height / 3)
+        let after = try await screenshot(window, name: "528-after-opening-room", croppedTo: results,
+                                         awaiting: ["Comms", "chief-of-staff"])
         XCTAssertTrue(after.contains("Comms"), after)
         XCTAssertTrue(after.contains("chief-of-staff"), after)
         XCTAssertFalse(after.contains("No saved messages found"), after)
@@ -1320,12 +1324,12 @@ import XCTest
     /// and returns the last read so the assertion fails with what was on screen.
     /// Rows that arrive without a state change to wait on settle at their own
     /// pace, so this waits on the content under test instead of a pass count.
-    private func screenshot(_ window: UIWindow, name: String,
+    private func screenshot(_ window: UIWindow, name: String, croppedTo bounds: CGRect? = nil,
                             awaiting expected: [String]) async throws -> String {
         var text = ""
         for _ in 0..<8 {
             await settle(window)
-            text = try screenshot(window, name: name)
+            text = try screenshot(window, name: name, croppedTo: bounds)
             if expected.allSatisfy(text.contains) { break }
         }
         return text
