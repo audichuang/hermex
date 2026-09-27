@@ -2918,7 +2918,7 @@ final class ChatViewModel {
             pinLocalNoticeMessage(noticeMessage)
         }
 
-        streamCoordinator.start(streamID: streamID, resumesFromLastEvent: true)
+        streamCoordinator.start(streamID: streamID)
         return true
     }
 

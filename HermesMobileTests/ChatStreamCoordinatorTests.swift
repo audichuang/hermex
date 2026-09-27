@@ -2441,7 +2441,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         stream.emit(.done(DoneStreamEvent()))
         XCTAssertEqual(state.policy.completedResponses, 11)
 
-        for event in [SSEEvent.cancelled, .error("failed"), .streamEnd] {
+        for event in [SSEEvent.cancelled, .error(ErrorStreamEvent(message: "failed")), .streamEnd] {
             coordinator.prepareForNewResponse()
             coordinator.start(streamID: UUID().uuidString)
             stream.emit(event)

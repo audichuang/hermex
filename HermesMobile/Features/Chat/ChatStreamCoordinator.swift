@@ -263,16 +263,11 @@ final class ChatStreamCoordinator {
         setLiveTokensPerSecondIfChanged(nil)
         runGeneration &+= 1
         invalidateReconnectTask()
-        // A cursor only means something within its own run, so moving to a
-        // different stream drops it. Staying on the same one keeps it: that is
-        // what lets a resume pick up where this client stopped instead of
-        // re-reading the whole journal.
-        let isSameRun = activeStreamID == streamID
         activeStreamID = streamID
         seedActiveRunStart(runStartedAt)
         hasInMemorySnapshotForActiveStream = false
         isConnectionSuspended = false
-        if !isSameRun, replayAfterSeq == nil {
+        if replayAfterSeq == nil {
             lastEventID = nil
         }
 
