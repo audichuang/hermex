@@ -15,11 +15,26 @@ run() { print -r -- "+ $*"; [[ -n "${DRY_RUN:-}" ]] || "$@"; }
 
 [[ -z "$(git status --porcelain)" ]] || { print -u2 "Commit or stash first: the build must match a commit."; exit 1 }
 [[ -f Config/Local.xcconfig ]] || { print -u2 "Config/Local.xcconfig is missing in this worktree (copy it from the main checkout)."; exit 1 }
-git fetch -q fork
+git fetch -q --multiple origin fork
 commit=$(git rev-parse HEAD)
+# Fixed before the long upload: the push below only moves main if nobody moved it meanwhile.
+old_main=$(git rev-parse fork/main)
 if [[ -z "${ALLOW_UNMERGED:-}" ]] && ! git merge-base --is-ancestor "$commit" fork/develop; then
   print -u2 "HEAD is not on fork/develop. Merge its PR first, or set ALLOW_UNMERGED=1 for a test build."
   exit 1
+fi
+
+# No silent regressions: every fork commit in the build on phones now must still be in this one, matched by
+# subject (squash keeps one subject per change). Identical trees need no check.
+if ! git diff --quiet "$old_main" "$commit"; then
+  stack() { git log --format=%s "$(git merge-base "$1" origin/master)..$1" | sort -u }
+  missing=$(comm -23 <(stack "$old_main") <(stack "$commit"))
+  if [[ -n "$missing" && -z "${ALLOW_DROP:-}" ]]; then
+    print -u2 "fork/main (${old_main[1,8]}) has fork commits this build lacks:"; print -u2 -- "$missing"
+    print -u2 "Merge them into develop first. If they were renamed by a squash or dropped on purpose, check"
+    print -u2 "\`git diff ${old_main[1,8]} HEAD\` and rerun with ALLOW_DROP=1."
+    exit 1
+  fi
 fi
 
 typeset -A asc
@@ -53,6 +68,11 @@ run env PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/xcodebuild -exportArchive \
 
 subject=$(git log -1 --format=%s "$commit")
 run git tag -a testflight/$build "$commit" -m "Hermex Audi ($build): $subject"
-old_main=$(git rev-parse fork/main)
-run git push --atomic --force-with-lease=main:${old_main} fork "${commit}:refs/heads/main" "refs/tags/testflight/$build"
+if ! run git push --atomic --force-with-lease=main:${old_main} fork "${commit}:refs/heads/main" "refs/tags/testflight/$build"; then
+  # The build is already on TestFlight; only its record is missing. Never re-upload for this.
+  print -u2 "Uploaded $build, but recording it failed (fork/main moved since ${old_main[1,8]}, or the push failed)."
+  print -u2 "Push the tag now:   git push fork refs/tags/testflight/$build"
+  print -u2 "Then, if ${commit[1,8]} is the newest build, move main: git fetch fork && git push --force-with-lease=main:\$(git rev-parse fork/main) fork ${commit}:refs/heads/main"
+  exit 1
+fi
 print "Uploaded $build from ${commit[1,8]}; tagged testflight/$build and moved fork/main. TestFlight lists it once processing ends."
