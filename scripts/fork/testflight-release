@@ -1,0 +1,58 @@
+#!/bin/zsh
+# Uploads the current commit as a Hermex Audi TestFlight build, then records it:
+# tag testflight/<build> on that commit and move fork/main to it (FORK.md § Release).
+#
+#   scripts/fork/testflight-release            # HEAD must already be on fork/develop
+#   ALLOW_UNMERGED=1 scripts/fork/testflight-release   # test build from a feature branch
+#   DRY_RUN=1 scripts/fork/testflight-release  # print the steps, upload nothing
+#
+# Needs: Config/Local.xcconfig (team 37HFR5V2JJ), and the App Store Connect API key named in
+# ~/.asc/config.json (key_id, issuer_id, private_key_path). Nothing secret lives in this repo.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+run() { print -r -- "+ $*"; [[ -n "${DRY_RUN:-}" ]] || "$@"; }
+
+[[ -z "$(git status --porcelain)" ]] || { print -u2 "Commit or stash first: the build must match a commit."; exit 1 }
+[[ -f Config/Local.xcconfig ]] || { print -u2 "Config/Local.xcconfig is missing in this worktree (copy it from the main checkout)."; exit 1 }
+git fetch -q fork
+commit=$(git rev-parse HEAD)
+if [[ -z "${ALLOW_UNMERGED:-}" ]] && ! git merge-base --is-ancestor "$commit" fork/develop; then
+  print -u2 "HEAD is not on fork/develop. Merge its PR first, or set ALLOW_UNMERGED=1 for a test build."
+  exit 1
+fi
+
+typeset -A asc
+for k v in $(python3 -c 'import json,os
+d=json.load(open(os.path.expanduser("~/.asc/config.json")))
+print("key_id", d["key_id"], "issuer_id", d["issuer_id"], "private_key_path", d["private_key_path"])'); do asc[$k]=$v; done
+
+# 14 digits, same scheme as the branch upload: TestFlight offers the highest build number.
+build=$(date +%Y%m%d%H%M%S)
+work=build/audi-testflight/$build
+mkdir -p $work
+sed 's/<string>6GYD9C9N6R<\/string>/<string>37HFR5V2JJ<\/string>/' Config/BranchTestFlightExportOptions.plist > $work/ExportOptions.plist
+grep -q 37HFR5V2JJ $work/ExportOptions.plist || { print -u2 "Export options did not pick up team 37HFR5V2JJ."; exit 1 }
+
+print "Archiving $build from ${commit[1,8]} (log: $work/archive.log)"
+run xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release \
+  -destination 'generic/platform=iOS' -archivePath $work/Hermex.xcarchive \
+  CURRENT_PROJECT_VERSION=$build -allowProvisioningUpdates archive >>$work/archive.log 2>&1 \
+  || { tail -n 30 $work/archive.log >&2; exit 1 }
+
+# System PATH only: /usr/bin/rsync (openrsync) starts its remote side from PATH, and a Homebrew
+# rsync there rejects -E ("--extended-attributes: unknown option"), failing the export with "Copy failed".
+print "Uploading (log: $work/export.log)"
+run env PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/xcodebuild -exportArchive \
+  -archivePath $work/Hermex.xcarchive -exportOptionsPlist $work/ExportOptions.plist \
+  -exportPath $work/export -allowProvisioningUpdates \
+  -authenticationKeyPath ${asc[private_key_path]} -authenticationKeyID ${asc[key_id]} \
+  -authenticationKeyIssuerID ${asc[issuer_id]} >>$work/export.log 2>&1 \
+  || { tail -n 30 $work/export.log >&2; exit 1 }
+[[ -n "${DRY_RUN:-}" ]] || grep -q "Upload succeeded" $work/export.log || { print -u2 "No 'Upload succeeded' in $work/export.log"; exit 1 }
+
+subject=$(git log -1 --format=%s "$commit")
+run git tag -a testflight/$build "$commit" -m "Hermex Audi ($build): $subject"
+old_main=$(git rev-parse fork/main)
+run git push --atomic --force-with-lease=main:$old_main fork "$commit:refs/heads/main" "refs/tags/testflight/$build"
+print "Uploaded $build from ${commit[1,8]}; tagged testflight/$build and moved fork/main. TestFlight lists it once processing ends."
