@@ -31,3 +31,21 @@ Lives in: `HermesMobile/Features/Chat/InlineAudioPlayerView.swift`
 A server-transcribed voice note (`ChatViewModel.sendVoiceNote`) sends the transcript as the message text with no "[Attached files: …]" marker, so the model sees exactly the transcript and does not try to "inspect" (transcribe) the clip itself instead of answering it (#330). The clip still rides along as a display-only attachment so the inline player renders and persists; the server strips this attachment metadata before the model call, so it never reaches the agent. On reload the server often returns the clip attachment as a bare filename with no path while the optimistic bubble holds the full upload path, and `ChatViewModel.mergingLoadedMessages` must still match them so the optimistic message is not re-inserted as a duplicate user turn.
 
 Lives in: `HermesMobile/Features/Chat/ChatViewModel.swift`, `HermesMobileTests/ChatViewModelSendTests.swift`, `HermesMobileTests/ChatViewModelMergeDedupTests.swift`
+
+## Suspend room dictation while the app is locked
+
+As in a Bot Chat (#885), `BotRoomComposerView` suspends voice input while `AppLock` is locked or the scene is not active, and resumes it only when the app is unlocked and active. The draft stays locked from the mic tap until the words have landed.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomComposerView.swift`
+
+## Resign the room editor before dictation starts
+
+A live composition commits only as the editor lets go, and dictation's baseline has to include that edit, so `BotRoomComposerView` sends `ComposerChipTextView.resignForDictation` before it schedules the toggle and refocuses the editor after dictation ends if it was focused.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomComposerView.swift`
+
+## Transcribe a room's dictation with the host's default Profile
+
+A group room has no Profile of its own: it lives in the host's `default` Profile, so its dictation borrows that Profile's speech-to-text, on the same saved connection the Bot inbox opened the room with.
+
+Lives in: `HermesMobile/Networking/Hermes/HermesTranscription.swift`, `HermesMobile/Features/Bots/BotRoomComposerView.swift`

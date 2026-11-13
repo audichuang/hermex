@@ -5,7 +5,17 @@ enum HermesTranscription {
 
     @MainActor static func transcriber(for chat: HermesSessionChat,
                                        connections: HermesConnections? = nil) -> ComposerTranscriber {
-        let (saved, server, profile) = (chat.connection, chat.server, chat.target.profile)
+        transcriber(connection: chat.connection, server: chat.server, profile: chat.target.profile,
+                    connections: connections)
+    }
+
+    @MainActor static func transcriber(forRoomOn saved: BotConnection, server: URL,
+                                       connections: HermesConnections? = nil) -> ComposerTranscriber {
+        transcriber(connection: saved, server: server, profile: "default", connections: connections)
+    }
+
+    @MainActor private static func transcriber(connection saved: BotConnection, server: URL, profile: String,
+                                               connections: HermesConnections?) -> ComposerTranscriber {
         let connections = connections ?? .shared
         return { audio, _ in
             let http = connections.connection(for: saved, server: server)
