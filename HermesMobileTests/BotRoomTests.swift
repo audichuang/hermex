@@ -1335,3 +1335,44 @@ private extension BotRoomTests {
 }
 """#
 }
+
+final class BotRoomActivityStripTests: XCTestCase {
+    private func status(_ rows: [[String: BotJSON]]) -> BotRoomStatus {
+        BotRoomStatus(.object(["working": .bool(!rows.isEmpty), "member_activity": .array(rows.map(BotJSON.object))]))
+    }
+
+    func testMemberActivityDecodesWhoWhenAndWhichTool() throws {
+        let decoded = status([
+            ["member_id": .string("research-desk"), "status": .string("running"), "thread_id": .string("t1"),
+             "started_at": .number(1_000), "tool": .string("web_search"), "progress_at": .number(1_090)],
+            ["member_id": .string("hermes"), "status": .string("queued")],
+            ["status": .string("running")],
+        ]).activity
+        XCTAssertEqual(decoded.count, 2, "a row without a member is dropped")
+        let row = try XCTUnwrap(decoded.first)
+        XCTAssertEqual(row.memberID, "research-desk")
+        XCTAssertEqual(row.phase, .running)
+        XCTAssertEqual(row.threadID, "t1")
+        XCTAssertEqual(row.startedAt, Date(timeIntervalSince1970: 1_000))
+        XCTAssertEqual(row.tool, "web_search")
+        XCTAssertEqual(decoded.last?.phase, .queued)
+    }
+
+    func testOlderGatewaysWithoutMemberActivityShowNothing() {
+        XCTAssertEqual(BotRoomStatus(.object(["working": .bool(true)])).activity, [])
+    }
+
+    func testDetailShowsElapsedTimeAndToolOnlyWhileRunning() throws {
+        let running = try XCTUnwrap(BotRoomMemberActivity(.object([
+            "member_id": .string("m"), "status": .string("running"), "started_at": .number(1_000), "tool": .string("terminal")])))
+        XCTAssertEqual(BotRoomActivityStrip.detail(running, now: Date(timeIntervalSince1970: 1_102)), "1:42 · terminal")
+
+        let thinking = try XCTUnwrap(BotRoomMemberActivity(.object([
+            "member_id": .string("m"), "status": .string("running"), "started_at": .number(1_000)])))
+        XCTAssertEqual(BotRoomActivityStrip.detail(thinking, now: Date(timeIntervalSince1970: 1_008)), "0:08")
+
+        let queued = try XCTUnwrap(BotRoomMemberActivity(.object([
+            "member_id": .string("m"), "status": .string("queued"), "started_at": .number(1_000), "tool": .string("terminal")])))
+        XCTAssertNil(BotRoomActivityStrip.detail(queued, now: Date(timeIntervalSince1970: 1_102)))
+    }
+}
