@@ -13,7 +13,6 @@ upstream's guidance in `AGENTS.md` wherever the two disagree.
 - **Fork-only** changes stay here (signing, bundle ids, the self-hosted push relay). **Upstreamable** changes
   are features or fixes upstream could take as they are. Every PR into `develop` is labelled one or the other.
 
-
 ## GitHub rules
 
 Because upstream is merged in rather than rebased onto, history is never rewritten, so GitHub enforces the
@@ -26,7 +25,7 @@ model (repository rulesets):
 ## Red lines
 
 - Every change, docs included, goes on a branch cut from `fork/develop` and a PR into `develop`, merged with a
-  merge commit. Nobody pushes `develop` or `main` directly, except an upstream sync and a release (below).
+  merge commit. Nobody pushes `develop` directly (upstream syncs are PRs too); only a release pushes `main`.
 - Pass `-R audichuang/hermex` to every `gh pr` and `gh issue` that targets the fork.
 - Keep one topic per PR. Never mix fork-only and upstreamable commits in one PR: the upstream PR is built by
   cherry-picking that PR's commits.
