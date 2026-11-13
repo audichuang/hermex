@@ -37,6 +37,22 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/api/transcribe"), 0, "Never the webui's route")
     }
 
+    /// A group room has no Profile of its own, so its dictation uses the host's `default` one.
+    func testARoomsDictationUsesTheDefaultProfile() async throws {
+        let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in
+            request.url?.path == "/api/audio/transcribe"
+                ? .json(200, .object(["ok": .bool(true), "transcript": .string("大家好")]))
+                : nil
+        } })
+        let transcribe = HermesTranscription.transcriber(forRoomOn: record, server: server, connections: connections)
+
+        let reply = try await transcribe(Data("clip".utf8), "dictation.m4a")
+
+        XCTAssertEqual(reply.transcript, "大家好")
+        let upload = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == "/api/audio/transcribe" })
+        XCTAssertEqual(upload.url?.query, "profile=default")
+    }
+
     func testTheUploadWaitsOnTheLongDeadline() async throws {
         let parked = expectation(description: "Upload in flight")
         HermesHostFixture.onPark = { parked.fulfill() }
