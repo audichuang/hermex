@@ -62,13 +62,39 @@ struct BotGroupRoom: Hashable {
     }
 }
 
+/// One live room task from `driver_status.member_activity`: who is answering, since when, and
+/// (only when the host runs the turn itself) which tool it is in.
+struct BotRoomMemberActivity: Equatable {
+    enum Phase: Equatable { case queued, running, stopping }
+    let memberID: String
+    let phase: Phase
+    let threadID: String?
+    let startedAt: Date?
+    let tool: String?
+    init?(_ value: BotJSON) {
+        guard let memberID = value["member_id"].text, !memberID.isEmpty else { return nil }
+        switch value["status"].text {
+        case "queued": phase = .queued
+        case "stopping": phase = .stopping
+        default: phase = .running
+        }
+        self.memberID = memberID
+        threadID = value["thread_id"].text
+        startedAt = value["started_at"].number.map(Date.init(timeIntervalSince1970:))
+        tool = value["tool"].text.flatMap { $0.isEmpty ? nil : $0 }
+    }
+}
+
 struct BotRoomStatus: Equatable {
     let working: Bool
     let blocked: Bool
     let stopping: Int
     let stoppable: Int
     let actions: [BotRoomAction]
+    /// Absent from older gateways, which leaves only the Stop button as a sign of work.
+    let activity: [BotRoomMemberActivity]
     init(_ value: BotJSON) {
+        activity = (value["member_activity"].list ?? []).compactMap(BotRoomMemberActivity.init)
         working = value["working"].flag == true
         blocked = value["blocked"].flag == true
         stopping = max(0, value["counts"]["stopping"].integer ?? 0)

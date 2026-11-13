@@ -148,6 +148,7 @@ import SwiftUI
                         onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } },
                         onRetrySend: { Task { await reader.send(retry: true, threadID: threadID) } })
                 }
+                BotRoomActivityStrip(activity: reader.status.activity, room: reader.room, threadID: threadID)
                 if reader.showsComposer { BotRoomComposerView(reader: reader, threadID: threadID, roster: roster, avatars: avatars) }
             }
             .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))

@@ -232,3 +232,71 @@ struct BotComposerPillView: View {
         .accessibilityIdentifier("bot-chat-status")
     }
 }
+
+/// Who in a room is answering right now. Before this, the only sign of a long turn was the
+/// composer's Send button turning into Stop, so a two-minute reply looked like nothing happening.
+struct BotRoomActivityStrip: View {
+    let activity: [BotRoomMemberActivity]
+    let room: BotGroupRoom
+    /// A thread shows only its own work; the room overview shows every live task.
+    let threadID: String?
+
+    private var rows: [BotRoomMemberActivity] {
+        guard let threadID else { return activity }
+        return activity.filter { $0.threadID == threadID }
+    }
+
+    var body: some View {
+        let rows = rows
+        if !rows.isEmpty {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        line(row, now: context.date)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 20)
+            .transition(.opacity)
+        }
+    }
+
+    private func line(_ row: BotRoomMemberActivity, now: Date) -> some View {
+        let label = Self.label(row, name: name(of: row.memberID))
+        let detail = Self.detail(row, now: now)
+        return HStack(spacing: 6) {
+            ProgressView().controlSize(.mini)
+            Text(label).font(AppFont.caption(weight: .medium)).foregroundStyle(.primary)
+            if let detail { Text(detail).font(AppFont.caption()).foregroundStyle(.secondary) }
+        }
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func name(of memberID: String) -> String {
+        room.members.first { $0.id == memberID }?.name ?? memberID
+    }
+
+    static func label(_ row: BotRoomMemberActivity, name: String) -> String {
+        switch row.phase {
+        case .queued: String(localized: "\(name) is queued")
+        case .running: String(localized: "\(name) is replying")
+        case .stopping: String(localized: "\(name) is stopping")
+        }
+    }
+
+    /// Elapsed time and the current tool, e.g. "1:42 · web_search".
+    static func detail(_ row: BotRoomMemberActivity, now: Date) -> String? {
+        var parts: [String] = []
+        if row.phase != .queued, let started = row.startedAt {
+            let seconds = max(0, Int(now.timeIntervalSince(started)))
+            let minutes = seconds / 60, rest = seconds % 60
+            parts.append(minutes >= 60
+                ? String(format: "%d:%02d:%02d", minutes / 60, minutes % 60, rest)
+                : String(format: "%d:%02d", minutes, rest))
+        }
+        if row.phase == .running, let tool = row.tool { parts.append(tool) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
