@@ -54,5 +54,5 @@ run env PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/xcodebuild -exportArchive \
 subject=$(git log -1 --format=%s "$commit")
 run git tag -a testflight/$build "$commit" -m "Hermex Audi ($build): $subject"
 old_main=$(git rev-parse fork/main)
-run git push --atomic --force-with-lease=main:$old_main fork "$commit:refs/heads/main" "refs/tags/testflight/$build"
+run git push --atomic --force-with-lease=main:${old_main} fork "${commit}:refs/heads/main" "refs/tags/testflight/$build"
 print "Uploaded $build from ${commit[1,8]}; tagged testflight/$build and moved fork/main. TestFlight lists it once processing ends."
