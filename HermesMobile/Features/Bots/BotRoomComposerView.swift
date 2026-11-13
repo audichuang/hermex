@@ -255,10 +255,12 @@ struct BotRoomActivityStrip: View {
                         line(row, now: context.date)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 20)
-            .transition(.opacity)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            // Messages scroll under the bottom inset, so the strip needs its own surface.
+            .background(.appMaterial(.regularMaterial), in: RoundedRectangle(cornerRadius: 16))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
         }
     }
 
