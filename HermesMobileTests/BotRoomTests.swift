@@ -1337,42 +1337,79 @@ private extension BotRoomTests {
 }
 
 final class BotRoomActivityStripTests: XCTestCase {
-    private func status(_ rows: [[String: BotJSON]]) -> BotRoomStatus {
-        BotRoomStatus(.object(["working": .bool(!rows.isEmpty), "member_activity": .array(rows.map(BotJSON.object))]))
+    private let lead = "user:lead-msg", reply = "user:reply-msg"
+    private func event(_ seq: Int, _ kind: String, id: String? = nil, _ payload: [String: BotJSON]) -> BotRoomEvent {
+        var value: [String: BotJSON] = ["seq": .number(Double(seq)), "kind": .string(kind), "payload": .object(payload)]
+        if let id { value["event_id"] = .string(id) }
+        return BotRoomEvent(.object(value))!
+    }
+    private var room: BotGroupRoom {
+        BotGroupRoom(.object(["room_id": .string("bf2e27ae-63a4-43d6-a406-0da02b07a2ba"), "name": .string("總機"),
+            "members": .array(["codex-watch", "personal-assistant", "default", "research-desk"].map { id in
+                .object(["member_id": .string(id), "handle": .string(id == "default" ? "hermes" : id)]) })]))!
+    }
+    private var context: BotRoomEvent {
+        event(1, "room.context_set", ["routing": .string("lead"), "lead_member_id": .string("default")])
+    }
+    private func row(_ member: String, _ status: String = "running", thread: String = "t1",
+                     started: Double = 1_000, progress: Double? = nil, tool: String? = nil) -> BotRoomMemberActivity {
+        var value: [String: BotJSON] = ["member_id": .string(member), "status": .string(status),
+                                        "thread_id": .string(thread), "started_at": .number(started)]
+        if let progress { value["progress_at"] = .number(progress) }
+        if let tool { value["tool"] = .string(tool) }
+        return BotRoomMemberActivity(.object(value))!
     }
 
-    func testMemberActivityDecodesWhoWhenAndWhichTool() throws {
-        let decoded = status([
-            ["member_id": .string("research-desk"), "status": .string("running"), "thread_id": .string("t1"),
-             "started_at": .number(1_000), "tool": .string("web_search"), "progress_at": .number(1_090)],
-            ["member_id": .string("hermes"), "status": .string("queued")],
-            ["status": .string("running")],
-        ]).activity
-        XCTAssertEqual(decoded.count, 2, "a row without a member is dropped")
-        let row = try XCTUnwrap(decoded.first)
-        XCTAssertEqual(row.memberID, "research-desk")
-        XCTAssertEqual(row.phase, .running)
-        XCTAssertEqual(row.threadID, "t1")
-        XCTAssertEqual(row.startedAt, Date(timeIntervalSince1970: 1_000))
-        XCTAssertEqual(row.tool, "web_search")
-        XCTAssertEqual(decoded.last?.phase, .queued)
+    func testAThreadReplyReachesEveryoneAndShowsWhoAlreadySkipped() throws {
+        // The 2026-11-14 06:00 case: a reply in an existing thread goes round-robin, codex-watch passes first.
+        let events = [context,
+            event(2, "message.user", id: lead, ["text": .string("找餐廳"), "thread_id": .string("t1")]),
+            event(3, "room.assignment", ["discussion_event_id": .string(lead), "member_ids": .array([.string("research-desk")])]),
+            event(4, "message.user", id: reply, ["text": .string("提醒我禮拜天再問"), "thread_id": .string("t1")]),
+            event(5, "turn.settled", ["discussion_event_id": .string(reply), "member_id": .string("codex-watch"), "passed": .bool(true)])]
+        let round = try XCTUnwrap(BotRoomRound.build(events: events, activity: [row("personal-assistant")], room: room, threadID: nil))
+        XCTAssertNil(round.routingBy)
+        XCTAssertEqual(round.seats.map(\.memberID), ["codex-watch", "personal-assistant", "default", "research-desk"])
+        XCTAssertEqual(round.seats.map(\.outcome), [.passed, .working, .waiting, .waiting])
+        XCTAssertEqual(round.seats[2].name, "hermes")
+        XCTAssertEqual(BotRoomActivityStrip.progress(round), "2/4")
     }
 
-    func testOlderGatewaysWithoutMemberActivityShowNothing() {
+    func testAnUnaddressedFirstMessageShowsTheLeadRoutingThenOnlyThePick() throws {
+        let message = event(2, "message.user", id: lead, ["text": .string("找餐廳"), "thread_id": .string("t1")])
+        let routing = try XCTUnwrap(BotRoomRound.build(events: [context, message], activity: [row("default")], room: room, threadID: nil))
+        XCTAssertEqual(routing.routingBy, "hermes")
+        XCTAssertNil(BotRoomActivityStrip.progress(routing), "routing is not a round of four")
+
+        let assigned = event(3, "room.assignment", ["discussion_event_id": .string(lead), "member_ids": .array([.string("research-desk")])])
+        let picked = try XCTUnwrap(BotRoomRound.build(events: [context, message, assigned], activity: [row("research-desk")], room: room, threadID: nil))
+        XCTAssertNil(picked.routingBy)
+        XCTAssertEqual(picked.seats.map(\.memberID), ["research-desk"])
+        XCTAssertNil(BotRoomActivityStrip.progress(picked), "a lone member needs no count")
+    }
+
+    func testAnAtMentionLimitsTheRound() throws {
+        let events = [context, event(2, "message.user", id: lead, ["text": .string("@personal-assistant 提醒我"), "thread_id": .string("t1")])]
+        let round = try XCTUnwrap(BotRoomRound.build(events: events, activity: [row("personal-assistant")], room: room, threadID: nil))
+        XCTAssertEqual(round.seats.map(\.memberID), ["personal-assistant"])
+    }
+
+    func testNothingRunningShowsNothingAndOlderGatewaysDecodeEmpty() {
+        XCTAssertNil(BotRoomRound.build(events: [], activity: [], room: room, threadID: nil))
         XCTAssertEqual(BotRoomStatus(.object(["working": .bool(true)])).activity, [])
+        XCTAssertNil(BotRoomRound.build(events: [], activity: [row("default", thread: "other")], room: room, threadID: "t1"),
+                     "a thread shows only its own work")
     }
 
-    func testDetailShowsElapsedTimeAndToolOnlyWhileRunning() throws {
-        let running = try XCTUnwrap(BotRoomMemberActivity(.object([
-            "member_id": .string("m"), "status": .string("running"), "started_at": .number(1_000), "tool": .string("terminal")])))
-        XCTAssertEqual(BotRoomActivityStrip.detail(running, now: Date(timeIntervalSince1970: 1_102)), "1:42 · terminal")
+    func testDetailShowsTimeAndToolThenWarnsWhenQuiet() throws {
+        let busy = try XCTUnwrap(BotRoomRound.build(events: [], activity: [row("default", progress: 1_090, tool: "web_search")], room: room, threadID: nil))
+        let fresh = try XCTUnwrap(BotRoomActivityStrip.detail(busy, now: Date(timeIntervalSince1970: 1_102)))
+        XCTAssertEqual(fresh.text, "1:42 · web_search"); XCTAssertFalse(fresh.quiet)
+        let stuck = try XCTUnwrap(BotRoomActivityStrip.detail(busy, now: Date(timeIntervalSince1970: 1_090 + 125)))
+        XCTAssertTrue(stuck.quiet)
+        XCTAssertTrue(stuck.text.contains("2:05"))
 
-        let thinking = try XCTUnwrap(BotRoomMemberActivity(.object([
-            "member_id": .string("m"), "status": .string("running"), "started_at": .number(1_000)])))
-        XCTAssertEqual(BotRoomActivityStrip.detail(thinking, now: Date(timeIntervalSince1970: 1_008)), "0:08")
-
-        let queued = try XCTUnwrap(BotRoomMemberActivity(.object([
-            "member_id": .string("m"), "status": .string("queued"), "started_at": .number(1_000), "tool": .string("terminal")])))
+        let queued = try XCTUnwrap(BotRoomRound.build(events: [], activity: [row("default", "queued")], room: room, threadID: nil))
         XCTAssertNil(BotRoomActivityStrip.detail(queued, now: Date(timeIntervalSince1970: 1_102)))
     }
 }
