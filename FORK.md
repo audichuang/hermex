@@ -1,68 +1,83 @@
 # audichuang/hermex fork
 
-This fork ships its own TestFlight build (**Hermex Audi**, bundle `com.audi.hermex.37hfr5v2jj`, team `37HFR5V2JJ`)
-and sends the parts upstream would want back to `uzairansaruzi/hermex` as separate PRs. These rules override
-upstream's guidance in `AGENTS.md` wherever the two disagree.
+This fork ships its own TestFlight app, **Hermex Audi** (bundle `com.audi.hermex.37hfr5v2jj`, team `37HFR5V2JJ`),
+as a thin stack of small changes on top of upstream `uzairansaruzi/hermex`. These rules override upstream's
+guidance in `AGENTS.md` wherever the two disagree.
+
+## How the pieces fit
+
+```text
+Hermex Audi (this repo, TestFlight) ──HTTPS + Cloudflare Access──► Hermes host (Mac mini, ~/.hermes)
+        ▲                                                            └ hermex-push plugin (audichuang/hermex-push)
+        └── APNs ◄── hermex-relay-audi (Cloudflare Worker, relay/ in hermex-push) ◄──┘ HERMEX_PUSH_RELAY_URL
+```
+
+- The app talks only to the owner's Hermes host. Push goes host plugin → self-hosted relay → APNs; upstream's
+  relay accepts only upstream's bundle ids and signs with upstream's APNs key, so this app needs the fork relay.
+- The App Store **Hermex** (upstream bundle) still works as a client but gets no push while the host points
+  at the fork relay. Switching back is a host setting, not an app change.
+- Changes that alter what `groups.state`, `member_activity` or the pairing route send belong in Hermes or the
+  plugin, not here; read the host's installed Hermes (`~/.hermes/hermes-agent`), not an upstream checkout.
 
 ## Terms
 
-- **`fork`** is `https://github.com/audichuang/hermex.git`. **`origin`** is upstream `uzairansaruzi/hermex`.
-- **`develop`** (the default branch) is the integration branch: an upstream `master` commit plus the fork's work,
-  merged in by PR.
-- **`main`** points at the commit of the last build uploaded to TestFlight. It moves only at release time.
-- **Fork-only** changes stay here (signing, bundle ids, the self-hosted push relay). **Upstreamable** changes
-  are features or fixes upstream could take as they are. Every PR into `develop` is labelled one or the other.
-
-## GitHub rules
-
-Because upstream is merged in rather than rebased onto, history is never rewritten, so GitHub enforces the
-model (repository rulesets):
-
-- **`develop: PR only`**: changes only through a PR, merged with a merge commit; no force-push, no deletion.
-- **`main: release pointer`**: no force-push, no deletion. A release moves it by fast-forward to a `develop`
-  commit, so `main` is always an ancestor of `develop`.
+- **`fork`** is `https://github.com/audichuang/hermex.git`; **`origin`** is upstream (read only).
+- **`develop`** (default branch) = upstream `master` tip + the fork's commits, kept as a linear stack on top.
+- **`main`** = the commit of the build on TestFlight now. Every upload is also tagged `testflight/<build>`.
+- Every fork commit carries a trailer, `Fork: upstreamable` or `Fork: fork-only` (signing, bundle ids, relay).
+  The trailer survives rebases; PR labels do not.
 
 ## Red lines
 
-- Every change, docs included, goes on a branch cut from `fork/develop` and a PR into `develop`, merged with a
-  merge commit. Nobody pushes `develop` directly (upstream syncs are PRs too); only a release pushes `main`.
-- Pass `-R audichuang/hermex` to every `gh pr` and `gh issue` that targets the fork.
-- Keep one topic per PR. Never mix fork-only and upstreamable commits in one PR: the upstream PR is built by
-  cherry-picking that PR's commits.
-- An agent merges a PR, releases, or opens an upstream PR only when the owner asked for that piece of work.
+- Work on a branch cut from `fork/develop`, open a PR into `develop` (`-R audichuang/hermex`), merge it with
+  **squash** (one commit per change, trailer kept). Only an upstream rebase and a release push `develop`/`main`.
+- One topic per PR; never mix upstreamable and fork-only changes in one commit.
+- Keep changes small. Anything that rewrites shared upstream code broadly makes every rebase a conflict:
+  prefer a new small file or an extension over editing large upstream files.
+- An agent merges, releases, rebases, or opens an upstream PR only when the owner asked for that piece of work.
 - Never commit `Config/Local.xcconfig`, `.p8` keys, App Store Connect or Cloudflare credentials.
+
+## GitHub rules
+
+Rulesets: **`develop: linear stack on upstream`** (no deletion, linear history, so PRs merge by squash or
+rebase) and **`main: release pointer`** (no deletion). Force-push stays allowed because a rebase needs it.
+Merge commits are turned off for the repo.
 
 ## Merge gate
 
-Upstream's `PR CI` runs on upstream's own `xcode-27` runner, so it is disabled on this fork (along with the
-upstream TestFlight workflow). Until the fork has its own CI, the gate is local and recorded in the PR body:
+Upstream's `PR CI` needs upstream's `xcode-27` runner and is disabled here, with upstream's TestFlight workflow.
+The gate is local and goes in the PR body:
 
 - the focused `scripts/test-sim <udid>` selection `AGENTS.md` § Verifying asks for, with its result;
 - `python3 ci/check_string_catalog.py --derived-data .build/DerivedData --configuration Debug-iphonesimulator`;
-- for UI changes, evidence of how it looks (simulator or device screenshot, or a rendered view).
+- for UI, evidence of how it looks (simulator or device screenshot, or a rendered view).
 
 ## Release
 
-A release is one TestFlight upload of a `develop` commit.
+`scripts/fork/testflight-release` from a clean checkout of a `develop` commit: archives, uploads with team
+`37HFR5V2JJ`, tags `testflight/<build>`, and moves `main`. `ALLOW_UNMERGED=1` uploads a feature branch for a
+quick phone test; its tag still records the commit. `DRY_RUN=1` prints the steps.
 
-1. Archive that exact commit with `CURRENT_PROJECT_VERSION=$(date +%Y%m%d%H%M%S)` and upload it with team
-   `37HFR5V2JJ` export options (the commands live in the owner's notes, not here).
-2. Tag it and move `main` in one push:
-   `git tag -a v<marketing>-fork.<N> <sha> -m "<build number>: <what changed>"` then
-   `git push --atomic fork <sha>:refs/heads/main v<marketing>-fork.<N>`.
-   `<marketing>` is the app's `MARKETING_VERSION`; `<N>` counts up per marketing version.
+## Upstream rebase
 
-## Upstream sync
+Put the fork's commits back on top of the newest upstream `master`:
 
-Merge upstream `master` into `develop` through a PR (`sync/upstream-<date>`), so fork history is never
-rewritten and `main` only fast-forwards. Resolve conflicts on that branch, run the merge gate, then merge.
+```zsh
+git fetch origin fork
+git push fork fork/develop:refs/heads/backup/develop-$(date +%Y%m%d)   # rollback point
+git rebase --onto origin/master $(git merge-base fork/develop origin/master) develop
+```
+
+Resolve conflicts commit by commit (a fork commit upstream already took becomes empty: drop it), run the
+merge gate, then `git push --force-with-lease=develop:<old sha> fork develop`. Rebase open PR branches with
+`git rebase --onto fork/develop <their old base>`. Released commits stay reachable through their
+`testflight/*` tags.
 
 ## Upstream PRs
 
-1. Cut `upstream/<topic>` from `origin/master`.
-2. Cherry-pick the commits of the upstreamable fork PR (`git cherry-pick <first>^..<last>`), never `develop`
-   itself, and rerun upstream's checks for that change.
-3. Follow upstream's `CONTRIBUTING.md` and PR template: English, linked issue, how it was tested, AI-use
-   disclosure. The owner (or the reviewing agent) approves the full text before it is sent.
-4. Open it with `gh pr create -R uzairansaruzi/hermex --head audichuang:upstream/<topic>`. Whether upstream
-   merges it does not block the fork; the fork keeps shipping from `develop`.
+1. Cut `upstream/<topic>` from `origin/master` and cherry-pick the `Fork: upstreamable` commit(s)
+   (`git log fork/develop --grep '^Fork: upstreamable'`), dropping the trailer.
+2. Follow upstream's `CONTRIBUTING.md` and PR template: English, linked issue, how it was tested, AI-use
+   disclosure. The owner approves the full text before it is sent.
+3. `gh pr create -R uzairansaruzi/hermex --head audichuang:upstream/<topic>`. Once upstream merges it, the
+   next rebase drops the fork's copy as empty.
