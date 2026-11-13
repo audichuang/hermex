@@ -12,16 +12,29 @@ struct BotRoomComposerView: View {
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(AppAppearanceSettings.accentHexKey) private var accentHex: String?
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection = ComposerSelection()
     @State private var focused = false
     @State private var inputHeight: CGFloat = 22
     @State private var measuredHeight: CGFloat = 0
+    /// Dictation as in a Bot Chat: a tap on the mic, words land in this thread's draft.
+    /// Rooms take no voice notes, since a room message is text only.
+    @State private var voiceInput = ComposerVoiceInputController()
+    @State private var restoresFocusAfterDictation = false
     @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 16
+
+    /// The draft stays locked from the mic tap until the words have landed.
+    private var isDictating: Bool { voiceInput.state != .idle }
 
     var body: some View {
         AdaptiveGlassContainer(spacing: 6) {
             VStack(spacing: 8) {
-                if focused, reader.mayEditDraft(in: threadID),
+                if !isDictating, let error = voiceInput.errorMessage {
+                    ComposerVoiceStatusView(status: ComposerVoiceStatus(text: error, systemImage: "exclamationmark.triangle", isError: true),
+                                            onDismiss: voiceInput.dismissError)
+                }
+                if focused, !isDictating, reader.mayEditDraft(in: threadID),
                    let trigger = BotMentionTrigger.detect(in: reader.draft(in: threadID), selection: selection.range) {
                     let completions = BotRoomMentions.completions(room: reader.room, query: trigger.query)
                     if !completions.isEmpty {
@@ -38,9 +51,9 @@ struct BotRoomComposerView: View {
                     ComposerTextInputView(
                         text: Binding(get: { reader.draft(in: threadID) }, set: { reader.setDraft($0, in: threadID) }), selection: $selection, isFocused: $focused,
                         inputHeight: $inputHeight, measuredHeight: $measuredHeight,
-                        isDisabled: !reader.mayEditDraft(in: threadID), isCollapsed: !focused,
+                        isDisabled: !reader.mayEditDraft(in: threadID) || isDictating, isCollapsed: !(focused || isDictating),
                         // Send only: a room has no send choices, and its Stop halts every bot in it.
-                        keyboardCommands: ComposerKeyboardCommands(send: reader.maySend(in: threadID)
+                        keyboardCommands: ComposerKeyboardCommands(send: reader.maySend(in: threadID) && !isDictating
                             ? .init(title: String(localized: "Send Message"), perform: send) : nil),
                         verticalPadding: 12, chipSkills: [], chipFilePaths: [], quotes: [],
                         onPasteFileProviders: { _ in }, onPasteFileURLs: { _ in },
@@ -48,13 +61,73 @@ struct BotRoomComposerView: View {
                         onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },
                         placeholder: threadID == nil ? String(localized: "Message \(reader.room.name)") : String(localized: "Reply in thread"), acceptsAttachments: false
                     )
-                    actionButton
+                    if !isDictating {
+                        ComposerVoiceControlButton(
+                            isDisabled: !reader.mayEditDraft(in: threadID) || voiceInput.isRequestingPermission,
+                            color: Color(.appTextSecondary), isRecordingVoiceNote: false, supportsVoiceNotes: false,
+                            onTap: toggleVoiceInput, onRecordingStart: {}, onRecordingDragChanged: { _ in }, onRecordingEnd: { _ in })
+                        actionButton
+                    }
                 }
                 .padding(ChatComposerMetrics.pillInset)
-                .modifier(ChatComposerSurfaceStyle(isExpanded: focused))
+                .modifier(ChatComposerSurfaceStyle(isExpanded: focused || isDictating))
+                if isDictating {
+                    let finish = ChatComposerActionAppearance(isStop: false, isDisabled: false,
+                        colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions,
+                        tint: PrimaryActionTintSettings.colors(accentHex: accentHex, serverHex: themeHex))
+                    ComposerDictationRow(voiceInput: voiceInput, circleSize: ChatComposerMetrics.actionSize,
+                                         finishBackground: finish.background, finishForeground: finish.foreground)
+                        .transition(.opacity)
+                }
             }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isDictating)
         }
         .padding(.horizontal, 16).padding(.bottom, 8)
+        .task(id: AppLock.shared.isLocked) {
+            // Dictation waits for the app lock, as in a Bot Chat (#885).
+            if AppLock.shared.isLocked { voiceInput.suspend() } else if scenePhase == .active { voiceInput.resume() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { voiceInput.resume() } else { voiceInput.suspend() }
+        }
+        .onChange(of: threadID) { _, _ in stopDictation() }
+        .onChange(of: isDictating) { _, dictating in if !dictating { restoreFocusAfterDictation() } }
+        .onDisappear(perform: stopDictation)
+    }
+
+    private func toggleVoiceInput() {
+        voiceInput.transcribe = HermesTranscription.transcriber(forRoomOn: reader.connection, server: reader.key.server)
+        voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
+        // Resign first: a live composition commits as the editor lets go, and dictation's
+        // baseline has to include that edit.
+        restoresFocusAfterDictation = focused
+        if focused {
+            UIApplication.shared.sendAction(#selector(ComposerChipTextView.resignForDictation), to: nil, from: nil, for: nil)
+            focused = false
+        }
+        let thread = threadID
+        let start = voiceInput.scheduleToggle(
+            draftState: { ComposerVoiceDraftState(text: reader.draft(in: thread), selection: selection) },
+            updateDraft: { update in
+                reader.setDraft(update.text, in: thread)
+                selection = selection.moved(to: update.caret)
+            }
+        )
+        Task {
+            await start.value
+            if !isDictating { restoreFocusAfterDictation() }
+        }
+    }
+
+    private func restoreFocusAfterDictation() {
+        guard restoresFocusAfterDictation else { return }
+        restoresFocusAfterDictation = false
+        focused = true
+    }
+
+    private func stopDictation() {
+        restoresFocusAfterDictation = false
+        voiceInput.stopBeforeSubmittingDraft()
     }
 
     private var actionButton: some View {
