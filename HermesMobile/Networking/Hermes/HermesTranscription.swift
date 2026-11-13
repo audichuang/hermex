@@ -14,7 +14,19 @@ enum HermesTranscription {
     /// recording is sent.
     @MainActor static func transcriber(for chat: HermesSessionChat,
                                        connections: HermesConnections? = nil) -> ComposerTranscriber {
-        let (saved, server, profile) = (chat.connection, chat.server, chat.target.profile)
+        transcriber(connection: chat.connection, server: chat.server, profile: chat.target.profile,
+                    connections: connections)
+    }
+
+    /// A group room has no Profile of its own: it lives in the host's `default` Profile, whose
+    /// speech-to-text it borrows, on the same saved connection the Bot inbox opened it with.
+    @MainActor static func transcriber(forRoomOn saved: BotConnection, server: URL,
+                                       connections: HermesConnections? = nil) -> ComposerTranscriber {
+        transcriber(connection: saved, server: server, profile: "default", connections: connections)
+    }
+
+    @MainActor private static func transcriber(connection saved: BotConnection, server: URL, profile: String,
+                                               connections: HermesConnections?) -> ComposerTranscriber {
         let connections = connections ?? .shared
         return { audio, _ in
             let http = connections.connection(for: saved, server: server)
