@@ -29,8 +29,9 @@ Hermex Audi (this repo, TestFlight) ──HTTPS + Cloudflare Access──► Her
 
 ## Red lines
 
-- Work on a branch cut from `fork/develop`, open a PR into `develop` (`-R audichuang/hermex`), merge it with
-  **squash** (one commit per change, trailer kept). Only an upstream rebase and a release push `develop`/`main`.
+- Work on a branch cut from `fork/develop`, open a PR into `develop` (`-R audichuang/hermex`), and merge it
+  with `scripts/fork/merge-pr <pr> <upstreamable|fork-only> "<English subject>"`: one squash commit with one
+  `Fork:` trailer, checked after the merge. Only an upstream rebase and a release push `develop`/`main`.
 - One topic per PR; never mix upstreamable and fork-only changes in one commit.
 - Keep changes small. Anything that rewrites shared upstream code broadly makes every rebase a conflict:
   prefer a new small file or an extension over editing large upstream files.
@@ -39,9 +40,9 @@ Hermex Audi (this repo, TestFlight) ──HTTPS + Cloudflare Access──► Her
 
 ## GitHub rules
 
-Rulesets: **`develop: linear stack on upstream`** (no deletion, linear history, so PRs merge by squash or
-rebase) and **`main: release pointer`** (no deletion). Force-push stays allowed because a rebase needs it.
-Merge commits are turned off for the repo.
+Rulesets: **`develop: linear stack on upstream`** (no deletion, linear history) and **`main: release
+pointer`** (no deletion). Force-push stays allowed because a rebase needs it. The repo allows squash merges
+only, with a blank default message, so the `Fork:` trailer comes from `merge-pr`.
 
 ## Merge gate
 
@@ -56,22 +57,29 @@ The gate is local and goes in the PR body:
 
 `scripts/fork/testflight-release` from a clean checkout of a `develop` commit: archives, uploads with team
 `37HFR5V2JJ`, tags `testflight/<build>`, and moves `main`. `ALLOW_UNMERGED=1` uploads a feature branch for a
-quick phone test; its tag still records the commit. `DRY_RUN=1` prints the steps.
+quick phone test; its tag still records the commit. `DRY_RUN=1` prints the steps. It refuses a build that
+lacks fork commits the current `main` has (a release from a `develop` that misses an unmerged PR would
+silently drop features); `ALLOW_DROP=1` only after checking `git diff fork/main HEAD`. If the upload succeeds
+but recording fails, it prints the commands to push the tag and `main`; never re-upload to fix a record.
 
 ## Upstream rebase
 
-Put the fork's commits back on top of the newest upstream `master`:
+Put the fork's commits back on top of the newest upstream `master`. Work from one freshly fetched
+`fork/develop` SHA (never the local `develop`, which drifts) for the backup, the rebase, and the push lease:
 
 ```zsh
-git fetch origin fork
-git push fork fork/develop:refs/heads/backup/develop-$(date +%Y%m%d)   # rollback point
-git rebase --onto origin/master $(git merge-base fork/develop origin/master) develop
+git fetch --multiple origin fork
+base=$(git rev-parse fork/develop)
+git push fork "${base}:refs/heads/backup/develop-$(date +%Y%m%d)"   # rollback point
+git switch --detach "$base"
+git rebase --onto origin/master $(git merge-base "$base" origin/master)
+# resolve conflicts commit by commit; a fork commit upstream already took comes out empty: drop it
+# run the merge gate, then:
+git push --force-with-lease=develop:${base} fork HEAD:refs/heads/develop
 ```
 
-Resolve conflicts commit by commit (a fork commit upstream already took becomes empty: drop it), run the
-merge gate, then `git push --force-with-lease=develop:<old sha> fork develop`. Rebase open PR branches with
-`git rebase --onto fork/develop <their old base>`. Released commits stay reachable through their
-`testflight/*` tags.
+Rebase open PR branches afterwards with `git rebase --onto fork/develop <their old base>`. Released commits
+stay reachable through their `testflight/*` tags.
 
 ## Upstream PRs
 
