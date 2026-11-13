@@ -13,6 +13,16 @@ upstream's guidance in `AGENTS.md` wherever the two disagree.
 - **Fork-only** changes stay here (signing, bundle ids, the self-hosted push relay). **Upstreamable** changes
   are features or fixes upstream could take as they are. Every PR into `develop` is labelled one or the other.
 
+
+## GitHub rules
+
+Because upstream is merged in rather than rebased onto, history is never rewritten, so GitHub enforces the
+model (repository rulesets):
+
+- **`develop: PR only`**: changes only through a PR, merged with a merge commit; no force-push, no deletion.
+- **`main: release pointer`**: no force-push, no deletion. A release moves it by fast-forward to a `develop`
+  commit, so `main` is always an ancestor of `develop`.
+
 ## Red lines
 
 - Every change, docs included, goes on a branch cut from `fork/develop` and a PR into `develop`, merged with a
@@ -40,7 +50,7 @@ A release is one TestFlight upload of a `develop` commit.
    `37HFR5V2JJ` export options (the commands live in the owner's notes, not here).
 2. Tag it and move `main` in one push:
    `git tag -a v<marketing>-fork.<N> <sha> -m "<build number>: <what changed>"` then
-   `git push --atomic --force-with-lease=main:<old main> fork <sha>:refs/heads/main v<marketing>-fork.<N>`.
+   `git push --atomic fork <sha>:refs/heads/main v<marketing>-fork.<N>`.
    `<marketing>` is the app's `MARKETING_VERSION`; `<N>` counts up per marketing version.
 
 ## Upstream sync
