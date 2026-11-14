@@ -46,11 +46,13 @@ only, with a blank default message, so the `Fork:` trailer comes from `merge-pr`
 
 ## Merge gate
 
-Upstream's `PR CI` needs upstream's `xcode-27` runner and is disabled here, with upstream's TestFlight workflow.
-The gate is local and goes in the PR body:
+`PR CI`'s **CI Gate** must pass. Its macOS job (full suite and String Catalog check) runs on the owner's Mac mini
+as a self-hosted runner (label `hermex-mac`, a launchd service from `~/actions-runner-hermex`): hosted macOS
+images have no Xcode 27. It runs for pushes to `develop` and PRs from this repository only; app changes from
+another fork fail the gate until pushed here. Upstream's TestFlight workflow stays disabled. The PR body also
+carries:
 
 - the focused `scripts/test-sim <udid>` selection `AGENTS.md` § Verifying asks for, with its result;
-- `python3 ci/check_string_catalog.py --derived-data .build/DerivedData --configuration Debug-iphonesimulator`;
 - for UI, evidence of how it looks (simulator or device screenshot, or a rendered view).
 
 ## Release
