@@ -201,6 +201,9 @@ final class SessionListViewModel {
     /// Each session's latest read-mark write, which its next one waits for.
     @ObservationIgnored private var hermesUnreadWrites: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var hermesWire: (any BotTransport)?
+    /// `hermesWire` while its `connect()` is under way. Every read on it then fails with `.stale`,
+    /// so a refresh, a Profile switch or a change waits for the open that connects it, which reads next.
+    @ObservationIgnored private var hermesConnectingWire: (any BotTransport)?
     /// False while a chat covers the list: `sessions.changed` is ignored and live states rest.
     @ObservationIgnored private var hermesIsListening = false
     @ObservationIgnored private var hermesPages = HermesProfilePages()
@@ -1760,6 +1763,8 @@ final class SessionListViewModel {
         hermesIsListening = true
         let followed = followSavedHermesProfile()
         if let wire = hermesWire {
+            // Still connecting: that open reads the rows, and the search, once it has.
+            guard wire !== hermesConnectingWire else { return }
             // A list of every Profile reads today's names before its pages, and names a new one
             // on the socket.
             let listed = hermesProfiles
@@ -1784,8 +1789,10 @@ final class SessionListViewModel {
             guard let self, let wire, self.hermesWire === wire else { return }
             self.dropHermes(error)
         }
+        hermesConnectingWire = wire
         do {
             try await wire.connect()
+            if hermesConnectingWire === wire { hermesConnectingWire = nil }
             guard hermesWire === wire else { return }
             if hermesProfile == nil || hermesShowsAllProfiles { await readHermesProfiles(wire) }
             if hermesProfile == nil { await resolveHermesProfile(wire) }
@@ -1796,6 +1803,7 @@ final class SessionListViewModel {
             await runAwaitedHermesSearch()
             await readHermesProfiles(wire)
         } catch {
+            if hermesConnectingWire === wire { hermesConnectingWire = nil }
             guard hermesWire === wire else { return }
             // The screen left while connecting: the next open starts a fresh client.
             if Task.isCancelled { wire.close(); hermesWire = nil; isLoading = false; return }
@@ -1830,7 +1838,7 @@ final class SessionListViewModel {
         hermesReloadTask?.cancel(); hermesReloadTask = nil; hermesReloadWanted = false
         hermesReadSerial += 1
         isLoading = false; isLoadingMoreSessions = false; isLoadingMoreScheduledSessions = false
-        hermesWire?.close(); hermesWire = nil
+        hermesWire?.close(); hermesWire = nil; hermesConnectingWire = nil
         hasReadHermes = false
         // Matches past the loaded pages change only when the host is searched again.
         if activeRemoteSearchQuery?.isEmpty == false { hermesSearchAwaitsConnect = true }
@@ -1873,7 +1881,7 @@ final class SessionListViewModel {
     /// shows the rows it held back. A list read that begins meanwhile replaces it and reads that
     /// page itself, so the flag stays up until that read ends.
     func loadMoreHermesSessions() async {
-        guard hasMoreSessions, !isLoadingMoreSessions, let wire = hermesWire else { return }
+        guard hasMoreSessions, !isLoadingMoreSessions, let wire = hermesWire, wire !== hermesConnectingWire else { return }
         let serial = hermesReadSerial
         isLoadingMoreSessions = true
         defer { if serial == hermesReadSerial { isLoadingMoreSessions = false } }
@@ -1895,7 +1903,8 @@ final class SessionListViewModel {
     /// ones, and caches it with them. A list read that begins meanwhile reads that page itself
     /// and lets go of the flag however it ends.
     func loadMoreHermesScheduledSessions() async {
-        guard hasMoreScheduledSessions, !isLoadingMoreScheduledSessions, let wire = hermesWire else { return }
+        guard hasMoreScheduledSessions, !isLoadingMoreScheduledSessions, let wire = hermesWire,
+              wire !== hermesConnectingWire else { return }
         let serial = hermesReadSerial
         isLoadingMoreScheduledSessions = true
         defer { if serial == hermesReadSerial { isLoadingMoreScheduledSessions = false } }
@@ -2200,6 +2209,8 @@ final class SessionListViewModel {
         setHermesStates([:]); setHermesReconnecting(false)
         guard let wire = hermesWire else { return await openHermes() }
         isLoading = true
+        // The open that is connecting watches and reads the Profile set above.
+        guard wire !== hermesConnectingWire else { return }
         if hermesShowsAllProfiles && hermesProfiles.isEmpty { await readHermesProfiles(wire) }
         _ = await watchHermesProfile(wire)
         await reloadHermes()
@@ -2305,7 +2316,7 @@ final class SessionListViewModel {
     /// One list read in flight and at most one more after it, however many ask meanwhile.
     private func requestHermesReload() {
         hermesReloadWanted = true
-        guard hermesReloadTask == nil, let wire = hermesWire else { return }
+        guard hermesReloadTask == nil, let wire = hermesWire, wire !== hermesConnectingWire else { return }
         hermesReloadTask = Task { [weak self] in
             while let self, self.hermesReloadWanted, self.hermesWire === wire, !Task.isCancelled {
                 self.hermesReloadWanted = false

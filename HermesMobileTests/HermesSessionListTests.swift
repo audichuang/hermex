@@ -1409,7 +1409,9 @@ import Observation
 
     func currentProfile() async throws -> String { current }
 
+    /// A page read before `connect()` finishes is refused as `BotClient`'s is, with `.stale`.
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+        guard attached else { throw BotFailure.stale }
         pageReads.append((profile, offset))
         let reply = pages[profile]?[offset] ?? HermesSessionPage(rows: [])
         if holdsPages { try await parkPage() }
@@ -1420,6 +1422,7 @@ import Observation
     }
 
     func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+        guard attached else { throw BotFailure.stale }
         scheduledReads.append((profile, offset))
         let reply = scheduledPages[profile]?[offset] ?? HermesSessionPage(rows: [])
         if holdsScheduledPages { try await parkPage() }
