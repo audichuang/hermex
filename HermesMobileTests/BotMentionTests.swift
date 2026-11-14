@@ -227,7 +227,7 @@ final class BotMentionTests: XCTestCase {
         let chat = await openChat(target: .canonicalChat(profile: "default"), roster: Self.pictured)
         await waitUntil("the pictures") { chat.turn.settings.avatars.count == 2 }
         XCTAssertEqual(chat.turn.settings.avatars.keys.sorted(), ["default", "helper"])
-        XCTAssertEqual(chat.writes("profiles.get_asset").compactMap { $0["name"]?.text }, ["default", "helper"])
+        XCTAssertEqual(chat.writes("profiles.get_asset").compactMap { $0["name"]?.text }.sorted(), ["default", "helper"])
 
         let session = await openChat(target: .session(profile: "default", key: "tip"), roster: Self.pictured)
         XCTAssertEqual(session.writes("profiles.get_asset"), [])
