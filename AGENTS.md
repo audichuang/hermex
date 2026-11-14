@@ -1,5 +1,9 @@
 # Hermex
 
+> **Fork override (audichuang/hermex).** Read [`FORK.md`](FORK.md) first; it wins over anything below.
+> Cut work branches from `fork/develop`, not `origin/master`, and open PRs into `develop` with
+> `-R audichuang/hermex`. Upstream is read only except for the upstream-PR flow in `FORK.md`.
+
 Hermex is a native SwiftUI iPhone app for a self-hosted Hermes agent. It talks directly to the user's Hermes host over HTTPS (or, for legacy servers, their `hermes-webui`) and gives them a phone-native control surface: start and steer sessions, watch streaming work, browse the workspace, and recover from wherever they are. The Xcode target and scheme are `HermesMobile`; the App Store name is `Hermex`.
 
 You can think of Hermex as an open source "bring-your-own-server" iPhone client for Hermes. The phone is the control and review plane; the server owns execution, tools, models, and the user's data.
