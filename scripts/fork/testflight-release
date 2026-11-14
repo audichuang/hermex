@@ -24,17 +24,19 @@ if [[ -z "${ALLOW_UNMERGED:-}" ]] && ! git merge-base --is-ancestor "$commit" fo
   exit 1
 fi
 
-# No silent regressions: every fork commit in the build on phones now must still be in this one, matched by
-# subject (squash keeps one subject per change). Identical trees need no check.
-if ! git diff --quiet "$old_main" "$commit"; then
-  stack() { git log --format=%s "$(git merge-base "$1" origin/master)..$1" | sort -u }
-  missing=$(comm -23 <(stack "$old_main") <(stack "$commit"))
-  if [[ -n "$missing" && -z "${ALLOW_DROP:-}" ]]; then
-    print -u2 "fork/main (${old_main[1,8]}) has fork commits this build lacks:"; print -u2 -- "$missing"
-    print -u2 "Merge them into develop first. If they were renamed by a squash or dropped on purpose, check"
-    print -u2 "\`git diff ${old_main[1,8]} HEAD\` and rerun with ALLOW_DROP=1."
-    exit 1
+# No silent regressions: merging the build on phones now (fork/main) into this commit must change nothing,
+# so every change main carries is already here, even after a squash renamed or combined its commits.
+merged=$(git merge-tree --write-tree --no-messages "$commit" "$old_main" | head -1) || merged=conflict
+if [[ $merged != $(git rev-parse "$commit^{tree}") && -z "${ALLOW_DROP:-}" ]]; then
+  if [[ $merged == conflict ]]; then
+    print -u2 "fork/main (${old_main[1,8]}) conflicts with this build, so it carries changes this build lacks."
+  else
+    print -u2 "fork/main (${old_main[1,8]}) has changes this build lacks (what merging it would add):"
+    git diff --stat "$commit" "$merged" >&2
   fi
+  print -u2 "Merge them into develop first. If dropping them is intended, check \`git diff ${old_main[1,8]} HEAD\`"
+  print -u2 "and rerun with ALLOW_DROP=1."
+  exit 1
 fi
 
 typeset -A asc
