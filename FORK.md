@@ -58,8 +58,8 @@ The gate is local and goes in the PR body:
 `scripts/fork/testflight-release` from a clean checkout of a `develop` commit: archives, uploads with team
 `37HFR5V2JJ`, tags `testflight/<build>`, and moves `main`. `ALLOW_UNMERGED=1` uploads a feature branch for a
 quick phone test; its tag still records the commit. `DRY_RUN=1` prints the steps. It refuses a build that
-lacks fork commits the current `main` has (a release from a `develop` that misses an unmerged PR would
-silently drop features); `ALLOW_DROP=1` only after checking `git diff fork/main HEAD`. If the upload succeeds
+lacks changes the current `main` has, judged by merging `main` into it, so squash-renamed commits pass (a
+release from a `develop` that misses an unmerged PR would silently drop features); `ALLOW_DROP=1` only after checking `git diff fork/main HEAD`. If the upload succeeds
 but recording fails, it prints the commands to push the tag and `main`; never re-upload to fix a record.
 
 ## Upstream rebase
