@@ -1388,6 +1388,58 @@ final class BotRoomActivityStripTests: XCTestCase {
         XCTAssertNil(BotRoomActivityStrip.progress(picked), "a lone member needs no count")
     }
 
+    private func page(_ events: [BotRoomEvent]) -> BotJSON {
+        .object(["events": .array(events.map { event in
+            var value: [String: BotJSON] = ["seq": .number(Double(event.seq)), "kind": .string(event.kind), "payload": .object(event.payload.fields ?? [:])]
+            if let id = event.eventID { value["event_id"] = .string(id) }
+            return .object(value)
+        })])
+    }
+
+    func testTheLogKeepsRoundSignalsTheTranscriptHides() throws {
+        // The 2026-11-14 10:28 run: the strip read "hermes 處理中 1/4" because the log dropped these.
+        let message = event(49, "message.user", id: lead, ["text": .string("請主助理直接回一個字"), "thread_id": .string("t1")])
+        let assigned = event(50, "room.assignment", ["discussion_event_id": .string(lead), "task_id": .string("dtask:route"),
+                                                     "member_ids": .array([.string("default")])])
+        let routed = event(51, "turn.settled", ["discussion_event_id": .string(lead), "member_id": .string("default"),
+                                                "task_id": .string("dtask:route"), "passed": .bool(true)])
+        var log = BotRoomLog()
+        log.apply(page([context, message, assigned, routed]))
+        XCTAssertEqual(log.events.map(\.seq), [49], "the transcript still shows only the message")
+        XCTAssertEqual(log.signals.map(\.seq), [1, 50, 51])
+
+        let events = (log.events + log.signals).sorted { $0.seq < $1.seq }
+        let routing = try XCTUnwrap(BotRoomRound.build(events: [context, message], activity: [row("default")], room: room, threadID: nil))
+        XCTAssertEqual(BotRoomActivityStrip.headline(routing), "hermes is routing")
+        let answering = try XCTUnwrap(BotRoomRound.build(events: events, activity: [row("default")], room: room, threadID: nil))
+        XCTAssertEqual(answering.seats.map(\.memberID), ["default"])
+        XCTAssertEqual(answering.seats.map(\.outcome), [.working], "the routing turn is not a skip")
+        XCTAssertNil(BotRoomActivityStrip.progress(answering))
+    }
+
+    func testTheLeadsRoutingTurnTakesNoSeatWhenItPicksSomeoneElse() throws {
+        let message = event(2, "message.user", id: lead, ["text": .string("查一下"), "thread_id": .string("t1")])
+        let assigned = event(3, "room.assignment", ["discussion_event_id": .string(lead), "task_id": .string("dtask:route"),
+                                                    "member_ids": .array([.string("research-desk")])])
+        let routed = event(4, "turn.settled", ["discussion_event_id": .string(lead), "member_id": .string("default"),
+                                               "task_id": .string("dtask:route"), "passed": .bool(true)])
+        let round = try XCTUnwrap(BotRoomRound.build(events: [context, message, assigned, routed],
+                                                     activity: [row("research-desk")], room: room, threadID: nil))
+        XCTAssertEqual(round.seats.map(\.memberID), ["research-desk"], "hermes did not skip; it routed")
+        XCTAssertNil(BotRoomActivityStrip.progress(round))
+    }
+
+    func testAContextOutsideTheWindowIsTakenWithoutTouchingTheTranscript() {
+        var log = BotRoomLog()
+        log.begin(latest: 400)
+        log.apply(page([event(250, "message.user", id: lead, ["text": .string("hi"), "thread_id": .string("t1")])]))
+        XCTAssertFalse(log.hasRoutingContext)
+        log.applySignals(page([context, event(2, "message.user", id: "user:old", ["text": .string("old"), "thread_id": .string("t0")])]))
+        XCTAssertTrue(log.hasRoutingContext)
+        XCTAssertEqual(log.events.map(\.seq), [250], "an old message is not pulled into the loaded window")
+        XCTAssertEqual(log.cursor, 250)
+    }
+
     func testAnAtMentionLimitsTheRound() throws {
         let events = [context, event(2, "message.user", id: lead, ["text": .string("@personal-assistant 提醒我"), "thread_id": .string("t1")])]
         let round = try XCTUnwrap(BotRoomRound.build(events: events, activity: [row("personal-assistant")], room: room, threadID: nil))
