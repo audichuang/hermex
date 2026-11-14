@@ -305,3 +305,126 @@ struct BotComposerPillView: View {
         .accessibilityIdentifier("bot-chat-status")
     }
 }
+
+/// Who in a room is on right now, kept to one line so the room stays calm: the member (or the
+/// lead choosing who takes the message), elapsed time and tool, and how far the round is. A tap
+/// lists what the rest of the round did, so a member that looks and stays silent is not a mystery.
+struct BotRoomActivityStrip: View {
+    let round: BotRoomRound
+    @State private var expanded: Bool
+
+    init(round: BotRoomRound, expanded: Bool = false) {
+        self.round = round
+        _expanded = State(initialValue: expanded)
+    }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// A running member with no sign of life for this long reads as stuck (the Desktop's threshold).
+    static let quietAfter: TimeInterval = 120
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: 6) {
+                summary(now: context.date)
+                if expanded {
+                    ForEach(round.seats.filter { ![.working, .stopping].contains($0.outcome) }, id: \.memberID) { seat in
+                        HStack(spacing: 6) {
+                            Text(seat.name).foregroundStyle(.secondary)
+                            Spacer(minLength: 8)
+                            Text(Self.word(seat.outcome)).foregroundStyle(.tertiary)
+                        }
+                        .font(AppFont.caption()).lineLimit(1)
+                        .padding(.leading, 22)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        // Messages scroll under the bottom inset, so the strip needs its own surface.
+        .background(.appMaterial(.regularMaterial), in: RoundedRectangle(cornerRadius: 16))
+        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .onTapGesture {
+            guard expandable else { return }
+            withAnimation(reduceMotion ? nil : .snappy) { expanded.toggle() }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(expandable ? .isButton : [])
+    }
+
+    private var expandable: Bool { round.seats.count > 1 }
+
+    private func summary(now: Date) -> some View {
+        let detail = Self.detail(round, now: now)
+        return HStack(spacing: 6) {
+            ProgressView().controlSize(.mini)
+            Text(Self.headline(round)).font(AppFont.caption(weight: .medium)).foregroundStyle(.primary)
+                // Who is on matters most; the time and tool give way first on a narrow phone.
+                .layoutPriority(1)
+            if let detail {
+                Text(detail.text).font(AppFont.caption())
+                    .foregroundStyle(detail.quiet ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
+            }
+            Spacer(minLength: 8)
+            if let progress = Self.progress(round) {
+                Text(progress).font(AppFont.caption()).monospacedDigit().foregroundStyle(.secondary).layoutPriority(2)
+            }
+            if expandable {
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(expanded ? 180 : 0))
+            }
+        }
+        .lineLimit(1)
+    }
+
+    static func headline(_ round: BotRoomRound) -> String {
+        if let lead = round.routingBy { return String(localized: "\(lead) is routing") }
+        let running = round.live.filter { $0.phase != .queued }
+        let names = (running.isEmpty ? Array(round.live.prefix(1)) : running).map { row in
+            round.seats.first { $0.memberID == row.memberID }?.name ?? row.memberID
+        }.formatted(.list(type: .and))
+        switch (running.first ?? round.live.first)?.phase {
+        case .stopping: return String(localized: "\(names) is stopping")
+        case .queued: return String(localized: "\(names) is queued")
+        default: return String(localized: "\(names) is working")
+        }
+    }
+
+    /// Elapsed time and the tool of a single running member, e.g. "1:42 · web_search"; after
+    /// `quietAfter` with no frame it says how long the member has been quiet instead.
+    static func detail(_ round: BotRoomRound, now: Date) -> (text: String, quiet: Bool)? {
+        let running = round.live.filter { $0.phase == .running }
+        guard let first = running.first, let started = running.compactMap(\.startedAt).min() else { return nil }
+        let lastSign = running.compactMap { $0.progressAt ?? $0.startedAt }.max() ?? started
+        let quiet = now.timeIntervalSince(lastSign)
+        if quiet >= quietAfter { return (String(localized: "Quiet for \(clock(quiet))"), true) }
+        var parts = [clock(now.timeIntervalSince(started))]
+        if running.count == 1, let tool = first.tool { parts.append(tool) }
+        return (parts.joined(separator: " · "), false)
+    }
+
+    /// "2/4": the seat now on out of everyone this message reaches; nil for a lone member.
+    static func progress(_ round: BotRoomRound) -> String? {
+        guard round.seats.count > 1 else { return nil }
+        return "\(min(round.finished + 1, round.seats.count))/\(round.seats.count)"
+    }
+
+    static func word(_ outcome: BotRoomRound.Outcome) -> String {
+        switch outcome {
+        case .waiting, .queued: String(localized: "Waiting")
+        case .passed: String(localized: "Skipped")
+        case .replied: String(localized: "Replied")
+        case .failed: String(localized: "Failed")
+        case .cancelled: String(localized: "Cancelled")
+        case .working, .stopping: ""
+        }
+    }
+
+    static func clock(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval)), minutes = seconds / 60, rest = seconds % 60
+        return minutes >= 60
+            ? String(format: "%d:%02d:%02d", minutes / 60, minutes % 60, rest)
+            : String(format: "%d:%02d", minutes, rest)
+    }
+}

@@ -62,13 +62,124 @@ struct BotGroupRoom: Hashable {
     }
 }
 
+/// One live room task from `driver_status.member_activity`: who is answering, since when, and
+/// (only when the host runs the turn itself) which tool it is in.
+struct BotRoomMemberActivity: Equatable {
+    enum Phase: Equatable { case queued, running, stopping }
+    let memberID: String
+    let phase: Phase
+    let threadID: String?
+    let startedAt: Date?
+    let tool: String?
+    /// The last frame the host saw; absent when another process runs the turn.
+    let progressAt: Date?
+    init?(_ value: BotJSON) {
+        guard let memberID = value["member_id"].text, !memberID.isEmpty else { return nil }
+        switch value["status"].text {
+        case "queued": phase = .queued
+        case "stopping": phase = .stopping
+        default: phase = .running
+        }
+        self.memberID = memberID
+        threadID = value["thread_id"].text
+        startedAt = value["started_at"].number.map(Date.init(timeIntervalSince1970:))
+        tool = value["tool"].text.flatMap { $0.isEmpty ? nil : $0 }
+        progressAt = value["progress_at"].number.map(Date.init(timeIntervalSince1970:))
+    }
+}
+
+/// One round of a room discussion, condensed so the composer can show it on a single line:
+/// who is on now, how far the round is, and what the members before them did. Built from the
+/// log the reader already holds plus the live `member_activity` rows; nil when nothing runs.
+struct BotRoomRound: Equatable {
+    enum Outcome: Equatable { case waiting, queued, working, stopping, passed, replied, failed, cancelled }
+    struct Seat: Equatable {
+        let memberID: String
+        let name: String
+        var outcome: Outcome
+    }
+
+    /// The members this message reaches, finished ones first, in the order they ran.
+    let seats: [Seat]
+    /// Live rows of this round, running before queued.
+    let live: [BotRoomMemberActivity]
+    /// The lead is still choosing who takes an unaddressed message (`routing: lead`).
+    let routingBy: String?
+
+    var finished: Int { seats.filter { [.passed, .replied, .failed, .cancelled].contains($0.outcome) }.count }
+
+    static func build(events: [BotRoomEvent], activity: [BotRoomMemberActivity], room: BotGroupRoom,
+                      threadID: String?) -> BotRoomRound? {
+        let rows = threadID.map { id in activity.filter { $0.threadID == id } } ?? activity
+        guard !rows.isEmpty else { return nil }
+        let live = rows.filter { $0.phase != .queued } + rows.filter { $0.phase == .queued }
+        let thread = live.first?.threadID
+        let message = events.last { $0.kind == "message.user" && $0.payload["thread_id"].text == thread }
+        let discussion = message?.eventID
+        let ofDiscussion = events.filter { discussion != nil && $0.payload["discussion_event_id"].text == discussion }
+        func name(_ id: String) -> String { room.members.first { $0.id == id }?.name ?? id }
+
+        // Who this message reaches: the lead's pick, else anyone it @mentions, else the whole room.
+        var planned = room.members.map(\.id)
+        let assigned = ofDiscussion.last { $0.kind == "room.assignment" }?.payload["member_ids"].list?.compactMap(\.text)
+        let context = events.last { $0.kind == "room.context_set" }?.payload
+        let text = message?.payload["text"].text ?? ""
+        let mentioned = room.members.filter { member in
+            member.handle.map { text.range(of: "@\($0)", options: .caseInsensitive) != nil } ?? false
+        }.map(\.id)
+        let broadcast = text.range(of: "@all", options: .caseInsensitive) != nil
+            || text.range(of: "@everyone", options: .caseInsensitive) != nil
+        var routingBy: String?
+        if let assigned, !assigned.isEmpty {
+            planned = assigned
+        } else if !mentioned.isEmpty && !broadcast {
+            planned = mentioned
+        } else if context?["routing"].text == "lead", let lead = context?["lead_member_id"].text,
+                  let message, events.first(where: { $0.payload["thread_id"].text == thread && $0.isMessage }) == message,
+                  live.contains(where: { $0.memberID == lead }) {
+            // A thread's first message goes to the lead alone until it names who takes it.
+            routingBy = name(lead)
+        }
+
+        var outcomes: [String: Outcome] = [:]
+        var order: [String] = []
+        for event in ofDiscussion {
+            guard let member = event.payload["member_id"].text else { continue }
+            let outcome: Outcome? = switch event.kind {
+            case "turn.settled": event.payload["passed"].flag == true ? .passed : .replied
+            case "turn.failed": .failed
+            case "turn.cancelled": .cancelled
+            default: nil
+            }
+            guard let outcome else { continue }
+            if outcomes[member] == nil { order.append(member) }
+            outcomes[member] = outcome
+        }
+        for row in live {
+            outcomes[row.memberID] = switch row.phase {
+            case .running: .working
+            case .queued: .queued
+            case .stopping: .stopping
+            }
+            if !order.contains(row.memberID) { order.append(row.memberID) }
+        }
+        let seats = (order + planned.filter { !order.contains($0) }).map {
+            Seat(memberID: $0, name: name($0), outcome: outcomes[$0] ?? .waiting)
+        }
+        return BotRoomRound(seats: routingBy == nil ? seats : [], live: live, routingBy: routingBy)
+    }
+}
+
 struct BotRoomStatus: Equatable {
     let working: Bool
     let blocked: Bool
     let stopping: Int
     let stoppable: Int
     let actions: [BotRoomAction]
+    /// Absent from older gateways, which leaves only the Stop button as a sign of work.
+    let activity: [BotRoomMemberActivity]
     init(_ value: BotJSON) {
+        activity = (value["member_activity"].list ?? []).compactMap(BotRoomMemberActivity.init)
         working = value["working"].flag == true
         blocked = value["blocked"].flag == true
         stopping = max(0, value["counts"]["stopping"].integer ?? 0)
