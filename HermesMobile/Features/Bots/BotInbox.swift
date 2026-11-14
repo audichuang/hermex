@@ -234,6 +234,13 @@ import UIKit
     /// one succeeds instead of leaving that turn unmarked until the next event.
     private var retriesStatusRead = false
     private var statusPollTask: Task<Void, Never>?
+    /// Re-reads the roster and rooms while the inbox is live (`rosterRefreshInterval`): the host
+    /// sends `sessions.changed` only for Profiles its gateway already served, so a specialist's
+    /// Discord or cron turn would otherwise leave its row as it was until a pull to refresh.
+    private var freshnessTask: Task<Void, Never>?
+    /// What this socket last read, so an unchanged re-read repaints and rewrites nothing.
+    private var lastRosterRows: [BotJSON]?
+    private var lastRoomsRead: BotJSON?
     private var returnedFrom: String?
     private let store: BotConnectionStore
     private let unread: BotUnreadStore
@@ -260,6 +267,7 @@ import UIKit
     /// can miss a turn's end (post-turn work writes nothing), so the inbox re-reads
     /// on its own while it is open, connected, and a row shows Working or Waiting.
     private let statusPollInterval: Duration
+    private let rosterRefreshInterval: Duration
 
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
@@ -269,6 +277,7 @@ import UIKit
          reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          statusPollInterval: Duration = .seconds(5),
+         rosterRefreshInterval: Duration = .seconds(15),
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
@@ -280,6 +289,7 @@ import UIKit
         self.historyCache = historyCache; self.rosterCache = rosterCache; self.profileNames = profileNames
         self.widgets = widgets ?? .shared
         self.statusPollInterval = statusPollInterval
+        self.rosterRefreshInterval = rosterRefreshInterval
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
             await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: connectionID, profile: profile)
@@ -390,7 +400,10 @@ import UIKit
                 // Another client of a browser sign-in may rotate its refresh token meanwhile
                 // (`saveRotatedRefreshToken`); that is still this connection, opened on the new token.
                 let serial = openSerial
-                let cached = await rosterCache.load(.init(server: server, connectionID: saved.id))
+                let scope = BotRosterCache.Scope(server: server, connectionID: saved.id)
+                async let cachedRoomsRead = rosterCache.loadRooms(scope)
+                let cached = await rosterCache.load(scope)
+                let cachedRooms = await cachedRoomsRead
                 guard serial == openSerial, !Task.isCancelled, let fresh = try? store.load(server: server) else { return }
                 var unrotated = fresh
                 if let token = saved.oauth?.refreshToken { unrotated.oauth?.refreshToken = token }
@@ -399,6 +412,11 @@ import UIKit
                 if let cached, profiles.isEmpty {
                     profiles = Self.roster(cached)
                     avatars = avatarStore.images(connectionID: saved.id)
+                }
+                // The rooms the last read left paint with their bots, not two round trips later.
+                if rooms.isEmpty, let cachedRooms {
+                    roomCapabilities = BotRoomCapabilities(cachedRooms["capabilities"])
+                    rooms = Self.rooms(cachedRooms["rooms"].list ?? [])
                 }
             }
             let opened = makeWire(saved)
@@ -418,14 +436,19 @@ import UIKit
             // roster and rooms have yet to load.
             routeFailures = 0; routeAdvice = nil
             recordInstallID(opened.serverInstallID, for: saved)
+            // Rooms are read beside the roster rather than after it: each is a round trip.
+            async let roomsRead: Void = refreshRooms(opened)
             guard await reload(opened) else { return }
             // The status read runs beside rooms and avatars; nothing above waits for it.
             let statuses = statusPollTask
-            await refreshRooms(opened)
+            // Photos need the roster's look revisions, not the rooms, so they start now too.
+            async let avatarsRead: Void = refreshAvatars(opened)
+            await roomsRead
             guard wire === opened, !Task.isCancelled else { return }
             link = .live
             reconnect.succeeded()
-            await refreshAvatars(opened)
+            startFreshnessReads(opened)
+            await avatarsRead
             // A pull-to-refresh ends once the fresh statuses are in, too.
             await statuses?.value
         } catch {
@@ -508,6 +531,8 @@ import UIKit
         reconnect.cancel()
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         statusPollTask?.cancel(); statusPollTask = nil
+        freshnessTask?.cancel(); freshnessTask = nil
+        lastRosterRows = nil; lastRoomsRead = nil
         wire?.close(); wire = nil
         link = .idle
     }
@@ -659,12 +684,14 @@ import UIKit
             let roster = try await client.call(.profilesList(includeSessions: true))
             guard wire === client, serial == reloadSerial else { return false }
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
-            profiles = Self.roster(rows)
+            let rowsChanged = rows != lastRosterRows
+            let fresh = Self.roster(rows)
+            if fresh != profiles { profiles = fresh }
             setReconnecting(false)
-            if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
+            if rowsChanged, profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
             }
-            if let connection { widgets.publish(profiles, server: server, connectionID: connection.id) }
+            if rowsChanged, let connection { widgets.publish(profiles, server: server, connectionID: connection.id) }
             var changed = false
             for profile in profiles {
                 guard let lastActive = profile.lastActive?.timeIntervalSince1970,
@@ -680,9 +707,10 @@ import UIKit
                 await forget(name)
                 guard wire === client, serial == reloadSerial else { return false }
             }
-            if let scope {
+            if let scope, rowsChanged {
                 await rosterCache.save(rows, scope: scope, readAt: readAt)
                 guard wire === client, serial == reloadSerial else { return false }
+                lastRosterRows = rows
             }
             startLiveStatusRead(client)
             return true
@@ -690,6 +718,20 @@ import UIKit
             guard wire === client, serial == reloadSerial else { return false }
             drop(client, error: error)
             return false
+        }
+    }
+
+    /// Every `rosterRefreshInterval` while `client` owns a live inbox: one roster read through the
+    /// coalesced reload, and the rooms beside it. Ends with the socket (`teardown`, `drop`).
+    private func startFreshnessReads(_ client: any BotTransport) {
+        freshnessTask?.cancel()
+        let interval = rosterRefreshInterval
+        freshnessTask = Task { [weak self] in
+            while (try? await Task.sleep(for: interval)) != nil {
+                guard let self, self.wire === client, self.link == .live, !Task.isCancelled else { return }
+                self.noteChange()
+                await self.refreshRooms(client)
+            }
         }
     }
 
@@ -737,6 +779,12 @@ import UIKit
         }
         if liveStatuses.isEmpty && !retriesStatusRead { statusPollTask = nil }
         else { startLiveStatusRead(client, after: statusPollInterval) }
+    }
+
+    /// `groups.list` rows as the inbox lists them: disbanded rooms dropped, the first of each id kept.
+    private static func rooms(_ rows: [BotJSON]) -> [BotGroupRoom] {
+        var ids = Set<String>()
+        return rows.compactMap(BotGroupRoom.init).filter { !$0.disbanded && ids.insert($0.id).inserted }
     }
 
     /// `profiles.list` rows as the inbox lists them: unnamed rows dropped, the first of each Profile kept.
@@ -900,25 +948,41 @@ import UIKit
     /// Capabilities are re-read on every inbox open/refresh, never inferred from
     /// a mutating probe. Unsupported hosts keep their ordinary Bot inbox.
     private func refreshRooms(_ client: any BotTransport) async {
+        let readAt = ContinuousClock.now
+        let scope = connection.map { BotRosterCache.Scope(server: server, connectionID: $0.id) }
         do {
             let value = try await client.call(.groupsCapabilities)
             guard wire === client, !Task.isCancelled else { return }
             let capabilities = BotRoomCapabilities(value)
-            roomCapabilities = capabilities
-            guard capabilities.enabled else { rooms = []; hasRoomList = true; return }
+            if capabilities != roomCapabilities { roomCapabilities = capabilities }
+            guard capabilities.enabled else {
+                rooms = []; hasRoomList = true
+                if let scope { await rosterCache.saveRooms(capabilities: value, rooms: nil, scope: scope, readAt: readAt) }
+                return
+            }
             var found: [BotGroupRoom] = []
+            var raw: [BotJSON] = []
             var offset = 0
             while true {
                 let page = try await client.call(.groupsList(offset: offset))
                 guard wire === client, !Task.isCancelled else { return }
                 guard let rows = page["rooms"].list else { throw BotFailure.unsupported }
                 found += rows.compactMap(BotGroupRoom.init).filter { !$0.disbanded }
+                raw += rows
                 guard let next = page["next_offset"].integer else { break }
                 guard next > offset else { throw BotFailure.unsupported }
                 offset = next
             }
             var ids = Set<String>()
-            rooms = found.filter { ids.insert($0.id).inserted }; hasRoomList = true
+            let fresh = found.filter { ids.insert($0.id).inserted }
+            if fresh != rooms { rooms = fresh }
+            hasRoomList = true
+            let read = BotJSON.object(["capabilities": value, "rooms": .array(raw)])
+            if let scope, read != lastRoomsRead {
+                await rosterCache.saveRooms(capabilities: value, rooms: raw, scope: scope, readAt: readAt)
+                guard wire === client, !Task.isCancelled else { return }
+                lastRoomsRead = read
+            }
             let pruned = BotRoomOrganizeStore.Flags(pinned: roomFlags.pinned.intersection(ids),
                                                    hidden: roomFlags.hidden.intersection(ids))
             if pruned != roomFlags { roomFlags = pruned; persistRoomFlags() }
@@ -927,7 +991,12 @@ import UIKit
             }
         } catch {
             guard wire === client, !Task.isCancelled else { return }
-            rooms = []; hasRoomList = false; roomCapabilities = BotRoomCapabilities(.null)
+            hasRoomList = false
+            // A dropped or slow read says nothing about the rooms: the ones on screen stay until a
+            // read answers. A refusal, or a host without rooms, takes them away.
+            if error is BotRoomFailure || !BotConnectionAdvice.isRetryable(error) {
+                rooms = []; roomCapabilities = BotRoomCapabilities(.null)
+            }
             // Method absence is the expected gate on older Hermes hosts.
             if let failure = error as? BotRoomFailure, failure.code != -32601 {
                 notice = failure.localizedDescription
@@ -955,6 +1024,7 @@ import UIKit
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         statusPollTask?.cancel(); statusPollTask = nil
+        freshnessTask?.cancel(); freshnessTask = nil
         client.close(); wire = nil
         link = .disconnected
         let address = connection?.address

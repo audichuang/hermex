@@ -1358,6 +1358,54 @@ import SwiftUI
         XCTAssertNil(left)
     }
 
+    /// A specialist's turn from Discord or cron sends this socket no `sessions.changed`, so a live
+    /// inbox re-reads its roster and rooms on its own; an unchanged re-read repaints nothing.
+    func testALiveInboxRereadsTheRosterAndRoomsWithoutAnEvent() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage", preview: "old")])
+        wire.rooms = []
+        let inbox = try makeInbox(wires: [wire], rosterRefreshInterval: .milliseconds(20))
+        await inbox.open()
+        XCTAssertEqual(inbox.profiles.first?.preview, "old")
+
+        wire.roster = [row("triage", preview: "new")]
+        wire.rooms = [RoomFixture.room(latest: 0)]
+        let reread = expectation(description: "a roster and a room read with no event")
+        reread.assertForOverFulfill = false
+        wire.onCall = { if $0 == "groups.list" { reread.fulfill() } }
+        await fulfillment(of: [reread], timeout: 5)
+        await settle(inbox) { $0.profiles.first?.preview == "new" && !$0.rooms(matching: "").isEmpty }
+        XCTAssertEqual(inbox.profiles.first?.preview, "new")
+        XCTAssertEqual(inbox.rooms(matching: "").count, 1)
+        inbox.close()
+    }
+
+    /// The rooms the last read left paint with the cached roster before the socket connects, so a
+    /// room never shows up seconds after its bots; the live read replaces them.
+    func testTheLastRoomsPaintWithTheCachedRosterWhileConnecting() async throws {
+        let store = try connectedStore()
+        let cache = makeRosterCache()
+        let first = BotInboxFixtureWire(roster: [row("triage")])
+        first.rooms = [RoomFixture.room(latest: 0)]
+        let earlier = try makeInbox(wires: [first], store: store, rosterCache: cache)
+        await earlier.open()
+        XCTAssertEqual(earlier.rooms.count, 1)
+        earlier.close()
+
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.rooms = []
+        wire.holdsConnect = true
+        let inbox = try makeInbox(wires: [wire], store: store, rosterCache: cache)
+        let opening = Task { await inbox.open() }
+        await settle(inbox) { !$0.rooms(matching: "").isEmpty && $0.link == .connecting }
+        XCTAssertEqual(inbox.rooms(matching: "").map(\.id), [try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0))).id],
+                       "the cached room is listed before the socket connects")
+
+        wire.release()
+        await opening.value
+        XCTAssertEqual(inbox.link, .live)
+        XCTAssertEqual(inbox.rooms(matching: ""), [], "the live read replaces the copy")
+    }
+
     /// A cached roster belongs to one connection on one server: a load the connection change
     /// outdated paints and connects nothing, and a removal revokes saves read before it.
     func testACachedRosterNeverCrossesConnectionsOrOutlivesItsRemoval() async throws {
@@ -1434,7 +1482,7 @@ import SwiftUI
     /// re-reads default to an hour apart, so only a test that asks for them sees one.
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil,
                            rosterCache: BotRosterCache? = nil, statusPollInterval: Duration = .seconds(3600),
-                           reconnectDelays: [Duration] = [.zero],
+                           rosterRefreshInterval: Duration = .seconds(3600), reconnectDelays: [Duration] = [.zero],
                            wireFor: ((BotConnection) -> BotInboxFixtureWire)? = nil,
                            isNetworkAvailable: @escaping @MainActor () -> Bool = { true }) throws -> BotInbox {
         let server = server ?? self.server
@@ -1446,7 +1494,7 @@ import SwiftUI
                         avatarStore: BotAvatarStore(), rosterCache: rosterCache ?? makeRosterCache(),
                         profileNames: HermesProfileNameCache(defaults: defaults),
                         reloadSpacing: .zero, reconnectDelays: reconnectDelays,
-                        statusPollInterval: statusPollInterval, makeWire: { wireFor?($0) ?? queue.removeFirst() },
+                        statusPollInterval: statusPollInterval, rosterRefreshInterval: rosterRefreshInterval, makeWire: { wireFor?($0) ?? queue.removeFirst() },
                         isNetworkAvailable: isNetworkAvailable)
     }
 

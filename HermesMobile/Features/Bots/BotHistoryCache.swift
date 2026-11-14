@@ -287,7 +287,7 @@ actor BotHistoryCache {
 
 /// The last `profiles.list` rows each Bot connection read, so the inbox paints its roster
 /// while it connects (#1403). One file per server digest and connection UUID under Caches,
-/// main app only: rows, never live status, rooms or photos. A missing, oversized or
+/// main app only: rows and the room list (`saveRooms`), never live status or photos. A missing, oversized or
 /// unreadable file is a miss, never a failure. Removal revokes every write whose roster
 /// was read before it, so a late save cannot bring back a signed-out connection's rows.
 actor BotRosterCache {
@@ -300,6 +300,7 @@ actor BotRosterCache {
     private let directory: URL
     /// When each scope's saved roster was read, so a slower, older save never replaces a newer one.
     private var savedReadAt: [Scope: ContinuousClock.Instant] = [:]
+    private var savedRoomsReadAt: [Scope: ContinuousClock.Instant] = [:]
     /// Removals by server digest, and by `<digest>-<connection UUID>` for one connection.
     private var removedAt: [String: ContinuousClock.Instant] = [:]
     /// Runs as each load starts. Fixtures change the saved connection here, while an open waits on the load.
@@ -334,6 +335,34 @@ actor BotRosterCache {
         try? data.write(to: file(scope), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
+    /// The last room read beside the roster, as `{capabilities, rooms}`: the `groups.capabilities`
+    /// reply and the `groups.list` rows, so a room paints with its bots instead of after two more
+    /// round trips. Same scope, bounds and removal as the roster; a load is a miss on anything else.
+    func loadRooms(_ scope: Scope) async -> BotJSON? {
+        let file = roomsFile(scope)
+        guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= Self.maximumBytes,
+              let data = try? Data(contentsOf: file),
+              let value = try? JSONDecoder().decode(BotJSON.self, from: data),
+              let rows = value["rooms"].list, rows.count <= Self.maximumRows else { return nil }
+        return value
+    }
+
+    /// Replaces `scope`'s rooms with a complete read at `readAt`; nil `rooms` (a host without
+    /// rooms) leaves no file.
+    func saveRooms(capabilities: BotJSON, rooms: [BotJSON]?, scope: Scope, readAt: ContinuousClock.Instant) {
+        let revoked = [removedAt[scope.serverKey], removedAt[name(scope)], savedRoomsReadAt[scope]].compactMap { $0 }
+        guard revoked.allSatisfy({ $0 < readAt }) else { return }
+        savedRoomsReadAt[scope] = readAt
+        guard let rooms, rooms.count <= Self.maximumRows,
+              let data = try? JSONEncoder().encode(BotJSON.object(["capabilities": capabilities, "rooms": .array(rooms)])),
+              data.count <= Self.maximumBytes else {
+            try? FileManager.default.removeItem(at: roomsFile(scope))
+            return
+        }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? data.write(to: roomsFile(scope), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
     /// Deletes `server`'s rosters, or only `connectionID`'s, and revokes saves of rosters read before now.
     func remove(server: URL, connectionID: UUID? = nil, now: ContinuousClock.Instant = .now) {
         let key = Scope.key(server)
@@ -347,6 +376,7 @@ actor BotRosterCache {
 
     private func name(_ scope: Scope) -> String { scope.serverKey + "-" + scope.connectionID.uuidString }
     private func file(_ scope: Scope) -> URL { directory.appendingPathComponent(name(scope) + ".json") }
+    private func roomsFile(_ scope: Scope) -> URL { directory.appendingPathComponent(name(scope) + ".rooms.json") }
 }
 
 /// Each recent room's rendered window, separate from the lossy on-disk search index, so

@@ -99,6 +99,8 @@ import XCTest
         XCTAssertTrue(store.images(connectionID: second).isEmpty)
     }
 
+    /// Every stale photo is requested at once (each is a round trip on a tunnel); a failed one
+    /// still ends the pass without touching the images applied before it.
     func testFailedCallEndsThePassWithoutTouchingEarlierImages() async {
         let store = BotAvatarStore()
         let wire = BotAvatarFixtureWire()
@@ -107,7 +109,7 @@ import XCTest
         let connection = UUID()
         let profiles = ["ok", "unavailable", "never"].map { BotProfile(row($0, extra: ["has_avatar": .bool(true)]))! }
         await store.refresh(profiles, connectionID: connection, using: wire) {}
-        XCTAssertEqual(wire.calls.map { $0.1["name"]?.text }, ["ok", "unavailable"])
+        XCTAssertEqual(Set(wire.calls.map { $0.1["name"]?.text }), ["ok", "unavailable", "never"])
         XCTAssertEqual(Array(store.images(connectionID: connection).keys), ["ok"])
     }
 
