@@ -41,7 +41,9 @@ enum PushEnvironment: String, Codable, Equatable, Sendable {
 enum PushBundleIdentifier {
     static let supported: Set<String> = [
         "com.uzairansar.hermesmobile",
-        "com.uzairansar.hermesmobile.branch"
+        "com.uzairansar.hermesmobile.branch",
+        // The Hermex Audi fork build; its host points HERMEX_PUSH_RELAY_URL at a self-hosted relay.
+        "com.audi.hermex.37hfr5v2jj"
     ]
 
     static func current(bundle: Bundle = .main) -> String? {
