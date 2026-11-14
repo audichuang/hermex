@@ -47,18 +47,27 @@ import UIKit
     /// connection's images and rows no longer flagged `has_avatar` drop first, then
     /// `onUpdate` fires so cached images paint before any fetch. Images whose look
     /// revision is unchanged are kept; the rest, including entries without a
-    /// revision, are fetched one at a time and `onUpdate` fires after each decode.
+    /// revision, are requested all at once, since each is a round trip on a tunnel,
+    /// and applied in roster order, `onUpdate` firing after each decode.
     /// The first failed call ends the pass silently: the roster never depends on it.
     func refresh(_ profiles: [BotProfile], connectionID: UUID, using transport: any BotTransport,
                  validateDispatch: (() throws -> Void)? = nil, onUpdate: () -> Void) async {
         let wanted = Set(profiles.filter(\.hasAvatar).map(\.id))
         entries = entries.filter { $0.key.connectionID == connectionID && wanted.contains($0.key.profile) }
         onUpdate()
-        for profile in profiles where wanted.contains(profile.id) {
+        let stale = profiles.filter { profile in
+            guard wanted.contains(profile.id) else { return false }
+            let revision = entries[Key(connectionID: connectionID, profile: profile.id)]?.revision
+            return revision == nil || revision != profile.lookRevision
+        }
+        let requests = stale.map { profile in
+            Task { try? await transport.call(.profilesGetAsset(name: profile.id), validateDispatch: validateDispatch) }
+        }
+        defer { requests.forEach { $0.cancel() } }
+        for (profile, request) in zip(stale, requests) {
             let key = Key(connectionID: connectionID, profile: profile.id)
-            if let revision = entries[key]?.revision, revision == profile.lookRevision { continue }
-            guard let reply = try? await transport.call(.profilesGetAsset(name: profile.id), validateDispatch: validateDispatch),
-                  !Task.isCancelled else { return }
+            let reply = await withTaskCancellationHandler { await request.value } onCancel: { requests.forEach { $0.cancel() } }
+            guard let reply, !Task.isCancelled else { return }
             let photo = profile.isPhoto
             let asset = await Task.detached(priority: .utility) { Self.asset(reply, photo: photo) }.value
             guard !Task.isCancelled else { return }
