@@ -37,3 +37,9 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 A poll can race the send acknowledgment, so `BotRoomReader.publishLog` filters out the user's own `message.user` events whose event id matches a pending or uncertain send; a message must not show as sent before the RPC result is validated. `BotRoomReader.saveRecentTranscript` likewise does not save while a command is busy or a disband is uncertain, so pending send bubbles stay private until their acknowledgment is known.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Show a thread's first message as the lead routing it
+
+Under `routing: lead`, a thread's first message goes to the lead alone until the lead names who takes it, so `BotRoomRound` shows the lead choosing rather than counting the whole room. Otherwise a message reaches the lead's `room.assignment` members, else the members it @mentions (unless it says `@all` or `@everyone`), else the whole room.
+
+Lives in: `HermesMobile/Features/Bots/BotGroupRoom.swift`
