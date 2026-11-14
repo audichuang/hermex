@@ -17,8 +17,6 @@ run() { print -r -- "+ $*"; [[ -n "${DRY_RUN:-}" ]] || "$@"; }
 [[ -f Config/Local.xcconfig ]] || { print -u2 "Config/Local.xcconfig is missing in this worktree (copy it from the main checkout)."; exit 1 }
 git fetch -q --multiple origin fork
 commit=$(git rev-parse HEAD)
-# Fixed before the long upload: the push below only moves main if nobody moved it meanwhile.
-old_main=$(git rev-parse fork/main)
 if [[ -z "${ALLOW_UNMERGED:-}" ]] && ! git merge-base --is-ancestor "$commit" fork/develop; then
   print -u2 "HEAD is not on fork/develop. Merge its PR first, or set ALLOW_UNMERGED=1 for a test build."
   exit 1
@@ -26,8 +24,14 @@ fi
 
 # No silent regressions: merging the build on phones now (fork/main) into this commit must change nothing,
 # so every change main carries is already here, even after a squash renamed or combined its commits.
-merged=$(git merge-tree --write-tree --no-messages "$commit" "$old_main" | head -1) || merged=conflict
-if [[ $merged != $(git rev-parse "$commit^{tree}") && -z "${ALLOW_DROP:-}" ]]; then
+# Runs again after the archive: another release during those minutes moved main (2026-11-14, a build
+# without #39 went up because main was only read at the start). It also fixes the lease for the push.
+check_main() {
+  git fetch -q fork
+  old_main=$(git rev-parse fork/main)
+  local merged
+  merged=$(git merge-tree --write-tree --no-messages "$commit" "$old_main" | head -1) || merged=conflict
+  [[ $merged == $(git rev-parse "$commit^{tree}") || -n "${ALLOW_DROP:-}" ]] && return
   if [[ $merged == conflict ]]; then
     print -u2 "fork/main (${old_main[1,8]}) conflicts with this build, so it carries changes this build lacks."
   else
@@ -37,7 +41,8 @@ if [[ $merged != $(git rev-parse "$commit^{tree}") && -z "${ALLOW_DROP:-}" ]]; t
   print -u2 "Merge them into develop first. If dropping them is intended, check \`git diff ${old_main[1,8]} HEAD\`"
   print -u2 "and rerun with ALLOW_DROP=1."
   exit 1
-fi
+}
+check_main
 
 typeset -A asc
 for k v in $(python3 -c 'import json,os
@@ -57,6 +62,7 @@ run xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configurati
   CURRENT_PROJECT_VERSION=$build -allowProvisioningUpdates archive >>$work/archive.log 2>&1 \
   || { tail -n 30 $work/archive.log >&2; exit 1 }
 
+check_main
 # System PATH only: /usr/bin/rsync (openrsync) starts its remote side from PATH, and a Homebrew
 # rsync there rejects -E ("--extended-attributes: unknown option"), failing the export with "Copy failed".
 print "Uploading (log: $work/export.log)"
