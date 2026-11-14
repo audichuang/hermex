@@ -43,3 +43,15 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 Under `routing: lead`, a thread's first message goes to the lead alone until the lead names who takes it, so `BotRoomRound` shows the lead choosing rather than counting the whole room. Otherwise a message reaches the lead's `room.assignment` members, else the members it @mentions (unless it says `@all` or `@everyone`), else the whole room.
 
 Lives in: `HermesMobile/Features/Bots/BotGroupRoom.swift`
+
+## Give the lead's routing turn no seat in a round
+
+The lead's routing turn settles under the `room.assignment` event's task id: it chose who answers, it did not pass on the message. `BotRoomRound` skips settle, fail and cancel events for those task ids, or the strip would count the lead as a member that passed.
+
+Lives in: `HermesMobile/Features/Bots/BotGroupRoom.swift`
+
+## Poll a room every second for 20 s after a send
+
+Right after a send the round has not started, so the idle status cadence would miss the lead's routing. `BotRoomReader.pollInterval` is 1 s for 20 s after `sentAt`, then the host's status interval.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`

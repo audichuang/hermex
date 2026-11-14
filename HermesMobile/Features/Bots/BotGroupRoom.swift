@@ -129,8 +129,10 @@ struct BotRoomRound: Equatable {
 
         var outcomes: [String: Outcome] = [:]
         var order: [String] = []
+        let routingTasks = Set(ofDiscussion.filter { $0.kind == "room.assignment" }.compactMap { $0.payload["task_id"].text })
         for event in ofDiscussion {
-            guard let member = event.payload["member_id"].text else { continue }
+            guard let member = event.payload["member_id"].text,
+                  !routingTasks.contains(event.payload["task_id"].text ?? "") else { continue }
             let outcome: Outcome? = switch event.kind {
             case "turn.settled": event.payload["passed"].flag == true ? .passed : .replied
             case "turn.failed": .failed
@@ -199,6 +201,7 @@ struct BotRoomEvent: Identifiable, Equatable {
     var visible: Bool {
         ["message.user", "message.member", "turn.failed", "turn.cancelled", "room.stop_requested", "room.renamed"].contains(kind)
     }
+    var isRoundSignal: Bool { ["room.context_set", "room.assignment", "turn.settled"].contains(kind) }
     func member(in room: BotGroupRoom) -> BotGroupRoom.Member? {
         let id = payload["member_id"].text ?? actor["id"].text
         return room.members.first { $0.id == id }
@@ -243,7 +246,9 @@ struct BotRoomLog {
     private(set) var cursor = 0
     private(set) var earlierBoundary = 0
     private(set) var events: [BotRoomEvent] = []
+    private(set) var signals: [BotRoomEvent] = []
     private var seen = Set<Int>()
+    var hasRoutingContext: Bool { signals.contains { $0.kind == "room.context_set" } }
     static func windowStart(before sequence: Int) -> Int { max(0, sequence - 200) }
     func recentWindow() -> Self {
         var result = self
@@ -268,6 +273,22 @@ struct BotRoomLog {
         cursor = max(cursor, page["cursor"].integer ?? 0, fresh.map(\.seq).max() ?? 0)
         let visible = fresh.filter(\.visible)
         if !visible.isEmpty { events = (events + visible).sorted { $0.seq < $1.seq } }
+        keepSignals(fresh)
+    }
+    mutating func applySignals(_ page: BotJSON) {
+        let known = Set(signals.map(\.seq))
+        keepSignals((page["events"].list ?? []).compactMap(BotRoomEvent.init).filter { !known.contains($0.seq) })
+    }
+    private mutating func keepSignals(_ fresh: [BotRoomEvent]) {
+        let signal = fresh.filter(\.isRoundSignal)
+        guard !signal.isEmpty else { return }
+        var kept = (signals + signal).sorted { $0.seq < $1.seq }
+        if kept.count > 300 {
+            let context = kept.last { $0.kind == "room.context_set" }
+            kept = Array(kept.suffix(300))
+            if let context, !kept.contains(context) { kept.insert(context, at: 0) }
+        }
+        signals = kept
     }
 }
 
