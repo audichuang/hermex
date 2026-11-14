@@ -148,7 +148,7 @@ import SwiftUI
                         onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } },
                         onRetrySend: { Task { await reader.send(retry: true, threadID: threadID) } })
                 }
-                if let round = BotRoomRound.build(events: reader.events, activity: reader.status.activity,
+                if let round = BotRoomRound.build(events: reader.roundEvents, activity: reader.status.activity,
                                                   room: reader.room, threadID: threadID) {
                     BotRoomActivityStrip(round: round)
                 }
