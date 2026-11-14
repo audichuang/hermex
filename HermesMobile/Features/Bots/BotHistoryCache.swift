@@ -260,6 +260,7 @@ actor BotRosterCache {
     static let maximumBytes = 2 * 1024 * 1024
     private let directory: URL
     private var savedReadAt: [Scope: ContinuousClock.Instant] = [:]
+    private var savedRoomsReadAt: [Scope: ContinuousClock.Instant] = [:]
     private var removedAt: [String: ContinuousClock.Instant] = [:]
     private let willLoad: @Sendable () async -> Void
 
@@ -290,6 +291,29 @@ actor BotRosterCache {
         try? data.write(to: file(scope), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
+    func loadRooms(_ scope: Scope) async -> BotJSON? {
+        let file = roomsFile(scope)
+        guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= Self.maximumBytes,
+              let data = try? Data(contentsOf: file),
+              let value = try? JSONDecoder().decode(BotJSON.self, from: data),
+              let rows = value["rooms"].list, rows.count <= Self.maximumRows else { return nil }
+        return value
+    }
+
+    func saveRooms(capabilities: BotJSON, rooms: [BotJSON]?, scope: Scope, readAt: ContinuousClock.Instant) {
+        let revoked = [removedAt[scope.serverKey], removedAt[name(scope)], savedRoomsReadAt[scope]].compactMap { $0 }
+        guard revoked.allSatisfy({ $0 < readAt }) else { return }
+        savedRoomsReadAt[scope] = readAt
+        guard let rooms, rooms.count <= Self.maximumRows,
+              let data = try? JSONEncoder().encode(BotJSON.object(["capabilities": capabilities, "rooms": .array(rooms)])),
+              data.count <= Self.maximumBytes else {
+            try? FileManager.default.removeItem(at: roomsFile(scope))
+            return
+        }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? data.write(to: roomsFile(scope), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
     func remove(server: URL, connectionID: UUID? = nil, now: ContinuousClock.Instant = .now) {
         let key = Scope.key(server)
         let prefix = connectionID.map { name(.init(server: server, connectionID: $0)) } ?? key
@@ -302,6 +326,7 @@ actor BotRosterCache {
 
     private func name(_ scope: Scope) -> String { scope.serverKey + "-" + scope.connectionID.uuidString }
     private func file(_ scope: Scope) -> URL { directory.appendingPathComponent(name(scope) + ".json") }
+    private func roomsFile(_ scope: Scope) -> URL { directory.appendingPathComponent(name(scope) + ".rooms.json") }
 }
 
 final class BotRecentTranscripts: @unchecked Sendable {

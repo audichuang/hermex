@@ -106,7 +106,7 @@ import XCTest
         let connection = UUID()
         let profiles = ["ok", "unavailable", "never"].map { BotProfile(row($0, extra: ["has_avatar": .bool(true)]))! }
         await store.refresh(profiles, connectionID: connection, using: wire) {}
-        XCTAssertEqual(wire.calls.map { $0.1["name"]?.text }, ["ok", "unavailable"])
+        XCTAssertEqual(Set(wire.calls.map { $0.1["name"]?.text }), ["ok", "unavailable", "never"])
         XCTAssertEqual(Array(store.images(connectionID: connection).keys), ["ok"])
     }
 

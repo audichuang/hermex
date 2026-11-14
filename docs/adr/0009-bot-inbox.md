@@ -31,3 +31,15 @@ Lives in: `HermesMobile/Features/Bots/BotConnection.swift`, `HermesMobile/Featur
 `BotInbox.removeFromSection` sends `sectionId` and `sectionName` as explicit nulls rather than missing keys. Desktop merges the host's meta over its local copy, so a dropped key would keep its stale section alive.
 
 Lives in: `HermesMobile/Features/Bots/BotInbox.swift`
+
+## Re-read the roster and rooms on a timer while the inbox is live
+
+The host sends `sessions.changed` only for Profiles its gateway already served, so a specialist's Discord or cron turn would leave its row as it was until a pull to refresh. `BotInbox.startFreshnessReads` re-reads the roster through the coalesced reload, and the rooms beside it, every `rosterRefreshInterval` while the socket is live, and ends with the socket. An unchanged re-read repaints and rewrites nothing (`lastRosterRows`, `lastRoomsRead`).
+
+Lives in: `HermesMobile/Features/Bots/BotInbox.swift`
+
+## Read rooms and photos beside the roster, and paint the last rooms first
+
+Each read is a round trip on a tunnel, so `BotInbox` starts the rooms and avatar reads beside the roster read instead of after it, and `BotRosterCache` keeps the last `groups.capabilities` reply and `groups.list` rows beside the roster so a room paints with its bots. A dropped or slow rooms read keeps the rooms on screen; only a refusal, or a host without rooms, clears them.
+
+Lives in: `HermesMobile/Features/Bots/BotInbox.swift`, `HermesMobile/Features/Bots/BotHistoryCache.swift`

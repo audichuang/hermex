@@ -35,11 +35,19 @@ import UIKit
         let wanted = Set(profiles.filter(\.hasAvatar).map(\.id))
         entries = entries.filter { $0.key.connectionID == connectionID && wanted.contains($0.key.profile) }
         onUpdate()
-        for profile in profiles where wanted.contains(profile.id) {
+        let stale = profiles.filter { profile in
+            guard wanted.contains(profile.id) else { return false }
+            let revision = entries[Key(connectionID: connectionID, profile: profile.id)]?.revision
+            return revision == nil || revision != profile.lookRevision
+        }
+        let requests = stale.map { profile in
+            Task { try? await transport.call(.profilesGetAsset(name: profile.id), validateDispatch: validateDispatch) }
+        }
+        defer { requests.forEach { $0.cancel() } }
+        for (profile, request) in zip(stale, requests) {
             let key = Key(connectionID: connectionID, profile: profile.id)
-            if let revision = entries[key]?.revision, revision == profile.lookRevision { continue }
-            guard let reply = try? await transport.call(.profilesGetAsset(name: profile.id), validateDispatch: validateDispatch),
-                  !Task.isCancelled else { return }
+            let reply = await withTaskCancellationHandler { await request.value } onCancel: { requests.forEach { $0.cancel() } }
+            guard let reply, !Task.isCancelled else { return }
             let photo = profile.isPhoto
             let asset = await Task.detached(priority: .utility) { Self.asset(reply, photo: photo) }.value
             guard !Task.isCancelled else { return }

@@ -73,3 +73,9 @@ Lives in: `HermesMobile/Features/Bots/BotProfileEditor.swift`
 Removing a bot's avatar does not change its look revision, so the Bot widget's copy would still read as current. `BotProfileEditor` deletes it with `BotWidgetPublisher.shared.forgetAvatar` (#1643).
 
 Lives in: `HermesMobile/Features/Bots/BotProfileEditor.swift`
+
+## Request every stale avatar at once and end the pass at the first failure
+
+Each avatar is a round trip on a tunnel, so `BotAvatarStore` requests every image whose look revision changed, or that has none, together, and applies them in roster order. The first failed call ends the pass silently without touching the images applied before it: the roster never depends on photos.
+
+Lives in: `HermesMobile/Features/Bots/BotAvatarStore.swift`
