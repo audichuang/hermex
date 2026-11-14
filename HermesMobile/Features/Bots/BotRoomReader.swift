@@ -15,6 +15,10 @@ import Observation
     @ObservationIgnored private(set) var historyRemoval: Task<Void, Never>?
     private(set) var room: BotGroupRoom
     private(set) var events: [BotRoomEvent] = []
+    /// `events` plus the round signals the transcript hides, for the activity strip.
+    private(set) var roundEvents: [BotRoomEvent] = []
+    /// Right after a send the round has not started, so the idle cadence would miss the lead's routing.
+    @ObservationIgnored private var sentAt: ContinuousClock.Instant?
     private(set) var status = BotRoomStatus(.null)
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
@@ -161,20 +165,47 @@ import Observation
             let pages = try await readPages(client, since: initial.cursor)
             try check(client)
             for page in pages { initial.apply(page) }
-            log = initial; publishLog()
+            log = initial; contextRead = false
+            try await readContextIfNeeded(client)
+            publishLog()
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
             try check(client)
             link = .live; didOpen = true; hasRecentLog = true
             reconnect.succeeded()
             saveRecentTranscript()
             pollTask = Task { [weak self] in
+                // Ticks every second so a send shortens a wait already in progress.
+                var last = ContinuousClock.now
                 while let self, self.wire === client, !Task.isCancelled {
-                    do { try await Task.sleep(for: self.status.interval) } catch { return }
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
                     guard self.wire === client, !Task.isCancelled else { return }
+                    guard ContinuousClock.now - last >= self.pollInterval else { continue }
+                    last = .now
                     await self.poll()
                 }
             }
         } catch { fail(error, client) }
+    }
+
+    @ObservationIgnored private var contextRead = false
+    /// A room's routing is set in its first events, which a window opened from the cache or from
+    /// the latest 200 events misses. The strip needs it only while someone works, so it is read
+    /// then, once per opening.
+    @discardableResult
+    private func readContextIfNeeded(_ client: any BotTransport) async throws -> Bool {
+        guard !contextRead, !log.hasRoutingContext, !status.activity.isEmpty else { return false }
+        contextRead = true
+        let head = try await client.call(.groupsLog(roomID: key.roomID, sinceSeq: 0, limit: min(capabilities.pageLimit, 20)))
+        try check(client)
+        log.applySignals(head)
+        return true
+    }
+
+    /// Every second for 20 seconds after a send, while the round may not have started; otherwise the
+    /// status cadence (2 s while anyone works, 10 s idle).
+    var pollInterval: Duration {
+        if let sentAt, ContinuousClock.now - sentAt < .seconds(20) { return .seconds(1) }
+        return status.interval
     }
 
     /// Independently callable for scripted tests; the timer only schedules reads.
@@ -182,6 +213,7 @@ import Observation
         guard let client = wire, link == .live else { return }
         do {
             let latest = try await readState(client)
+            if try await readContextIfNeeded(client) { publishLog() }
             guard latest > log.cursor else { return }
             let pages = try await readPages(client, since: log.cursor)
             try check(client)
@@ -326,6 +358,7 @@ import Observation
             if self.draft(in: request.contextThreadID) == request.text { self.setDraft("", in: request.contextThreadID) }
             self.publishLog()
             self.feedback = BotFeedback(.sent, after: self.feedback)
+            self.sentAt = .now
         })
     }
 
@@ -503,6 +536,8 @@ import Observation
             event.kind != "message.user" || !pendingIDs.contains(event.eventID ?? "")
         }
         if events != visible { events = visible }
+        let round = (visible + log.signals).sorted { $0.seq < $1.seq }
+        if roundEvents != round { roundEvents = round }
         hasEarlier = log.earlierBoundary > 0
         let grouped = BotRoomThread.group(visible, hasEarlier: hasEarlier)
         if threads != grouped { threads = grouped }
