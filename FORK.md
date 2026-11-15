@@ -53,6 +53,24 @@ The gate is local and goes in the PR body:
 - `python3 ci/check_string_catalog.py --derived-data .build/DerivedData --configuration Debug-iphonesimulator`;
 - for UI, evidence of how it looks (simulator or device screenshot, or a rendered view).
 
+## Simulators on this Mac
+
+Upstream's `DEVELOPMENT.md` assumes an `iPhone 17e` device pool managed by `hermex-flow`; neither exists on
+this Mac (the fork owner's), so use these instead. The global rule is in `~/.agents/AGENTS.md` (iOS simulator
+bullet); only the Hermex specifics are here.
+
+- Prefix `HERMEX`. Resident device: `HERMEX iPhone 17e` (iOS 27.x, the main checkout's device and the default for
+  `scripts/test-sim <udid>`). It may not exist yet: check `xcrun simctl list devices | grep HERMEX` and ask the owner
+  before creating it. Pass the UDID, never the name or `booted`.
+- Temporary devices: `HERMEX tmp <task>` only for parallel runs (the self-hosted PR CI uses `HERMEX tmp ci-<run id>`
+  and deletes it). Shut down as soon as the run ends; `xcrun simctl delete` it when the worktree is wrapped up.
+- Run tests with `scripts/test-sim <udid>`; with raw `xcodebuild` use `-destination id=<udid> -parallel-testing-enabled NO`.
+- Simulator window: `/Applications/Xcode.app/Contents/Applications/DeviceHub.app` (Xcode 27.2 has no Simulator.app).
+  It lists other projects' devices; only touch `HERMEX` ones.
+- Before removing a worktree, delete its build output: `.build/DerivedData/` inside it goes with the worktree, but also
+  any `~/Library/Developer/Xcode/DerivedData/HermesMobile-<hash>` (XcodeBuildMCP builds) whose `info.plist`
+  `WorkspacePath` points at that worktree.
+
 ## Release
 
 `scripts/fork/testflight-release` from a clean checkout of a `develop` commit: archives, uploads with team
