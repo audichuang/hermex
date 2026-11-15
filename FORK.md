@@ -62,8 +62,7 @@ bullet); only the Hermex specifics are here.
 - Prefix `HERMEX`. Resident device: `HERMEX iPhone 17e` (iOS 27.x, the main checkout's device and the default for
   `scripts/test-sim <udid>`). It may not exist yet: check `xcrun simctl list devices | grep HERMEX` and ask the owner
   before creating it. Pass the UDID, never the name or `booted`.
-- Temporary devices: `HERMEX tmp <task>` only for parallel runs (the self-hosted PR CI uses `HERMEX tmp ci-<run id>`
-  and deletes it). Shut down as soon as the run ends; `xcrun simctl delete` it when the worktree is wrapped up.
+- Temporary devices: `HERMEX tmp <task>` only for parallel runs (a CI job uses `HERMEX tmp ci-<run id>` and deletes it). Shut down as soon as the run ends; `xcrun simctl delete` it when the worktree is wrapped up.
 - Run tests with `scripts/test-sim <udid>`; with raw `xcodebuild` use `-destination id=<udid> -parallel-testing-enabled NO`.
 - Simulator window: `/Applications/Xcode.app/Contents/Applications/DeviceHub.app` (Xcode 27.2 has no Simulator.app).
   It lists other projects' devices; only touch `HERMEX` ones.
