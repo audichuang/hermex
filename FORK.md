@@ -59,16 +59,55 @@ Upstream's `DEVELOPMENT.md` assumes an `iPhone 17e` device pool managed by `herm
 this Mac (the fork owner's), so use these instead. The global rule is in `~/.agents/AGENTS.md` (iOS simulator
 bullet); only the Hermex specifics are here.
 
-- Prefix `HERMEX`. Resident device: `HERMEX iPhone 17e` (iOS 27.x, the main checkout's device and the default for
-  `scripts/test-sim <udid>`). It may not exist yet: check `xcrun simctl list devices | grep HERMEX` and ask the owner
-  before creating it. Pass the UDID, never the name or `booted`.
-- Temporary devices: `HERMEX tmp <task>` only for parallel runs (a CI job uses `HERMEX tmp ci-<run id>` and deletes it). Shut down as soon as the run ends; `xcrun simctl delete` it when the worktree is wrapped up.
-- Run tests with `scripts/test-sim <udid>`; with raw `xcodebuild` use `-destination id=<udid> -parallel-testing-enabled NO`.
+- Prefix `HERMEX`. Resident device: `HERMEX iPhone 18 Pro Max` (iOS 27.2). Check
+  `xcrun simctl list devices | grep HERMEX`; if the resident is missing, create it with this command
+  (no further owner confirmation needed). Creation does not boot it:
+
+  ```zsh
+  xcrun simctl create "HERMEX iPhone 18 Pro Max" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-2
+  ```
+
+- Temporary parallel devices: `HERMEX tmp <task>`.
+- `scripts/test-sim` has no default device: run `scripts/test-sim <udid>` with the assigned device's UDID,
+  never its name or `booted`. Look up the resident's UDID by name each time; do not hard-code it:
+
+  ```zsh
+  xcrun simctl list devices available | grep -F 'HERMEX iPhone 18 Pro Max'
+  ```
+
+- XcodeBuildMCP (`build_run_sim`) is not installed on this Mac. For UI verification, use the raw build
+  fallback from `DEVELOPMENT.md` with the assigned UDID and serial execution. Set `udid` to the UDID
+  looked up above (or the temporary device assigned to the task):
+
+  ```zsh
+  xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Debug \
+    -destination "id=${udid}" -parallel-testing-enabled NO \
+    -derivedDataPath .build/DerivedData build
+  ```
+
+  Then, with that device booted for the UI check:
+
+  ```zsh
+  app=.build/DerivedData/Build/Products/Debug-iphonesimulator/HermesMobile.app
+  xcrun simctl install "$udid" "$app"
+  bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
+  xcrun simctl launch "$udid" "$bundle_id"
+  ```
+
+  Keep the normal Debug simulator signing; do not hand-sign. As `AGENTS.md` requires,
+  `CODE_SIGNING_ALLOWED=NO` is only for compile-only checks, never a build installed on a simulator.
 - Simulator window: `/Applications/Xcode.app/Contents/Applications/DeviceHub.app` (Xcode 27.2 has no Simulator.app).
   It lists other projects' devices; only touch `HERMEX` ones.
-- Before removing a worktree, delete its build output: `.build/DerivedData/` inside it goes with the worktree, but also
-  any `~/Library/Developer/Xcode/DerivedData/HermesMobile-<hash>` (XcodeBuildMCP builds) whose `info.plist`
-  `WorkspacePath` points at that worktree.
+- Hermex build products are in the checkout's `.build/DerivedData/`. `scripts/test-sim` separately keeps
+  logs and result bundles in `~/Library/Developer/Xcode/DerivedData/hermex-tests-<hash>/runs/`, where
+  `<hash>` is the first 16 hex characters of SHA-256 of the resolved absolute checkout path. Removing
+  a checkout leaves those external logs behind. To identify an orphan, read `-project` in its
+  `runs/*/command.json`: it must name `HermesMobile.xcodeproj`, its parent checkout must no longer
+  exist, and that path's hash must match the directory suffix. Keep it if ownership cannot be established.
+  For `HermesMobile-*` caches, use `info.plist`'s `WorkspacePath` to establish Hermex ownership and
+  confirm the checkout no longer exists; without that plist, list the directory but do not delete it.
+  Before deleting any confirmed orphan, check `pgrep -fl xcodebuild`; defer cleanup while a Hermex
+  build is running. Measure available space with `df -h /System/Volumes/Data` before and after.
 
 ## Release
 
