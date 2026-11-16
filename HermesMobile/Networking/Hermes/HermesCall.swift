@@ -190,7 +190,11 @@ enum HermesCall: Equatable, Sendable {
     /// field, and its prompt names its images in the text (`BotAttachmentUpload.imageReference`).
     /// `titlePreview` is the start of a pasted-text attachment, for the session titler only
     /// (#1701); it goes out bounded, and only to a host that takes it.
-    case promptSubmit(sessionID: String, text: String, fence: Fence? = nil, images: [BotUploadedImage] = [], titlePreview: String? = nil)
+    /// `voiceContext` marks a voice call's delegation (#1091): `surface: "voice-live"` with the
+    /// recent spoken exchange as `voice_context`, which the host feeds the model alone (the stored
+    /// prompt stays `text`) and cuts at 6000 characters, as this does first.
+    case promptSubmit(sessionID: String, text: String, fence: Fence? = nil, images: [BotUploadedImage] = [],
+                      titlePreview: String? = nil, voiceContext: String? = nil)
     /// Cuts the transcript at one durable prompt row and starts the turn again with
     /// `text`, in one call under the host's history lock. Never `queued`: the host
     /// refuses a cut while busy (4009) instead of queueing or steering it. A Hermes
@@ -746,7 +750,7 @@ enum HermesCall: Equatable, Sendable {
         case .sessionDetach(let profile, let sessionID, let subscriptionID):
             return ["profile": .string(profile), "session_id": .string(sessionID), "subscription_id": .string(subscriptionID)]
         case .sessionActiveList, .groupsCapabilities: return [:]
-        case .promptSubmit(let sessionID, let text, _, let images, let titlePreview):
+        case .promptSubmit(let sessionID, let text, _, let images, let titlePreview, let voiceContext):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
             if let titlePreview,
                let bounded = HermesCompatibility.boundedTitlePreview(titlePreview),
@@ -756,6 +760,11 @@ enum HermesCall: Equatable, Sendable {
             // Exactly `path` and `mime`: the host refuses any other key (4001).
             if !images.isEmpty {
                 params["attachments"] = .array(images.map { .object(["path": .string($0.path), "mime": .string($0.mime)]) })
+            }
+            if let voiceContext {
+                params["surface"] = .string("voice-live")
+                // The host cuts by code point (`voice_context[:6000]`).
+                params["voice_context"] = .string(String(String.UnicodeScalarView(voiceContext.unicodeScalars.prefix(6000))))
             }
             return params
         case .promptRewind(let sessionID, let text, let rowID, let deep):
