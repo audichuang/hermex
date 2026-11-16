@@ -90,6 +90,35 @@ import XCTest
         XCTAssertEqual(transport.commentary, [HermesVoiceCall.Line.unreachable])
         XCTAssertTrue(chat.submits.isEmpty)
         XCTAssertEqual(call.status, .listening)
+
+        // The turn the Stop never ended still runs: the next request stops it again.
+        let stoppedAgain = expectation(description: "The next request stops the turn again")
+        chat.onInterrupt = { stoppedAgain.fulfill() }
+        transport.hear(.user, "Try again.")
+        transport.onEvent?(.delegation(id: "d2"))
+        await fulfillment(of: [stoppedAgain], timeout: 5)
+        XCTAssertEqual(chat.interrupts, 2)
+    }
+
+    /// A Stop the host refused doesn't leave every later request in the turn waiting on it.
+    func testARefusedStopLetsTheNextRequestStopTheTurn() async {
+        let (_, transport, chat, _) = await startedCall()
+        chat.isIdleForVoice = false
+        chat.isRunningTurn = true
+        chat.interruptResult = false
+        let refused = expectation(description: "The first Stop is refused")
+        chat.onInterrupt = { refused.fulfill() }
+        transport.hear(.user, "Check the docs.")
+        transport.onEvent?(.delegation(id: "d1"))
+        await fulfillment(of: [refused], timeout: 5)
+
+        chat.interruptResult = true
+        let stopped = expectation(description: "The next request stops the turn")
+        chat.onInterrupt = { stopped.fulfill() }
+        transport.hear(.user, "Check the docs, please.")
+        transport.onEvent?(.delegation(id: "d2"))
+        await fulfillment(of: [stopped], timeout: 5)
+        XCTAssertEqual(chat.interrupts, 2)
     }
 
     func testARefusedRequestIsAnsweredWithTheFailureLine() async {
@@ -118,7 +147,9 @@ import XCTest
         XCTAssertTrue(chat.submits.isEmpty)
     }
 
-    func testEndingWhileTheSessionOpensClosesItOnceItIsUp() async {
+    /// End while the session opens closes it then, so the opening stops and the microphone goes
+    /// at once rather than once the host answers.
+    func testEndingWhileTheSessionOpensClosesItAtOnce() async {
         let transport = FakeTransport()
         transport.holdsStart = true
         let call = HermesVoiceCall(transport: transport, chat: FakeChat(), scheduler: ManualScheduler())
@@ -129,10 +160,34 @@ import XCTest
 
         call.end()
         XCTAssertEqual(call.status, .ended(.hungUp))
+        XCTAssertEqual(transport.closes, 1)
         transport.finishStart()
         await start.value
 
         XCTAssertEqual(transport.closes, 1)
+    }
+
+    /// The turn the Stop was meant for ended and another now waits on an approval: a Stop would
+    /// deny it, so the request points back at the phone instead and is not sent later.
+    func testARequestWhoseNextTurnWaitsOnAnApprovalIsNeitherStoppedNorSent() async {
+        let (call, transport, chat, _) = await startedCall()
+        chat.isIdleForVoice = false
+        chat.isRunningTurn = true
+        let interrupted = expectation(description: "The running turn is stopped")
+        chat.onInterrupt = { interrupted.fulfill() }
+        transport.hear(.user, "Check the docs.")
+        transport.onEvent?(.delegation(id: "d1"))
+        await fulfillment(of: [interrupted], timeout: 5)
+
+        chat.turnAwaitsAnswer = true
+        let pointed = expectation(description: "The voice points at the phone")
+        transport.onSend = { if $0["type"].text == "session.commentary.append" { pointed.fulfill() } }
+        chat.emit(.turnEnded)
+        await fulfillment(of: [pointed], timeout: 5)
+
+        XCTAssertEqual(transport.commentary, [HermesVoiceCall.Line.stillWaiting])
+        XCTAssertEqual(chat.interrupts, 1)
+        XCTAssertEqual(call.status, .listening, "the request is dropped, not sent once the approval's turn ends")
     }
 
     func testTenQuietMinutesHangUp() async {
@@ -142,6 +197,69 @@ import XCTest
 
         XCTAssertEqual(call.status, .ended(.inactive))
         XCTAssertEqual(transport.closes, 1)
+    }
+
+    /// An approval nobody answers doesn't keep a billed call on: ten quiet minutes after the turn
+    /// started waiting, it hangs up.
+    func testAnUnansweredApprovalStillHangsUpAfterTenQuietMinutes() async {
+        let (call, transport, chat, scheduler) = await startedCall()
+        await delegate(transport, chat)
+        scheduler.advance(by: .seconds(9 * 60))
+
+        chat.isIdleForVoice = false
+        chat.isRunningTurn = true
+        chat.turnAwaitsAnswer = true
+        chat.emit(.awaitsAnswer)
+        XCTAssertEqual(transport.commentary, [HermesVoiceCall.Line.needsApproval])
+        scheduler.advance(by: .seconds(60))
+        XCTAssertFalse(call.isEnded, "the quiet minutes count from the approval")
+
+        scheduler.advance(by: HermesVoiceCall.inactivityLimit)
+        XCTAssertEqual(call.status, .ended(.inactive))
+        XCTAssertEqual(transport.closes, 1)
+    }
+
+    /// A Hermes connection that doesn't come back within the grace gives the request up with the
+    /// failure line, and then ten quiet minutes hang up; one that comes back keeps it.
+    func testALostHermesConnectionGivesUpTheRequestAfterTheGrace() async {
+        let (call, transport, chat, scheduler) = await startedCall()
+        await delegate(transport, chat)
+
+        chat.emit(.hermesLost)
+        scheduler.advance(by: .seconds(60))
+        chat.emit(.hermesRestored)
+        scheduler.advance(by: HermesVoiceCall.hermesLostGrace)
+        XCTAssertTrue(transport.commentary.isEmpty)
+        XCTAssertEqual(call.status, .thinking)
+
+        chat.emit(.hermesLost)
+        scheduler.advance(by: HermesVoiceCall.hermesLostGrace)
+        XCTAssertEqual(transport.commentary, [HermesVoiceCall.Line.unreachable])
+        XCTAssertEqual(call.status, .listening)
+        chat.emit(.reply("A late reply. "))
+        XCTAssertEqual(transport.commentary, [HermesVoiceCall.Line.unreachable], "a dropped request is not spoken")
+
+        scheduler.advance(by: HermesVoiceCall.inactivityLimit)
+        XCTAssertEqual(call.status, .ended(.inactive))
+    }
+
+    /// One call holds the audio process-wide. A new call tears down one still ending after End
+    /// before it reads the audio session, and that call's late release can't clear the new hold.
+    func testANewCallTakesTheAudioFromOneStillEnding() {
+        let state = ComposerAudioCaptureState.shared
+        let ending = NSObject(), next = NSObject()
+        addTeardownBlock { @MainActor in state.releaseCall(ending); state.releaseCall(next) }
+        var heldWhileReleasing: Bool?
+        state.claimCall(ending) { heldWhileReleasing = state.isOnCall; state.releaseCall(ending) }
+        XCTAssertTrue(state.isCapturing)
+
+        state.claimCall(next) {}
+        XCTAssertEqual(heldWhileReleasing, false, "the ending call let go before the new one took the audio")
+        state.releaseCall(ending)
+        XCTAssertTrue(state.isOnCall)
+
+        state.releaseCall(next)
+        XCTAssertFalse(state.isOnCall)
     }
 
     // MARK: Fixture
@@ -174,6 +292,7 @@ import XCTest
     var onSpeakingChange: ((Bool) -> Void)?
     private(set) var sent: [BotJSON] = []
     private(set) var closes = 0
+    var onSend: ((BotJSON) -> Void)?
     var holdsStart = false
     var onStartCalled: (() -> Void)?
     private var opening: CheckedContinuation<Void, Error>?
@@ -188,7 +307,7 @@ import XCTest
     }
 
     func finishStart() { opening?.resume(); opening = nil }
-    func send(_ event: BotJSON) { sent.append(event) }
+    func send(_ event: BotJSON) { sent.append(event); onSend?(event) }
     func setMuted(_ muted: Bool) {}
     func close() { closes += 1 }
 
@@ -211,14 +330,16 @@ import XCTest
     var voiceHistory: [(speaker: VoiceLiveSpeaker, text: String)] = []
     var voiceTurnEvents: ((HermesVoiceTurnEvent) -> Void)?
     var submitResult = true
+    var interruptResult = true
     var onSubmit: (() -> Void)?
     var onInterrupt: (() -> Void)?
     private(set) var submits: [(prompt: String, context: String)] = []
     private(set) var interrupts = 0
 
-    func interruptForVoice() async {
+    func interruptForVoice() async -> Bool {
         interrupts += 1
         onInterrupt?()
+        return interruptResult
     }
 
     func submitVoice(prompt: String, context: String) async -> Bool {

@@ -29,8 +29,9 @@ import Observation
     var isRunningTurn: Bool { get }
     /// A Stop now would withdraw a request only this user can still answer.
     var turnAwaitsAnswer: Bool { get }
-    /// Stops the running turn. Idle follows from its own ending frames (`.turnEnded`).
-    func interruptForVoice() async
+    /// Stops the running turn; false when the host didn't take the Stop. Idle follows from the
+    /// turn's own ending frames (`.turnEnded`).
+    func interruptForVoice() async -> Bool
     /// Sends a delegation as a Send; true only when the host started its turn.
     func submitVoice(prompt: String, context: String) async -> Bool
     /// The just-ended turn's reply as the chat shows it.
@@ -96,6 +97,8 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
 
     static let idleWait: Duration = .seconds(10)
     static let inactivityLimit: Duration = .seconds(10 * 60)
+    /// How long a delegation out waits for the lost Hermes connection to come back.
+    static let hermesLostGrace: Duration = .seconds(2 * 60)
 
     private(set) var status: Status = .connecting
     private(set) var isMuted = false
@@ -114,12 +117,12 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     @ObservationIgnored private var transcript = VoiceLiveTranscript()
     @ObservationIgnored private var delegation: Delegation?
     @ObservationIgnored private var didStart = false
-    @ObservationIgnored private var isStarting = false
     @ObservationIgnored private var isLive = false
     @ObservationIgnored private var isSpeaking = false
     /// A Stop went out for the running turn; the next turn end clears it.
     @ObservationIgnored private var interruptSent = false
     @ObservationIgnored private var cancelInactivity: (@MainActor () -> Void)?
+    @ObservationIgnored private var cancelHermesLostGrace: (@MainActor () -> Void)?
 
     /// One delegation, from the voice's request to its turn's end.
     private struct Delegation {
@@ -144,7 +147,8 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
 
     // MARK: Lifecycle
 
-    /// Opens the session once. An End while it opens closes the session as soon as it is up.
+    /// Opens the session once. An End while it opens closes the transport at once, which stops
+    /// the opening.
     func start() async {
         guard !didStart, !isEnded else { return }
         didStart = true
@@ -152,18 +156,14 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         transport.onClosed = { [weak self] in self?.transportDidClose($0) }
         transport.onSpeakingChange = { [weak self] in self?.speakingDidChange($0) }
         chat?.voiceTurnEvents = { [weak self] in self?.receiveTurn($0) }
-        isStarting = true
         do {
             try await transport.start(history: VoiceLiveProtocol.liveHistory(chat?.voiceHistory ?? []))
         } catch {
-            isStarting = false
-            transport.close()
-            finish(.failed(error.localizedDescription), closesTransport: false)
+            finish(.failed(error.localizedDescription), closesTransport: true)
             return
         }
-        isStarting = false
-        // Ended while the session opened: it is billed until closed, so close it now.
-        guard !isEnded else { return transport.close() }
+        // Ended while the session opened: `finish` closed the transport then.
+        guard !isEnded else { return }
         isLive = true
         armInactivity()
         refreshStatus()
@@ -183,10 +183,11 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         status = .ended(reason)
         isLive = false
         cancelInactivity?(); cancelInactivity = nil
+        cancelHermesLostGrace?(); cancelHermesLostGrace = nil
         delegation?.cancelIdleWait?(); delegation = nil
         chat?.voiceTurnEvents = nil
-        // A session still opening is closed once `start` returns.
-        if closesTransport, !isStarting { transport.close() }
+        // A session still opening stops opening and releases the microphone at once.
+        if closesTransport { transport.close() }
         let ended = onEnded
         onEnded = nil
         ended?()
@@ -207,12 +208,17 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         if next != status { status = next }
     }
 
-    /// Hangs up after ten quiet minutes, never while a delegation is out.
+    /// Hangs up after ten quiet minutes, never while a delegation is out, unless its turn has
+    /// waited on an approval or a question that whole time.
     private func armInactivity() {
         cancelInactivity?()
         cancelInactivity = scheduler.schedule(after: Self.inactivityLimit) { [weak self] in
             guard let self, !self.isEnded else { return }
-            if self.delegation != nil { self.armInactivity() } else { self.finish(.inactive, closesTransport: true) }
+            if self.delegation != nil, self.chat?.turnAwaitsAnswer != true {
+                self.armInactivity()
+            } else {
+                self.finish(.inactive, closesTransport: true)
+            }
         }
     }
 
@@ -262,8 +268,16 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
 
     private func idleWaitDidExpire(_ id: String) {
         guard delegation?.id == id, delegation?.phase == .waiting else { return }
+        // A Stop that never ended the turn doesn't hold back the next request's.
+        interruptSent = false
+        drop(id, saying: Line.unreachable)
+    }
+
+    /// Gives up on a delegation, says why, and lets the quiet-minutes limit run again.
+    private func drop(_ id: String, saying line: String) {
+        delegation?.cancelIdleWait?()
         delegation = nil
-        speak(Line.unreachable, delegationID: id)
+        speak(line, delegationID: id)
         refreshStatus()
         armInactivity()
     }
@@ -274,12 +288,18 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         Task { [weak self] in await self?.step() }
     }
 
+    /// The running turn may have changed since the request came in, so a Stop is checked against
+    /// a waiting approval again here. A Stop the host refused is not retried for this request.
     private func step() async {
         guard !isEnded, let chat, let waiting = delegation, waiting.phase == .waiting else { return }
         if chat.isIdleForVoice { return await submit(waiting) }
         guard chat.isRunningTurn, !interruptSent else { return }
+        if chat.turnAwaitsAnswer { return drop(waiting.id, saying: Line.stillWaiting) }
         interruptSent = true
-        await chat.interruptForVoice()
+        guard await chat.interruptForVoice() else {
+            interruptSent = false
+            return
+        }
         advance()
     }
 
@@ -292,10 +312,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         if started {
             delegation?.phase = .running
         } else {
-            delegation = nil
-            speak(Line.unreachable, delegationID: sending.id)
-            refreshStatus()
-            armInactivity()
+            drop(sending.id, saying: Line.unreachable)
         }
         advance()
     }
@@ -304,9 +321,17 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
 
     private func receiveTurn(_ event: HermesVoiceTurnEvent) {
         guard !isEnded else { return }
-        if event == .turnEnded {
+        switch event {
+        case .turnEnded:
             interruptSent = false
             return advance()
+        case .hermesLost:
+            return armHermesLostGrace()
+        case .hermesRestored:
+            cancelHermesLostGrace?(); cancelHermesLostGrace = nil
+            return
+        default:
+            break
         }
         // A turn the call did not send, or one a newer request replaced, is not spoken.
         guard var current = delegation, current.phase != .waiting else { return }
@@ -333,10 +358,24 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
             think(Line.working(tool), delegationID: current.id)
         case .awaitsAnswer:
             speak(Line.needsApproval, delegationID: current.id)
+            // The quiet minutes count from here: an unanswered request doesn't keep the call billed.
+            armInactivity()
         case .settled(let lostTrack):
             settle(current, lostTrack: lostTrack)
-        case .turnEnded:
+        case .turnEnded, .hermesLost, .hermesRestored:
             break
+        }
+    }
+
+    /// The chat lost its Hermes connection. A delegation still out when it hasn't come back
+    /// within the grace is given up, so the quiet-minutes limit can end a call whose host is gone.
+    private func armHermesLostGrace() {
+        guard cancelHermesLostGrace == nil else { return }
+        cancelHermesLostGrace = scheduler.schedule(after: Self.hermesLostGrace) { [weak self] in
+            guard let self, !self.isEnded else { return }
+            self.cancelHermesLostGrace = nil
+            guard let current = self.delegation else { return }
+            self.drop(current.id, saying: Line.unreachable)
         }
     }
 
