@@ -851,6 +851,10 @@ struct MessageComposerView: View {
         voiceCall != nil
     }
 
+    private var isAudioHeldByCall: Bool {
+        isOnVoiceCall || ComposerAudioCaptureState.shared.isOnCall
+    }
+
     private var isDictating: Bool {
         voiceInput.state != .idle
     }
@@ -1431,7 +1435,7 @@ struct MessageComposerView: View {
         }
 
         return holdsHostControls
-            || isOnVoiceCall
+            || isAudioHeldByCall
             || isSending
             || isCompressingSession
             || isWaitingForStream
@@ -1443,6 +1447,7 @@ struct MessageComposerView: View {
     private var isVoiceNoteRecordingDisabled: Bool {
         !showsSessionControls
             || holdsHostControls
+            || isAudioHeldByCall
             || isSending
             || isSendingVoiceNote
             || isCompressingSession

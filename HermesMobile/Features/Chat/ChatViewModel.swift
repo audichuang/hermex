@@ -8852,7 +8852,7 @@ extension ChatViewModel: VoiceCallChatPort {
     var isRunningTurn: Bool { activeStreamID != nil }
     var turnAwaitsAnswer: Bool { hermesTurn?.turnAwaitsAnswer == true }
 
-    func interruptForVoice() async { await cancelActiveStream() }
+    func interruptForVoice() async -> Bool { await cancelActiveStream() }
 
     func submitVoice(prompt: String, context: String) async -> Bool {
         await submitVoicePrompt(prompt, context: context)
