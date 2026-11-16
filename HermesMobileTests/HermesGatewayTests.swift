@@ -636,7 +636,8 @@ import XCTest
 
     /// A voice call keeps the socket through the background (#1091), so its reply streams with
     /// the screen locked; ending there closes it then, once and silently, as the background
-    /// would have. Ending after the app came back closes nothing.
+    /// would have. Ending after the app came back closes nothing, and while another chat's call
+    /// here is still on, nothing either.
     func testAVoiceCallKeepsTheSocketThroughTheBackgroundUntilItEnds() async throws {
         let http = connection()
         let chat = BotClient(http: http)
@@ -646,10 +647,13 @@ import XCTest
         chat.onDisconnect = { _ in lost += 1 }
         let socket = try XCTUnwrap(sockets.first)
 
-        http.keepsAliveForCall = true
+        // A call on another chat here starts as the first one ends: the socket stays for it.
+        http.callStarted()
+        http.callStarted()
         http.closeForBackground()
+        http.callEnded()
         XCTAssertFalse(socket.isClosed)
-        http.keepsAliveForCall = false
+        http.callEnded()
         XCTAssertTrue(socket.isClosed)
         XCTAssertEqual(lost, 0, "The background close is silent")
 
@@ -657,10 +661,10 @@ import XCTest
         try await chat.connect()
         let second = try XCTUnwrap(sockets.last)
         XCTAssertFalse(second === socket)
-        http.keepsAliveForCall = true
+        http.callStarted()
         http.closeForBackground()
         http.returnedFromBackground()
-        http.keepsAliveForCall = false
+        http.callEnded()
         XCTAssertFalse(second.isClosed, "A call ending in the foreground leaves the socket open")
     }
 
