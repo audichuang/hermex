@@ -3524,7 +3524,8 @@ final class ChatViewModel {
     @ObservationIgnored private(set) var voiceCallOfferRead: Task<Void, Never>?
 
     /// Asks the host as the chat attaches, until it answers. An older host's 404 is an answer
-    /// (no Call); a read the socket's loss cut short tries again at the next attach.
+    /// (no Call); a failed read tries again at the next attach. Start Voice Call's request ends
+    /// with a failed read, so a later answer never opens the microphone long after the press.
     private func readVoiceCallOfferIfNeeded() {
         guard let hermesTurn, !didReadVoiceCallOffer, voiceCallOfferRead == nil else { return }
         voiceCallOfferRead = Task { [weak self, hermesTurn] in
@@ -3532,7 +3533,12 @@ final class ChatViewModel {
             do {
                 status = try await hermesTurn.voiceLiveStatus()
             } catch {
-                self?.voiceCallOfferRead = nil
+                guard let self else { return }
+                voiceCallOfferRead = nil
+                if requestsVoiceCall {
+                    requestsVoiceCall = false
+                    sendErrorMessage = VoiceLiveTransportError.peerConnectionFailed.errorDescription
+                }
                 return
             }
             guard let self else { return }
@@ -3592,10 +3598,15 @@ final class ChatViewModel {
         }
     }
 
+    /// A screen pushed over the chat during a voice call left its stream attached, so the reply
+    /// kept reaching the call; the stream suspends when the call ends, unless the chat is back.
+    @ObservationIgnored private var owesNavigationSuspend = false
+
     /// Starts a voice call on this Hermes chat and returns once its session is up or the start
-    /// failed. While it is on, the chat's connection keeps its socket through the background, so
-    /// the delegated reply keeps streaming into the call. The call ends when the chat leaves or
-    /// the model goes; ending in the background suspends the chat and closes the socket then (#902).
+    /// failed. While it is on, the chat's connection keeps its socket through the background and
+    /// its stream under a pushed screen, so the delegated reply keeps streaming into the call.
+    /// The call ends when the chat is replaced or the model goes; ending in the background or
+    /// under a pushed screen suspends the chat then, and in the background closes the socket (#902).
     func startVoiceCall() async {
         guard !isOnVoiceCall, let call = makeVoiceCall() else { return }
         let connection = hermesTurn?.connection
@@ -3604,8 +3615,18 @@ final class ChatViewModel {
         voiceCall = call
         voiceCallInProgress = call
         connection?.keepsAliveForCall = true
-        call.onEnded = { [weak self, weak call, connection] in
-            if connection?.owesBackgroundClose == true { self?.suspendStreamForBackground() }
+        call.onEnded = { [weak self, weak call, connection, hermesTurn] in
+            if let self {
+                if self.owesNavigationSuspend {
+                    self.owesNavigationSuspend = false
+                    self.suspendActiveStreamConnection()
+                } else if connection?.owesBackgroundClose == true {
+                    self.suspendStreamForBackground()
+                }
+            } else {
+                // The chat went with the call on: its stream detaches now, as leaving would have.
+                hermesTurn?.suspendActiveStreamConnection()
+            }
             connection?.keepsAliveForCall = false
             guard let self else { return }
             if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
@@ -7095,9 +7116,14 @@ final class ChatViewModel {
         suspendActiveStreamConnection()
     }
 
-    /// Leaving the chat hangs up its voice call (#1091).
+    /// The chat's last view left: a screen pushed over it, or the chat closing. During a voice
+    /// call both keep the stream (#1091): a push must not hang up, and a closing chat's model goes,
+    /// which ends the call and suspends then.
     func suspendStreamForNavigation() {
-        endVoiceCall()
+        guard !isOnVoiceCall else {
+            owesNavigationSuspend = true
+            return
+        }
         suspendActiveStreamConnection()
     }
 
@@ -7114,6 +7140,7 @@ final class ChatViewModel {
     /// `ChatView` reconnects as it appears, before its first load, so a Hermes chat's attach can
     /// start here: it takes the offline cache first, to write what that attach reads (#1144).
     func reconnectStreamIfNeeded(modelContext: ModelContext? = nil) async {
+        owesNavigationSuspend = false
         if hermesTurn != nil, let modelContext { hermesCache = modelContext }
         await turn.reconnectIfNeeded(modelContext: modelContext)
     }
