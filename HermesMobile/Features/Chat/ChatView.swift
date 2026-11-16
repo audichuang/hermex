@@ -4108,7 +4108,8 @@ struct ChatView: View {
         case .background:
             if isHermesSession {
                 // The app closes the gateway socket in the background (#902); the turn
-                // runs on, and returning reattaches to it.
+                // runs on, and returning reattaches to it. A voice call keeps the chat
+                // attached until it ends (#1091).
                 viewModel.suspendStreamForBackground()
             } else if viewModel.activeStreamID != nil {
                 beginResponseCompletionBackgroundTask()

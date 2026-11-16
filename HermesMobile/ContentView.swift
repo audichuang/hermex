@@ -69,9 +69,11 @@ struct ContentView: View {
                 // Closes the shared Bot socket cleanly on background; Control Center and
                 // banners (`.inactive`) keep it. Each Bot screen also suspends on
                 // background; the chat, inbox, rooms and editor reconnect on `.active`,
-                // and the creators on their next Create (#902).
+                // and the creators on their next Create (#902). A voice call keeps it until the
+                // call ends; back on `.active`, an ending call closes nothing (#1091).
                 if scenePhase == .background { HermesConnections.shared.closeForBackground() }
                 guard scenePhase == .active else { return }
+                HermesConnections.shared.returnedFromBackground()
                 // Sends last week's usage report once, when reports are allowed (#1662).
                 Task { await UsageReports.shared.appBecameActive() }
                 importPendingSharedDraftIfAvailable()
