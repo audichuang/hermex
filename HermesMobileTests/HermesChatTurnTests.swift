@@ -964,12 +964,14 @@ import SwiftUI
 
     /// Call shows once the chat's own host says its Profile runs GPT-Live (#1091).
     func testCallShowsWhenTheChatsHostRunsGPTLive() async {
-        let chat = await openChat(voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        // Its own Profile, so a status read an earlier test's chat left in flight can't count here.
+        let chat = await openChat(profile: "voice",
+                                  voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
         await chat.model.voiceCallOfferRead?.value
 
         XCTAssertTrue(chat.model.offersVoiceCall)
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/audio/voice-live/status" }
-            .map { $0.url?.query }, ["profile=default"])
+            .compactMap { $0.url?.query }.filter { $0 == "profile=voice" }.count, 1)
     }
 
     /// A call the host refuses ends at once, and the composer shows the host's reason where it
