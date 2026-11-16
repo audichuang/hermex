@@ -1,0 +1,29 @@
+#!/bin/bash
+# Shuts down and deletes every simulator PR CI made on the Mac mini (named `HERMEX tmp ci-…`),
+# including the clones parallel testing makes in the XCTestDevices set. PR CI runs it before
+# creating its simulator and again at the end, so a run cancelled or killed at any point leaves
+# nothing behind for long. The runner takes one job at a time, so no other run's device is live.
+# Other simulators on this Mac (scripts/test-sim's, other projects') never match the name.
+set -uo pipefail
+
+# simctl on the default device set, or on the set named in $SET.
+sim() { if [[ -n "$SET" ]]; then xcrun simctl --set "$SET" "$@"; else xcrun simctl "$@"; fi; }
+
+sweep() {
+  SET=$1
+  sim list devices --json 2>/dev/null | python3 -c '
+import json, sys
+for devices in json.load(sys.stdin).get("devices", {}).values():
+    for d in devices:
+        if "HERMEX tmp ci-" in d.get("name", ""):
+            print(d["udid"])
+' | while read -r udid; do
+    echo "Deleting leftover CI simulator ${udid}"
+    sim shutdown "$udid" >/dev/null 2>&1 || true
+    sim delete "$udid" || echo "Could not delete ${udid}" >&2
+  done
+}
+
+sweep ""
+sweep testing
+exit 0
