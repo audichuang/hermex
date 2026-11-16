@@ -143,3 +143,88 @@ final class APIClientTTSTests: APIClientTestCase {
         return client
     }
 }
+
+/// A voice call's two host routes (#1091) over a connected `BotClient`, against a host scripted
+/// with the replies `scripts/local-hermes` gave at the pin (3b421578) without an OpenAI key.
+@MainActor final class HermesVoiceLiveTests: XCTestCase {
+    private let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
+                                       username: "user", password: "secret")
+
+    override func tearDown() {
+        HermesHostFixture.reset()
+        super.tearDown()
+    }
+
+    /// The Call button's gate: the Profile's mode and availability, and nothing from a host
+    /// that predates the route.
+    func testTheStatusReadsTheProfilesSetupAndAnOlderHostHasNone() async throws {
+        let client = try await connectedClient()
+        defer { client.close() }
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/audio/voice-live/status" else { return nil }
+            return .json(200, .object(["ok": .bool(true), "mode": .string("chained"), "available": .bool(false),
+                                       "reason": .string("no OpenAI API key (set OPENAI_API_KEY or voice.gpt_live.api_key)"),
+                                       "model": .string("gpt-live-1"), "voice": .string("marin")]))
+        }
+        let status = try await client.voiceLiveStatus(profile: "research")
+        XCTAssertEqual(status?.mode, "chained")
+        XCTAssertEqual(status?.available, false)
+
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/audio/voice-live/status" ? .json(404, .object(["detail": .string("Not Found")])) : nil
+        }
+        let older = try await client.voiceLiveStatus(profile: "research")
+        XCTAssertNil(older)
+    }
+
+    /// The host waits on the vendor, so the offer goes out on the long deadline, and the answer
+    /// comes back for the peer connection.
+    func testTheSessionTradesTheOfferForTheAnswerOnTheLongDeadline() async throws {
+        let http = BotSocketHost().connection(record)
+        let client = BotClient(http: http)
+        try await client.connect()
+        defer { client.close() }
+        let parked = expectation(description: "Offer in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        _ = HermesHostFixture.configuration { $0.url?.path == "/api/audio/voice-live/session" ? .park : nil }
+
+        let running = Task { try await client.voiceLiveSession(profile: "research", sdp: "v=0\r\n", history: []) }
+        await fulfillment(of: [parked], timeout: 2)
+        let onLong = await http.provisioningSession.allTasks.contains { $0.originalRequest?.url?.path == "/api/audio/voice-live/session" }
+        HermesHostFixture.releaseParked(.json(200, .object(["ok": .bool(true), "session": .object(["id": .string("sess_1")]),
+                                                            "transport": .object(["type": .string("webrtc"), "sdp": .string("v=0\r\nanswer\r\n")])])))
+        let session = try await running.value
+
+        XCTAssertTrue(onLong)
+        XCTAssertEqual(session, HermesVoiceLiveSession(sessionID: "sess_1", answerSDP: "v=0\r\nanswer\r\n"))
+    }
+
+    /// No key on the host (503) or a vendor refusal (502): the user reads the host's reason.
+    func testARefusedSessionCarriesTheHostsReason() async throws {
+        let client = try await connectedClient()
+        defer { client.close() }
+        let refusals: [(status: Int, detail: String)] = [
+            (503, "GPT-Live needs an OpenAI API key (OPENAI_API_KEY or voice.gpt_live.api_key)"),
+            (502, "GPT-Live session creation failed (401): invalid key")
+        ]
+        for refusal in refusals {
+            _ = HermesHostFixture.configuration { request in
+                request.url?.path == "/api/audio/voice-live/session"
+                    ? .json(refusal.status, .object(["detail": .string(refusal.detail)])) : nil
+            }
+            do {
+                _ = try await client.voiceLiveSession(profile: "research", sdp: "v=0\r\n", history: [])
+                XCTFail("\(refusal.status): expected a throw")
+            } catch {
+                XCTAssertEqual(error as? HermesVoiceLiveRefusal, HermesVoiceLiveRefusal(status: refusal.status, detail: refusal.detail))
+                XCTAssertEqual(error.localizedDescription, refusal.detail)
+            }
+        }
+    }
+
+    private func connectedClient() async throws -> BotClient {
+        let client = BotClient(http: BotSocketHost().connection(record))
+        try await client.connect()
+        return client
+    }
+}
