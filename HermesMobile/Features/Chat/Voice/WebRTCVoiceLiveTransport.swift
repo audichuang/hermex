@@ -87,14 +87,15 @@ enum VoiceLiveTransportError: LocalizedError {
     }
 
     /// Desktop's graceful close: ask for `session.closed`, tear down when it comes or after 15 s.
+    /// The timer holds the transport, so a call its owner already dropped still tears down.
     func close() {
         guard !finalized, !closeRequested else { return }
         closeRequested = true
         guard sendNow(VoiceLiveClientEvents.close) else { return finalize(reason: "close_requested") }
-        closeTimer = Task { [weak self] in
+        closeTimer = Task {
             try? await Task.sleep(for: Self.closeTimeout)
             guard !Task.isCancelled else { return }
-            self?.finalize(reason: "close_requested")
+            self.finalize(reason: "close_requested")
         }
     }
 

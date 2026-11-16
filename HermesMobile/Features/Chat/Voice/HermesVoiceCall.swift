@@ -104,6 +104,9 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
 
     var isEnded: Bool { if case .ended = status { return true }; return false }
 
+    /// Called once, as the call ends by any path: End, the session closing, a failed start.
+    @ObservationIgnored var onEnded: (@MainActor () -> Void)?
+
     @ObservationIgnored private let transport: any VoiceLiveTransport
     @ObservationIgnored private weak var chat: (any VoiceCallChatPort)?
     @ObservationIgnored private let scheduler: any VoiceCallScheduling
@@ -184,6 +187,9 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         chat?.voiceTurnEvents = nil
         // A session still opening is closed once `start` returns.
         if closesTransport, !isStarting { transport.close() }
+        let ended = onEnded
+        onEnded = nil
+        ended?()
     }
 
     private func transportDidClose(_ reason: String) {
