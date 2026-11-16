@@ -759,6 +759,35 @@ import SwiftUI
             .compactMap { $0.url?.query }.filter { $0 == "profile=voice" }.count, 1)
     }
 
+    /// Start Voice Call (#1091) starts one call once the chat's host offers it, however often the
+    /// view asks; a host whose Profile didn't choose GPT-Live gets no call, and the composer says why.
+    func testStartVoiceCallStartsOneCallOnlyWhenTheHostOffersIt() async {
+        // A new chat, as the Shortcut opens.
+        let offered = await openChat(profile: "voice-on", target: .new(profile: "voice-on"),
+                                     voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        var calls = 0
+        offered.model.makeVoiceLiveTransport = { _ in calls += 1; return CallTransport() }
+        offered.model.requestVoiceCall()
+        await offered.model.voiceCallOfferRead?.value
+        XCTAssertTrue(offered.model.isRequestedVoiceCallReady)
+
+        await offered.model.startRequestedVoiceCall()
+        await offered.model.startRequestedVoiceCall()
+        XCTAssertEqual(calls, 1)
+        XCTAssertTrue(offered.model.isOnVoiceCall)
+        offered.model.endVoiceCall()
+
+        let chained = await openChat(profile: "voice-off",
+                                     voiceLive: .object(["ok": .bool(true), "mode": .string("chained"), "available": .bool(true)]))
+        chained.model.makeVoiceLiveTransport = { _ in calls += 1; return CallTransport() }
+        chained.model.requestVoiceCall()
+        await chained.model.voiceCallOfferRead?.value
+        await chained.model.startRequestedVoiceCall()
+        XCTAssertEqual(calls, 1)
+        XCTAssertFalse(chained.model.isOnVoiceCall)
+        XCTAssertNotNil(chained.model.sendErrorMessage)
+    }
+
     /// A call the host refuses ends at once, and the composer shows the host's reason where it
     /// shows a failed send; the call row goes (#1091).
     func testARefusedVoiceCallShowsTheHostsReasonInTheComposer() async {

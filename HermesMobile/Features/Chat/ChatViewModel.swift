@@ -3532,7 +3532,47 @@ final class ChatViewModel {
             voiceCallOfferRead = nil
             didReadVoiceCallOffer = true
             offersVoiceCall = status?.offersCall == true
+            voiceCallRefusal = Self.voiceCallRefusal(status)
+            if requestsVoiceCall { isRequestedVoiceCallReady = true }
         }
+    }
+
+    /// Why this chat's host can't take a call, for Start Voice Call; nil while it can.
+    @ObservationIgnored private var voiceCallRefusal: String?
+    /// Start Voice Call opened this chat (#1091); cleared once it starts the call or says why not.
+    @ObservationIgnored private var requestsVoiceCall = false
+    /// Start Voice Call's request has the host's answer: the chat's view starts it once the app
+    /// is active and unlocked (`startRequestedVoiceCall`).
+    private(set) var isRequestedVoiceCallReady = false
+
+    /// The host's own reason when its Profile chose GPT-Live but can't run it, else what a call needs.
+    static func voiceCallRefusal(_ status: HermesVoiceLiveStatus?) -> String? {
+        guard status?.offersCall != true else { return nil }
+        if status?.mode == "gpt-live", let reason = status?.reason?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !reason.isEmpty {
+            return reason
+        }
+        return String(localized: "Voice calls need this Profile’s voice mode set to GPT-Live on the host.")
+    }
+
+    /// Start Voice Call (#1091): this chat starts a call once its host has said whether it takes one.
+    func requestVoiceCall() {
+        guard hermesTurn != nil else { return }
+        requestsVoiceCall = true
+        if didReadVoiceCallOffer { isRequestedVoiceCallReady = true }
+    }
+
+    /// Starts the call Start Voice Call asked for through Call's own path, or shows why the host
+    /// can't take one where a failed call shows. Once per request.
+    func startRequestedVoiceCall() async {
+        guard isRequestedVoiceCallReady else { return }
+        isRequestedVoiceCallReady = false
+        requestsVoiceCall = false
+        guard offersVoiceCall else {
+            sendErrorMessage = voiceCallRefusal
+            return
+        }
+        await startVoiceCall()
     }
 
     /// What the composer says when a call ends without the user hanging up.
