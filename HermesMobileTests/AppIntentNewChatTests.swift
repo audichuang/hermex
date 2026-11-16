@@ -12,11 +12,11 @@ final class AppIntentNewChatTests: XCTestCase {
     // or a thrown error mid-test — so router state can't leak between tests.
     override func setUp() async throws {
         try await super.setUp()
-        await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil }
+        await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil; AppIntentRouter.shared.pendingVoiceCall = nil }
     }
 
     override func tearDown() async throws {
-        await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil }
+        await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil; AppIntentRouter.shared.pendingVoiceCall = nil }
         try await super.tearDown()
     }
 
@@ -67,17 +67,13 @@ final class AppIntentNewChatTests: XCTestCase {
 
     // MARK: - Start Voice Call (#1091)
 
-    /// Start Voice Call queues its own link, which no other new-chat route takes, and on the active
-    /// Hermes server opens a new chat that starts a call instead of dictating.
+    /// Start Voice Call asks in-process, with no link, and on the active Hermes server opens a new
+    /// chat that starts a call instead of dictating.
     @MainActor
     func testStartVoiceCallOpensANewHermesChatThatStartsACall() async throws {
         _ = try await NewVoiceCallIntent().perform()
-        let url = try XCTUnwrap(AppIntentRouter.shared.pendingDeepLink)
-        XCTAssertEqual(url, HermesDeepLink.newVoiceCallURL)
-        XCTAssertTrue(HermesDeepLink.isNewVoiceCallURL(url))
-        XCTAssertFalse(HermesDeepLink.isNewChatURL(url))
-        XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(url))
-        XCTAssertNil(HermesNewChatDestination(url: url))
+        XCTAssertNotNil(AppIntentRouter.shared.pendingVoiceCall)
+        XCTAssertNil(AppIntentRouter.shared.pendingDeepLink)
 
         let destination = try XCTUnwrap(HermesNewChatDestination.onActiveServer(
             state: .loggedIn(server: studio), servers: servers, autoStartsVoiceInput: false, autoStartsVoiceCall: true))
@@ -87,6 +83,24 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(chat.target, .new(profile: "default"))
         XCTAssertTrue(chat.autoStartsVoiceCall)
         XCTAssertFalse(chat.autoStartsVoiceInput)
+    }
+
+    /// Any app or a link in a reply can open a URL without asking, so no URL starts a billed
+    /// call: `hermes-agent://new-voice-call` matches none of the routes `ContentView` opens.
+    @MainActor
+    func testANewVoiceCallURLOpensNothing() throws {
+        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-voice-call"))
+        XCTAssertNil(WebuiPushDestination(url: url))
+        XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(url))
+        XCTAssertNil(HermesNewChatDestination(url: url))
+        XCTAssertFalse(HermesDeepLink.isWebuiNewChatInProfileURL(url))
+        XCTAssertFalse(HermesDeepLink.isNewChatURL(url))
+        XCTAssertNil(HermesDeepLink.botDestination(from: url))
+        XCTAssertNil(BotWidgetDestination(url: url))
+        XCTAssertNil(HermesUsageDestination(url: url))
+        XCTAssertNil(HermesSessionDestination(url: url))
+        XCTAssertNil(HermesDeepLink.sessionID(from: url))
+        XCTAssertFalse(HermesShareDraft.isShareOpenURL(url))
     }
 
     // MARK: - On a Hermes server (#1180)
