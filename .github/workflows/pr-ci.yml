@@ -129,6 +129,7 @@ jobs:
         id: sim
         run: |
           set -euo pipefail
+          scripts/fork/ci-sweep-simulators
           # Named with the fork's simulator prefix (HERMEX tmp) so a leftover is recognisably this job's.
           udid=$(xcrun simctl create "HERMEX tmp ci-${{ github.run_id }}-${{ github.run_attempt }}" \
             "${SIMULATOR_DEVICE_TYPE}" "${SIMULATOR_RUNTIME}")
@@ -209,9 +210,11 @@ jobs:
             ${{ env.CI_LOG_DIR }}
           if-no-files-found: ignore
 
+      # By name, not the step output: a cancel between create and output would skip it.
       - name: Delete simulator
-        if: ${{ always() && steps.sim.outputs.udid != '' }}
-        run: xcrun simctl delete "${{ steps.sim.outputs.udid }}"
+        if: always()
+        continue-on-error: true
+        run: scripts/fork/ci-sweep-simulators
 
   tooling:
     name: Tooling Tests

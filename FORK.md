@@ -56,7 +56,7 @@ against about 17 on upstream's hosted `xcode-27` image. It runs for pushes to `d
 repository only; app changes from another fork fail the gate until pushed here. That `if:` lives in the PR's own
 workflow file, which a fork PR can rewrite, so the repo requires approval before any outside contributor's
 workflow runs (Settings → Actions → Fork pull request workflows: all external contributors); keep it there and
-never approve a fork run that touches `.github/`. Upstream's TestFlight workflow stays disabled. The PR body also
+never approve, push to, reopen or re-run a fork PR that touches `.github/`: a run you trigger needs no approval. Upstream's TestFlight workflow stays disabled. The PR body also
 carries:
 
 - the focused `scripts/test-sim <udid>` selection `AGENTS.md` § Verifying asks for, with its result;
