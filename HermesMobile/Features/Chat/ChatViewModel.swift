@@ -2959,13 +2959,25 @@ final class ChatViewModel {
     private(set) var voiceCallInProgress: HermesVoiceCall?
 
     private(set) var offersVoiceCall = false
-    @ObservationIgnored private var didLoadVoiceCallOffer = false
+    @ObservationIgnored private var didReadVoiceCallOffer = false
+    /// The read in flight, for tests to await.
+    @ObservationIgnored private(set) var voiceCallOfferRead: Task<Void, Never>?
 
-    func loadVoiceCallOffer() async {
-        guard let hermesTurn, !didLoadVoiceCallOffer else { return }
-        didLoadVoiceCallOffer = true
-        let status = try? await hermesTurn.voiceLiveStatus()
-        offersVoiceCall = status?.offersCall == true
+    private func readVoiceCallOfferIfNeeded() {
+        guard let hermesTurn, !didReadVoiceCallOffer, voiceCallOfferRead == nil else { return }
+        voiceCallOfferRead = Task { [weak self, hermesTurn] in
+            let status: HermesVoiceLiveStatus?
+            do {
+                status = try await hermesTurn.voiceLiveStatus()
+            } catch {
+                self?.voiceCallOfferRead = nil
+                return
+            }
+            guard let self else { return }
+            voiceCallOfferRead = nil
+            didReadVoiceCallOffer = true
+            offersVoiceCall = status?.offersCall == true
+        }
     }
 
     static func voiceCallEndMessage(_ reason: HermesVoiceCall.EndReason) -> String? {
@@ -7926,6 +7938,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
             if errorMessage != nil { errorMessage = nil }
             if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
             releaseSubmissionMark()
+            readVoiceCallOfferIfNeeded()
             deliverWaitingSendIfReady()
             if needsHermesForkCheck { Task { [weak self] in await self?.resolveHermesForkOrigin() } }
             return

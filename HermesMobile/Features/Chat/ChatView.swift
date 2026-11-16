@@ -2607,8 +2607,7 @@ struct ChatView: View {
         async let chatStartup: Void = performInitialAsyncWork()
         async let gitAvailability: Void = loadInitialGitAvailability()
         async let draftAttachments: Void = restoreDraftAttachmentsIfNeeded()
-        async let voiceCallOffer: Void = viewModel.loadVoiceCallOffer()
-        _ = await (chatStartup, gitAvailability, draftAttachments, voiceCallOffer)
+        _ = await (chatStartup, gitAvailability, draftAttachments)
     }
 
     private func performInitialAsyncWork() async {
