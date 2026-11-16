@@ -357,6 +357,15 @@ struct HermesLostTurn: Equatable {
     @ObservationIgnored private var showsLiveActivityExcerpts = false
     /// The waiting state last shown for the open requests, so each change is written once.
     @ObservationIgnored private var shownWaiting: AgentLiveActivityEvent?
+    /// Hears the turn a voice call's delegation started (#1091): its reply, its tools, a request
+    /// it waits on and its end, plus every turn's end. Clearing it drops the claim.
+    @ObservationIgnored var voiceTurnObserver: ((HermesVoiceTurnEvent) -> Void)? {
+        didSet { if voiceTurnObserver == nil { voiceClaim = nil } }
+    }
+    /// The voice Send's claim on its turn, from just before its prompt goes out until that turn ends.
+    @ObservationIgnored private var voiceClaim: VoiceClaim?
+    /// The claimed turn waited on an answer when the requests last changed.
+    @ObservationIgnored private var voiceAwaitedAnswer = false
 
     /// A `.canonicalChat`, or a Bot Chat row opened by its key with its `botChatRoot`, is a Bot Chat.
     /// A session's draft goes under its `lineageRoot` when given (`HermesSessionChat.lineageRoot`).
@@ -387,7 +396,10 @@ struct HermesLostTurn: Equatable {
         self.segmentDraftKey = segmentDraftKey == draftKey ? nil : segmentDraftKey
         if case .new = engine.target { opensNew = true } else { opensNew = false }
         engine.owner = self
-        requests.onOpenChange = { [weak self] in self?.syncLiveActivityWaiting() }
+        requests.onOpenChange = { [weak self] in
+            self?.syncLiveActivityWaiting()
+            self?.noteVoiceTurnAwaitsAnswer()
+        }
         requests.onFailure = { [weak self] in self?.delegate?.hermesRequestDidFail($0) }
         requests.onNeedsReattach = { [weak self] in self?.reattach() }
         sideTasks.onNeedsReattach = { [weak self] in self?.reattach() }
@@ -564,7 +576,9 @@ struct HermesLostTurn: Equatable {
     /// socket write, where a throw stops it. Returns what the host said;
     /// throws `NotSent` when it never went out, and the failure itself when its reply was refused
     /// or lost. Never resent: after a lost reply the next snapshot says what happened.
+    /// `voiceContext` makes a Send a voice call's delegation (#1091), whose turn the call claims.
     func submit(_ text: String, mode: BotPromptMode, attachments: [OutgoingAttachment] = [],
+                voiceContext: String? = nil,
                 beforePrompt: () async throws -> Void = {},
                 stillCurrent: @escaping () throws -> Void = {}) async throws -> BotPromptOutcome {
         submitsInFlight += 1
@@ -599,6 +613,7 @@ struct HermesLostTurn: Equatable {
             submittingText = BotMentions.displayText(prompt + mentionNote)
             // Only a send still alone on an idle chat in the same folder can tell its turn apart.
             if let head, isOnlySubmission, workspace == head.workspace { pendingBase = head }
+            if voiceContext != nil { voiceClaim = VoiceClaim() }
         }
         // A stop withdrawal while Stop & send is in flight is this phone's doing.
         if mode == .redirect { requests.isStoppingHere = true }
@@ -609,6 +624,8 @@ struct HermesLostTurn: Equatable {
             if mode == .send {
                 isSubmittingSend = false; pendingBase = nil; submittingText = nil
                 if !startedTurn, let turnBase, turnBase.turn > startsBefore { self.turnBase = nil }
+                // A delegation that started nothing claims nothing, nor a turn it saw meanwhile.
+                if voiceContext != nil, !startedTurn { voiceClaim = nil }
             }
             if mode == .redirect { requests.isStoppingHere = false }
         }
@@ -616,7 +633,8 @@ struct HermesLostTurn: Equatable {
         let reply: BotJSON
         do {
             reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote, fence: engine.fence,
-                                                     images: images.map(\.stored), titlePreview: titlePreview),
+                                                     images: images.map(\.stored), titlePreview: titlePreview,
+                                                     voiceContext: voiceContext),
                                            attempt: attempt, runtime: runtime) { try stillCurrent(); dispatched = true; self.promptSent = true }
         } catch {
             if let stale = error as? HermesFenceRefusal { engine.adoptGeneration(stale.generation) }
@@ -632,10 +650,12 @@ struct HermesLostTurn: Equatable {
         case .started:
             startedTurn = true
             // The turn's own frames can land before this reply; start one only if none did.
-            if turnsStarted == startsBefore, activeStreamID == nil {
+            let beganHere = turnsStarted == startsBefore && activeStreamID == nil
+            if beganHere {
                 beginTurn(startedAt: nil, prompt: nil)
                 awaitingStart = true
             }
+            if mode == .send, voiceContext != nil { confirmVoiceClaim(admission: reply["admission_id"].text, beganHere: beganHere) }
         case .followUpQueued, .redirectQueued:
             if let admission = reply["admission_id"].text, !admission.isEmpty {
                 let chips = images.map(\.chip)
@@ -1309,6 +1329,12 @@ struct HermesLostTurn: Equatable {
     /// same outcome, haptic and alert.
     private func finish(_ ending: TranscriptTurnRunOutcome.Ending) {
         guard let streamID = activeStreamID else { return }
+        let endsVoiceTurn = voiceClaimIsRunning
+        // After the chat flushed the reply, so the call reads it whole.
+        defer {
+            if endsVoiceTurn { settleVoiceTurn(lostTrack: false) }
+            voiceTurnObserver?(.turnEnded)
+        }
         endScreenUse()
         let startedAt = turnStartedAt
         endLiveActivity(ending)
@@ -1383,6 +1409,8 @@ struct HermesLostTurn: Equatable {
                 prompt = queuedPrompts.first; queuedPrompts = []
             }
             beginTurn(startedAt: hostTurnStartedAt, prompt: prompt)
+            // A queued prompt's turn is not the voice Send's.
+            if prompt == nil { claimVoiceTurn(admission: runningAdmission) }
         case "message.delta":
             if let seq = frame["seq"].integer, deltasInRebuild.remove(seq) != nil { return }
             guard let text = payload["text"].text, !text.isEmpty else { return }
@@ -1391,6 +1419,7 @@ struct HermesLostTurn: Equatable {
             // answered (#489).
             drivenLiveActivity?.update(showsLiveActivityExcerpts ? .token(text) : .responding)
             delegate?.streamCoordinatorAppendToken(text)
+            if voiceClaims(frame) { tellVoice(.reply(text)) }
         case "message.interim":
             ensureTurn()
             let interim = InterimAssistantStreamEvent(text: payload["text"].text, alreadyStreamed: payload["already_streamed"].flag)
@@ -1398,6 +1427,7 @@ struct HermesLostTurn: Equatable {
                 drivenLiveActivity?.update(.interimAssistant(text))
             }
             delegate?.streamCoordinatorAppendInterimAssistant(interim)
+            if interim.alreadyStreamed != true, let text = interim.text, voiceClaims(frame) { tellVoice(.interim(text)) }
         case "reasoning.delta":
             guard let text = payload["text"].text, !text.isEmpty else { return }
             ensureTurn()
@@ -1409,6 +1439,7 @@ struct HermesLostTurn: Equatable {
             if live, tool.name == BotScreenUse.toolName, screenUse != .active { screenUse = .active }
             drivenLiveActivity?.update(.toolStarted(name: tool.name))
             delegate?.streamCoordinatorAppendToolCall(tool)
+            if let name = tool.name, !name.isEmpty, voiceClaims(frame) { tellVoice(.toolStarted(name)) }
         case "tool.complete":
             ensureTurn()
             drivenLiveActivity?.update(.toolCompleted)
@@ -1617,6 +1648,14 @@ struct HermesLostTurn: Equatable {
         let lostFrames = engine.replayWasReset || needsRebuild
         // The start of the turn this chat was following, which the snapshot may say has ended.
         let followedStart = activeStreamID == nil ? nil : turnStartedAt
+        // A voice call keeps its turn across lost frames only when the snapshot's running turn is
+        // provably it: the same start, or on a canonical host its admission still started.
+        if lostFrames, voiceClaimIsRunning {
+            let startedAdmission = snapshot["pending"].list?.first { $0["status"].text == "started" }?["admission_id"].text
+            let sameStart = followedStart != nil && startedAt == followedStart
+            let sameAdmission = voiceClaim?.admission != nil && startedAdmission == voiceClaim?.admission
+            if !running || !(sameStart || sameAdmission) { settleVoiceTurn(lostTrack: true) }
+        }
         if activeStreamID != nil, !running || (startedAt != nil && turnStartedAt != nil && startedAt != turnStartedAt) {
             // The turn this chat was following ended while it was away; the outcome row says how.
             let failed = HermesTurnOutcome(inflight: snapshot["inflight"]) != nil
@@ -1632,7 +1671,11 @@ struct HermesLostTurn: Equatable {
         // The same turn after a reattach: adopt its activity again, which is current once more.
         if continuing { startLiveActivity() }
         readOutcome(snapshot, in: history, followsTurn: continuing, endedTurnStartedAt: running ? nil : followedStart)
-        if lostFrames { rebuild(from: snapshot, running: running) }
+        if lostFrames {
+            rebuild(from: snapshot, running: running)
+            // The kept voice turn's reply now reads as the snapshot has it; its next deltas continue that.
+            if voiceClaimIsRunning { tellVoice(.replyRebuilt(snapshot["inflight"]["assistant"].text ?? "")) }
+        }
     }
 
     /// Takes the plan and the retained failure from a snapshot, with the failed prompt's saved
@@ -1760,8 +1803,9 @@ struct HermesLostTurn: Equatable {
     /// again from the newest rows.
     private static let newestPageLimit = 5
 
-    /// Neither a turn nor a send is under way, so the transcript can take the newest rows.
-    private var isIdle: Bool { activeStreamID == nil && submitsInFlight == 0 }
+    /// Neither a turn nor a send is under way, so the transcript can take the newest rows and a
+    /// voice call's delegation may go out (#1091).
+    var isIdle: Bool { activeStreamID == nil && submitsInFlight == 0 }
 
     /// Takes the newest rows into the history, which now holds every row the host saved for the
     /// turns `turns` counts. A failure keeps the rows held, and the chat shows it once
@@ -2300,5 +2344,114 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         }
         delegate?.hermesConnectionDidChange(failure: BotConnectionAdvice.message(for: failure, address: engine.connection.address),
                                             unserved: unserved, mayRetry: unserved == nil)
+    }
+}
+
+// MARK: Voice call (#1091)
+
+/// What a voice call hears of the turn its delegation started, and of every turn's end.
+enum HermesVoiceTurnEvent: Equatable {
+    /// A `message.delta` of the claimed turn.
+    case reply(String)
+    /// A `message.interim` the deltas did not carry; the chat joins it after a blank line.
+    case interim(String)
+    case toolStarted(String)
+    /// After lost frames, the claimed turn's reply so far as the snapshot holds it.
+    case replyRebuilt(String)
+    /// The claimed turn now waits on an approval, a question or another host request.
+    case awaitsAnswer
+    /// The claimed turn ended. `lostTrack` when frames were lost and the chat can't prove the
+    /// turn it shows is the one the call sent.
+    case settled(lostTrack: Bool)
+    /// Some turn ended; the chat may be idle.
+    case turnEnded
+}
+
+extension HermesChatTurnCoordinator {
+    /// The turn a voice Send claims, bound like `pendingBase`: by the Send's own `message.start`
+    /// while its prompt is out, or by its reply when that comes first.
+    private struct VoiceClaim {
+        /// `turnsStarted` of the claimed turn, once it began.
+        var turn: Int?
+        /// A canonical turn's admission: only frames under it are the turn's.
+        var admission: String?
+        /// The Send's reply said it started a turn. Until then events wait in `held`: a turn that
+        /// began ahead of the reply may be another's.
+        var confirmed = false
+        var held: [HermesVoiceTurnEvent] = []
+        /// The claimed turn ended before the reply confirmed it.
+        var ended = false
+    }
+
+    /// A voice call's delegation as a Send (#1091): `prompt` is the user's last words, the row the
+    /// chat shows, and `context` the recent spoken exchange (`voice_context`). No files, no draft;
+    /// the outcome and errors are `submit`'s.
+    func submitVoice(_ prompt: String, context: String) async throws -> BotPromptOutcome {
+        try await submit(prompt, mode: .send, voiceContext: context)
+    }
+
+    /// A turn runs and a Stop would withdraw a request only this chat's user can still answer.
+    var turnAwaitsAnswer: Bool { activeStreamID != nil && requests.stopWithdrawsAnswers }
+
+    /// The claimed turn is the one running now.
+    private var voiceClaimIsRunning: Bool {
+        guard let voiceClaim, let turn = voiceClaim.turn, !voiceClaim.ended else { return false }
+        return turn == turnsStarted && activeStreamID != nil
+    }
+
+    /// `frame` belongs to the claimed turn: it runs, and on a canonical host the frame is its admission's.
+    private func voiceClaims(_ frame: BotJSON) -> Bool {
+        guard voiceClaimIsRunning, let voiceClaim else { return false }
+        return voiceClaim.admission == nil || frame["admission_id"].text == voiceClaim.admission
+    }
+
+    private func tellVoice(_ event: HermesVoiceTurnEvent) {
+        guard voiceClaim != nil else { return }
+        if voiceClaim?.confirmed == true { voiceTurnObserver?(event) } else { voiceClaim?.held.append(event) }
+    }
+
+    /// A turn without a queued prompt began while the voice Send's claim waits for one.
+    private func claimVoiceTurn(admission: String?) {
+        guard let claim = voiceClaim, claim.turn == nil, !claim.ended else { return }
+        voiceClaim?.turn = turnsStarted
+        voiceClaim?.admission = admission
+        voiceAwaitedAnswer = false
+    }
+
+    /// The Send's reply started a turn: the one it began itself, or the one already claimed when
+    /// that is its admission. Releases what the claim held.
+    private func confirmVoiceClaim(admission: String?, beganHere: Bool) {
+        guard var claim = voiceClaim else { return }
+        if beganHere {
+            claim = VoiceClaim(turn: turnsStarted, admission: admission)
+            voiceAwaitedAnswer = false
+        } else if let admission, let claimed = claim.admission, claimed != admission {
+            // Another admission's turn started under the Send: its own start is still to come.
+            claim = VoiceClaim()
+        }
+        claim.confirmed = true
+        let held = claim.held
+        claim.held = []
+        voiceClaim = claim.ended ? nil : claim
+        held.forEach { voiceTurnObserver?($0) }
+    }
+
+    /// The claimed turn ended; the claim goes before the call hears it.
+    private func settleVoiceTurn(lostTrack: Bool) {
+        guard let claim = voiceClaim else { return }
+        guard claim.confirmed else {
+            voiceClaim?.held.append(.settled(lostTrack: lostTrack))
+            voiceClaim?.ended = true
+            return
+        }
+        voiceClaim = nil
+        voiceTurnObserver?(.settled(lostTrack: lostTrack))
+    }
+
+    /// Tells the call once each time the claimed turn starts waiting on an answer.
+    private func noteVoiceTurnAwaitsAnswer() {
+        let awaits = voiceClaimIsRunning && turnAwaitsAnswer
+        defer { voiceAwaitedAnswer = awaits }
+        if awaits, !voiceAwaitedAnswer { tellVoice(.awaitsAnswer) }
     }
 }

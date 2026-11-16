@@ -670,6 +670,49 @@ import SwiftUI
         XCTAssertEqual(chat.model.queuedPromptMessages.map(\.content), ["Run the quick check."])
     }
 
+    /// A voice call's Send (#1091) hears only the turn it started: not the frames of the turn it
+    /// stopped, which end that turn only, nor a late frame of that turn's admission once its own
+    /// runs. Its reply, with the interim the chat joins after a blank line, ends heard once the
+    /// chat shows it whole.
+    func testAVoiceSendHearsOnlyItsOwnTurn() async throws {
+        var receipt = try XCTUnwrap(try canonical("canonical-receipts")["idle"].fields)
+        receipt["admission_id"] = .string("voice")
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.host.always("session.interrupt", .init(result: .object(["status": .string("interrupted")])))
+        var heard: [HermesVoiceTurnEvent] = []
+        chat.turn.voiceTurnObserver = { heard.append($0) }
+        chat.receive(canonicalEvent(1, "message.start", admission: "earlier", generation: 1))
+        chat.receive(canonicalEvent(2, "message.delta", ["text": .string("Working on")], admission: "earlier", generation: 1))
+
+        let stopped = await chat.model.cancelActiveStream()
+        XCTAssertTrue(stopped)
+        chat.receive(canonicalEvent(3, "message.delta", ["text": .string(" it")], admission: "earlier", generation: 1))
+        chat.receive(canonicalEvent(4, "message.complete", ["status": .string("interrupted"), "text": .string("Working on it")],
+                                    admission: "earlier", generation: 1))
+        chat.receive(canonicalEvent(5, "session.info", ["running": .bool(false)], admission: "earlier", generation: 1))
+        XCTAssertEqual(heard, [.turnEnded])
+
+        chat.host.next("prompt.submit", .init(result: .object(receipt), before: [
+            canonicalEvent(6, "message.start", admission: "voice", generation: 2)
+        ]))
+        let started = await chat.model.submitVoicePrompt("Check the build.", context: "User: Check the build.")
+        XCTAssertTrue(started)
+        let params = try XCTUnwrap(chat.writes("prompt.submit").first)
+        XCTAssertEqual(params["surface"], .string("voice-live"))
+        XCTAssertEqual(params["voice_context"], .string("User: Check the build."))
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.last?.content, "Check the build.")
+
+        chat.receive(canonicalEvent(7, "tool.start", ["name": .string("terminal")], admission: "earlier", generation: 1))
+        chat.receive(canonicalEvent(8, "message.delta", ["text": .string("It builds. ")], admission: "voice", generation: 2))
+        chat.receive(canonicalEvent(9, "message.interim", ["text": .string("Tests pass.")], admission: "voice", generation: 2))
+        chat.receive(canonicalEvent(10, "message.complete", ["status": .string("complete"), "text": .string("Tests pass.")],
+                                    admission: "voice", generation: 2))
+        chat.receive(canonicalEvent(11, "session.info", ["running": .bool(false)], admission: "voice", generation: 2))
+
+        XCTAssertEqual(heard, [.turnEnded, .reply("It builds. "), .interim("Tests pass."), .settled(lostTrack: false), .turnEnded])
+        XCTAssertEqual(chat.model.voiceTurnReply, "It builds. \n\nTests pass.")
+    }
+
     /// Sends queued behind a canonical turn stay separate admissions, one bubble each in the
     /// host's order, as its recorded `pending` lists them, and the next turn takes only its own.
     func testCanonicalQueuedSendsStaySeparateAdmissions() async throws {
