@@ -836,16 +836,35 @@ import SwiftUI
         XCTAssertFalse(chat.client.http.owesBackgroundClose)
     }
 
-    func testLeavingTheChatEndsItsVoiceCall() async {
+    func testAScreenPushedOverTheChatKeepsItsVoiceCall() async {
         let chat = await openChat()
         let transport = CallTransport()
         chat.model.makeVoiceLiveTransport = { _ in transport }
         await chat.model.startVoiceCall()
 
         chat.model.suspendStreamForNavigation()
-        XCTAssertEqual(chat.model.voiceCall?.status, .ended(.hungUp))
-        XCTAssertEqual(transport.closes, 1)
+        XCTAssertTrue(chat.model.isOnVoiceCall)
+        XCTAssertEqual(transport.closes, 0)
+        XCTAssertTrue(chat.turn.engine.isActive)
+
+        chat.model.endVoiceCall()
+        XCTAssertFalse(chat.turn.engine.isActive)
         XCTAssertFalse(chat.client.http.keepsAliveForCall)
+    }
+
+    func testClosingTheChatHangsUpItsVoiceCall() async {
+        var chat: Chat? = await openChat()
+        let transport = CallTransport()
+        let closed = expectation(description: "The call's session closes")
+        transport.onClose = { closed.fulfill() }
+        chat?.model.makeVoiceLiveTransport = { _ in transport }
+        await chat?.model.startVoiceCall()
+        chat?.model.suspendStreamForNavigation()
+        let turn = chat?.turn
+
+        chat = nil
+        await fulfillment(of: [closed], timeout: 5)
+        XCTAssertEqual(turn?.engine.isActive, false)
     }
 
     func testCallShowsWhenTheChatsHostRunsGPTLive() async {
@@ -883,6 +902,16 @@ import SwiftUI
         XCTAssertEqual(calls, 1)
         XCTAssertFalse(chained.model.isOnVoiceCall)
         XCTAssertNotNil(chained.model.sendErrorMessage)
+    }
+
+    func testAFailedCallGateReadEndsStartVoiceCallsRequest() async {
+        let chat = await openChat(profile: "voice-down", target: .new(profile: "voice-down"),
+                                  voiceLiveReply: .json(500, .object(["detail": .string("Internal Server Error")])))
+        chat.model.requestVoiceCall()
+        await chat.model.voiceCallOfferRead?.value
+
+        XCTAssertFalse(chat.model.isRequestedVoiceCallReady)
+        XCTAssertEqual(chat.model.sendErrorMessage, VoiceLiveTransportError.peerConnectionFailed.errorDescription)
     }
 
     func testARefusedVoiceCallShowsTheHostsReasonInTheComposer() async {
@@ -1822,7 +1851,7 @@ import SwiftUI
                           rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
                           botChatRoot: String? = nil, ratingPromptState: RatingPromptState? = nil,
                           replay: BotJSON? = nil, noticeTimer: HermesHostNotices.Timer? = nil,
-                          voiceLive: BotJSON? = nil) async -> Chat {
+                          voiceLive: BotJSON? = nil, voiceLiveReply: HermesHostFixture.Reply? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
@@ -1833,7 +1862,7 @@ import SwiftUI
             "messages": .array([]), "info": .object(["profile_name": .string(profile)])
         ])))
         let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline, canonical: canonical))
-        serveHistory(history, key: key, voiceLive: voiceLive)
+        serveHistory(history, key: key, voiceLive: voiceLiveReply ?? voiceLive.map { .json(200, $0) })
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: target ?? .session(profile: profile, key: key), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, lineageRoot: lineageRoot,
@@ -2034,9 +2063,9 @@ import SwiftUI
         .object(["id": .number(Double(id)), "role": .string("assistant"), "content": .string(text), "timestamp": .number(timestamp)])
     }
 
-    private func serveHistory(_ rows: [BotJSON], key: String = "tip", voiceLive: BotJSON? = nil) {
+    private func serveHistory(_ rows: [BotJSON], key: String = "tip", voiceLive: HermesHostFixture.Reply? = nil) {
         _ = HermesHostFixture.configuration { request in
-            if let voiceLive, request.url?.path == "/api/audio/voice-live/status" { return .json(200, voiceLive) }
+            if let voiceLive, request.url?.path == "/api/audio/voice-live/status" { return voiceLive }
             guard request.url?.path == "/api/sessions/\(key)/messages" else { return nil }
             return .json(200, .object(["session_id": .string(key), "messages": .array(rows)]))
         }
@@ -2108,10 +2137,11 @@ private extension BotJSON {
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
     private(set) var closes = 0
+    var onClose: (() -> Void)?
     var startError: Error?
 
     func start(history: [BotJSON]) async throws { if let startError { throw startError } }
     func send(_ event: BotJSON) {}
     func setMuted(_ muted: Bool) {}
-    func close() { closes += 1 }
+    func close() { closes += 1; onClose?() }
 }

@@ -2970,7 +2970,12 @@ final class ChatViewModel {
             do {
                 status = try await hermesTurn.voiceLiveStatus()
             } catch {
-                self?.voiceCallOfferRead = nil
+                guard let self else { return }
+                voiceCallOfferRead = nil
+                if requestsVoiceCall {
+                    requestsVoiceCall = false
+                    sendErrorMessage = VoiceLiveTransportError.peerConnectionFailed.errorDescription
+                }
                 return
             }
             guard let self else { return }
@@ -3021,6 +3026,8 @@ final class ChatViewModel {
         }
     }
 
+    @ObservationIgnored private var owesNavigationSuspend = false
+
     func startVoiceCall() async {
         guard !isOnVoiceCall, let call = makeVoiceCall() else { return }
         let connection = hermesTurn?.connection
@@ -3029,8 +3036,18 @@ final class ChatViewModel {
         voiceCall = call
         voiceCallInProgress = call
         connection?.keepsAliveForCall = true
-        call.onEnded = { [weak self, weak call, connection] in
-            if connection?.owesBackgroundClose == true { self?.suspendStreamForBackground() }
+        call.onEnded = { [weak self, weak call, connection, hermesTurn] in
+            if let self {
+                if self.owesNavigationSuspend {
+                    self.owesNavigationSuspend = false
+                    self.suspendActiveStreamConnection()
+                } else if connection?.owesBackgroundClose == true {
+                    self.suspendStreamForBackground()
+                }
+            } else {
+                // The chat went with the call on: its stream detaches now, as leaving would have.
+                hermesTurn?.suspendActiveStreamConnection()
+            }
             connection?.keepsAliveForCall = false
             guard let self else { return }
             if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
@@ -6109,9 +6126,14 @@ final class ChatViewModel {
         suspendActiveStreamConnection()
     }
 
-    /// Leaving the chat hangs up its voice call (#1091).
+    /// The chat's last view left: a screen pushed over it, or the chat closing. During a voice
+    /// call both keep the stream (#1091): a push must not hang up, and a closing chat's model goes,
+    /// which ends the call and suspends then.
     func suspendStreamForNavigation() {
-        endVoiceCall()
+        guard !isOnVoiceCall else {
+            owesNavigationSuspend = true
+            return
+        }
         suspendActiveStreamConnection()
     }
 
@@ -6126,6 +6148,7 @@ final class ChatViewModel {
     }
 
     func reconnectStreamIfNeeded(modelContext: ModelContext? = nil) async {
+        owesNavigationSuspend = false
         if hermesTurn != nil, let modelContext { hermesCache = modelContext }
         await turn.reconnectIfNeeded(modelContext: modelContext)
     }
