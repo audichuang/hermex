@@ -33,6 +33,10 @@ Hermex Audi (this repo, TestFlight) ──HTTPS + Cloudflare Access──► Her
   with `scripts/fork/merge-pr <pr> <upstreamable|fork-only> "<English subject>"`: one squash commit with one
   `Fork:` trailer, checked after the merge. Only an upstream rebase and a release push `develop`/`main`.
 - One topic per PR; never mix upstreamable and fork-only changes in one commit.
+- Every `Fork: upstreamable` commit is ready to open upstream as it stands, whether or not we ever do:
+  it meets upstream's bar on its own (tests, docs, a translation for every locale upstream's catalog has).
+  A gap found later is folded into the commit that owns it, not added as a follow-up commit; that rewrite
+  is pushed like an upstream rebase.
 - Keep changes small. Anything that rewrites shared upstream code broadly makes every rebase a conflict:
   prefer a new small file or an extension over editing large upstream files.
 - An agent merges, releases, rebases, or opens an upstream PR only when the owner asked for that piece of work.
@@ -133,6 +137,8 @@ git push fork "${base}:refs/heads/backup/develop-$(date +%Y%m%d)"   # rollback p
 git switch --detach "$base"
 git rebase --onto origin/master $(git merge-base "$base" origin/master)
 # resolve conflicts commit by commit; a fork commit upstream already took comes out empty: drop it
+# recheck every upstreamable commit against the new upstream (a locale it added, an API it renamed)
+# and fold fixes in: git commit --fixup=<owner>, then git rebase -i --autosquash origin/master
 # run the merge gate, then:
 git push --force-with-lease=develop:${base} fork HEAD:refs/heads/develop
 ```
