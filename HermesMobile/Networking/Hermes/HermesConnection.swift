@@ -184,11 +184,17 @@ import OSLog
     }
 
     /// A voice call on a chat here keeps its gateway sockets open through the background, so the
-    /// reply it delegated keeps streaming into the call with the screen locked (#1091). Clearing
-    /// it while the app is still in the background makes the background close then (#902).
-    var keepsAliveForCall = false {
-        didSet { if !keepsAliveForCall, owesBackgroundClose { closeForBackground() } }
+    /// reply it delegated keeps streaming into the call with the screen locked (#1091). Counted,
+    /// since a new call on another chat here can start as the last one ends. The last call ending
+    /// while the app is still in the background makes the background close then (#902).
+    var keepsAliveForCall: Bool { callsKeepingAlive > 0 }
+    private var callsKeepingAlive = 0 {
+        didSet { if callsKeepingAlive == 0, owesBackgroundClose { closeForBackground() } }
     }
+
+    /// Each started call balances with one `callEnded()`.
+    func callStarted() { callsKeepingAlive += 1 }
+    func callEnded() { callsKeepingAlive = max(0, callsKeepingAlive - 1) }
     /// The app went to the background while a call kept the sockets open; returning clears it.
     private(set) var owesBackgroundClose = false
 
