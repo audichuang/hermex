@@ -3035,7 +3035,7 @@ final class ChatViewModel {
         if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }
         voiceCall = call
         voiceCallInProgress = call
-        connection?.keepsAliveForCall = true
+        connection?.callStarted()
         call.onEnded = { [weak self, weak call, connection, hermesTurn] in
             if let self {
                 if self.owesNavigationSuspend {
@@ -3048,7 +3048,7 @@ final class ChatViewModel {
                 // The chat went with the call on: its stream detaches now, as leaving would have.
                 hermesTurn?.suspendActiveStreamConnection()
             }
-            connection?.keepsAliveForCall = false
+            connection?.callEnded()
             guard let self else { return }
             if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
             if case .ended(let reason)? = call?.status, let message = Self.voiceCallEndMessage(reason) {

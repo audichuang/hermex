@@ -86,9 +86,13 @@ import OSLog
         ([liveGateway] + profileGateways.values.map(\.gateway)).compactMap { $0 }
     }
 
-    var keepsAliveForCall = false {
-        didSet { if !keepsAliveForCall, owesBackgroundClose { closeForBackground() } }
+    var keepsAliveForCall: Bool { callsKeepingAlive > 0 }
+    private var callsKeepingAlive = 0 {
+        didSet { if callsKeepingAlive == 0, owesBackgroundClose { closeForBackground() } }
     }
+
+    func callStarted() { callsKeepingAlive += 1 }
+    func callEnded() { callsKeepingAlive = max(0, callsKeepingAlive - 1) }
     private(set) var owesBackgroundClose = false
 
     func closeForBackground() {

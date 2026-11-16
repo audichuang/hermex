@@ -904,6 +904,18 @@ import SwiftUI
         XCTAssertNotNil(chained.model.sendErrorMessage)
     }
 
+    func testAVoiceCallHearsTheChatLoseAndRegainHermes() async {
+        let chat = await openChat()
+        var heard: [HermesVoiceTurnEvent] = []
+        chat.turn.voiceTurnObserver = { heard.append($0) }
+
+        chat.turn.engine.disconnect(BotFailure.rejected(400))
+        XCTAssertEqual(heard, [.hermesLost])
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertEqual(heard.filter { $0 == .hermesLost || $0 == .hermesRestored }, [.hermesLost, .hermesRestored])
+    }
+
     func testAFailedCallGateReadEndsStartVoiceCallsRequest() async {
         let chat = await openChat(profile: "voice-down", target: .new(profile: "voice-down"),
                                   voiceLiveReply: .json(500, .object(["detail": .string("Internal Server Error")])))
