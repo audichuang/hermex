@@ -634,6 +634,36 @@ import XCTest
         XCTAssertEqual(sockets[1].outbound.map { $0["method"].text }, ["client.capabilities"])
     }
 
+    /// A voice call keeps the socket through the background (#1091), so its reply streams with
+    /// the screen locked; ending there closes it then, once and silently, as the background
+    /// would have. Ending after the app came back closes nothing.
+    func testAVoiceCallKeepsTheSocketThroughTheBackgroundUntilItEnds() async throws {
+        let http = connection()
+        let chat = BotClient(http: http)
+        try await chat.connect()
+        defer { chat.close() }
+        var lost = 0
+        chat.onDisconnect = { _ in lost += 1 }
+        let socket = try XCTUnwrap(sockets.first)
+
+        http.keepsAliveForCall = true
+        http.closeForBackground()
+        XCTAssertFalse(socket.isClosed)
+        http.keepsAliveForCall = false
+        XCTAssertTrue(socket.isClosed)
+        XCTAssertEqual(lost, 0, "The background close is silent")
+
+        chat.close()
+        try await chat.connect()
+        let second = try XCTUnwrap(sockets.last)
+        XCTAssertFalse(second === socket)
+        http.keepsAliveForCall = true
+        http.closeForBackground()
+        http.returnedFromBackground()
+        http.keepsAliveForCall = false
+        XCTAssertFalse(second.isClosed, "A call ending in the foreground leaves the socket open")
+    }
+
     func testLeavingWhileTheSocketOpensOpensNothing() async throws {
         let parked = expectation(description: "ticket in flight")
         HermesHostFixture.onPark = { parked.fulfill() }

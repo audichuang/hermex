@@ -183,6 +183,32 @@ import OSLog
         ([liveGateway] + profileGateways.values.map(\.gateway)).compactMap { $0 }
     }
 
+    /// A voice call on a chat here keeps its gateway sockets open through the background, so the
+    /// reply it delegated keeps streaming into the call with the screen locked (#1091). Clearing
+    /// it while the app is still in the background makes the background close then (#902).
+    var keepsAliveForCall = false {
+        didSet { if !keepsAliveForCall, owesBackgroundClose { closeForBackground() } }
+    }
+    /// The app went to the background while a call kept the sockets open; returning clears it.
+    private(set) var owesBackgroundClose = false
+
+    /// Closes every gateway socket here, silently, because the app went to the background
+    /// (#902), unless a voice call keeps them; then they close when it ends there.
+    func closeForBackground() {
+        guard !keepsAliveForCall else {
+            if !owesBackgroundClose { HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): kept open in background, voice call") }
+            owesBackgroundClose = true
+            return
+        }
+        owesBackgroundClose = false
+        liveGateways.forEach { $0.closeForBackground() }
+    }
+
+    /// The app is back from the background: a call ending now closes nothing.
+    func returnedFromBackground() {
+        owesBackgroundClose = false
+    }
+
     /// A new identity for one screen's `BotClient`.
     func makeConsumerID() -> Int {
         consumerCount += 1
@@ -784,9 +810,14 @@ import OSLog
 
     /// Closes the current connection's gateway socket, silently, because the app went to
     /// the background (#902). `ContentView` calls it on `.background` only, so Control
-    /// Center and banners (`.inactive`) keep the socket.
+    /// Center and banners (`.inactive`) keep the socket. A voice call defers it (#1091).
     func closeForBackground() {
-        current?.liveGateways.forEach { $0.closeForBackground() }
+        current?.closeForBackground()
+    }
+
+    /// The app is active again: a voice call that ends now leaves the socket open (#1091).
+    func returnedFromBackground() {
+        current?.returnedFromBackground()
     }
 
     /// Checks the current connection's gateway socket, if one is open, after the network path

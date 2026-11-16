@@ -961,6 +961,8 @@ final class ChatViewModel {
         listenPreparationTask?.cancel()
         listenPlaybackTicker?.invalidate()
         initialSessionPrefetch?.task.cancel()
+        // A voice call is billed until its session closes, so the model going hangs it up (#1091).
+        if let call = _voiceCall { Task { @MainActor in call.end() } }
     }
 
     func setShowsLiveActivityResponseExcerpts(_ shows: Bool) {
@@ -3503,6 +3505,31 @@ final class ChatViewModel {
     /// Builds a call's transport around the session opener; tests hand in a fake.
     @ObservationIgnored var makeVoiceLiveTransport: @MainActor (@escaping VoiceLiveSessionOpener) -> any VoiceLiveTransport = {
         WebRTCVoiceLiveTransport(openSession: $0)
+    }
+
+    /// This chat's voice call: on, or ended with its reason until the next one starts.
+    private(set) var voiceCall: HermesVoiceCall?
+
+    var isOnVoiceCall: Bool { voiceCall.map { !$0.isEnded } ?? false }
+
+    /// Starts a voice call on this Hermes chat and returns once its session is up or the start
+    /// failed. While it is on, the chat's connection keeps its socket through the background, so
+    /// the delegated reply keeps streaming into the call. The call ends when the chat leaves or
+    /// the model goes; ending in the background suspends the chat and closes the socket then (#902).
+    func startVoiceCall() async {
+        guard !isOnVoiceCall, let call = makeVoiceCall() else { return }
+        let connection = hermesTurn?.connection
+        voiceCall = call
+        connection?.keepsAliveForCall = true
+        call.onEnded = { [weak self, connection] in
+            if connection?.owesBackgroundClose == true { self?.suspendStreamForBackground() }
+            connection?.keepsAliveForCall = false
+        }
+        await call.start()
+    }
+
+    func endVoiceCall() {
+        voiceCall?.end()
     }
 
     /// A voice call on this Hermes chat, its session minted in the chat's Profile on the chat's
@@ -6973,12 +7000,16 @@ final class ChatViewModel {
         }
     }
 
+    /// A voice call keeps the chat attached in the background (#1091); it suspends when the call ends.
     func suspendStreamForBackground() {
+        guard !isOnVoiceCall else { return }
         pauseWaitingSend()
         suspendActiveStreamConnection()
     }
 
+    /// Leaving the chat hangs up its voice call (#1091).
     func suspendStreamForNavigation() {
+        endVoiceCall()
         suspendActiveStreamConnection()
     }
 
