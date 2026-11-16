@@ -42,6 +42,14 @@ import Foundation
 /// `docs/agents/bots.md` § Updating Hermes has their shapes. `POST /api/audio/speak` (#1072) is
 /// read at the same pin and checked against `scripts/local-hermes`: `{text}` only, spoken by the
 /// Profile's `tts.provider`, answered `{ok, data_url, mime_type, provider}`, or `{detail}`.
+/// The GPT-Live voice call routes (#1091) are read at the same pin (`web_routers/audio.py`,
+/// `tools/voice_live.py`) and checked against `scripts/local-hermes` without an OpenAI key:
+/// `GET /api/audio/voice-live/status` answers `{ok, mode, available, reason, model, voice}` (there
+/// `mode: "chained"`, `available: false`, `model: "gpt-live-1"`, `voice: "marin"`), and
+/// `POST /api/audio/voice-live/session` `{sdp, history}` answers `{ok, session: {id}, transport:
+/// {type, sdp}}`, 503 `{detail}` without a key ("GPT-Live needs an OpenAI API key …"), 502
+/// `{detail}` when the vendor refuses, and 400 for an empty offer. The host has no route that
+/// ends a session; closing the peer connection does.
 /// The analytics routes (#1074) are read at the same pin, recorded from `scripts/local-hermes`
 /// (`Fixtures/HermesAgent/analytics.json`) and checked read-only against a live host: `days`
 /// outside 1-365 is a 422, an unknown Profile a 404 `{detail}`, a store the host can't read a
@@ -350,6 +358,11 @@ enum HermesREST: Equatable, Sendable {
     case setProfileSoul(name: String, content: String)
     /// Speaks `text` in `profile`'s voice: the audio as a base64 data URL (`BotClient.speech`).
     case speak(text: String, profile: String)
+    /// `profile`'s live voice setup (#1091): `{ok, mode, available, reason, model, voice}`, the key never.
+    case voiceLiveStatus(profile: String)
+    /// Trades a WebRTC `sdp` offer, sent byte-exact, for a GPT-Live session the host mints with its
+    /// own key, seeded with `history`: `{ok, session: {id}, transport: {type, sdp}}`.
+    case voiceLiveSession(profile: String, sdp: String, history: [BotJSON])
     /// One Profile's usage over the last `days` (1-365): `{daily, totals, by_model, period_days, …}`,
     /// `daily` holding only days with sessions, by UTC date.
     case analyticsUsage(days: Int, profile: String)
@@ -732,6 +745,12 @@ enum HermesREST: Equatable, Sendable {
         case .speak(let text, let profile):
             guard !profile.isEmpty else { throw BotFailure.invalidAddress }
             return try Self.send("POST", try Self.url(base, "api/audio/speak", profile: profile), ["text": .string(text)])
+        case .voiceLiveStatus(let profile):
+            return Self.get(try Self.url(base, "api/audio/voice-live/status", profile: profile))
+        case .voiceLiveSession(let profile, let sdp, let history):
+            // Never trimmed: the vendor's SDP parser refuses an offer without its trailing CRLF.
+            return try Self.send("POST", try Self.url(base, "api/audio/voice-live/session", profile: profile),
+                                 ["sdp": .string(sdp), "history": .array(history)])
         case .analyticsUsage(let days, let profile): return try Self.analytics(base, "usage", days: days, profile: profile)
         case .analyticsModels(let days, let profile): return try Self.analytics(base, "models", days: days, profile: profile)
         case .kanbanConfig: return try Self.kanban(base, ["config"])

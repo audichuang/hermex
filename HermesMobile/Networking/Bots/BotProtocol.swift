@@ -348,6 +348,13 @@ extension HermesAttemptRecord.Outcome {
     /// `text` spoken in `profile`'s voice (`HermesREST.speak`): the audio bytes, of a format the
     /// host's TTS provider chose. Any refusal or unreadable reply throws.
     func speech(text: String, profile: String) async throws -> Data
+    /// `profile`'s live voice setup (`HermesREST.voiceLiveStatus`, #1091); nil from a host
+    /// without the route (404).
+    func voiceLiveStatus(profile: String) async throws -> HermesVoiceLiveStatus?
+    /// A GPT-Live session for `profile`, minted by the host for the WebRTC `sdp` offer and seeded
+    /// with `history` (`HermesREST.voiceLiveSession`). A refusal with a reason throws
+    /// `HermesVoiceLiveRefusal`.
+    func voiceLiveSession(profile: String, sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession
     /// One page of `profile`'s sessions for the Sessions list, or with `archived` for the
     /// Archived screen (`HermesREST.sessionList`, #1046, #1048).
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
@@ -430,6 +437,14 @@ extension BotTransport {
     }
 
     func speech(text: String, profile: String) async throws -> Data {
+        throw BotFailure.unsupported
+    }
+
+    func voiceLiveStatus(profile: String) async throws -> HermesVoiceLiveStatus? {
+        throw BotFailure.unsupported
+    }
+
+    func voiceLiveSession(profile: String, sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
         throw BotFailure.unsupported
     }
 

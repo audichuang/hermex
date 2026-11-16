@@ -30,11 +30,14 @@ enum BotPromptMode: CaseIterable, Hashable, SendChoice {
     var startsTurn: Bool { self == .send || self == .queue }
 
     /// Send and Queue both submit a queued prompt; see `HermesCall.promptSubmit`. `fence` goes
-    /// only to a canonical host (#1602), and so do `images` (#1644), which only those two carry.
+    /// only to a canonical host (#1602), and so do `images` (#1644), which only those two carry,
+    /// as they alone carry a voice call's `voiceContext` (#1091).
     func call(runtime: String, text: String, fence: HermesCall.Fence? = nil, images: [BotUploadedImage] = [],
-              titlePreview: String? = nil) -> HermesCall {
+              titlePreview: String? = nil, voiceContext: String? = nil) -> HermesCall {
         switch self {
-        case .send, .queue: return .promptSubmit(sessionID: runtime, text: text, fence: fence, images: images, titlePreview: titlePreview)
+        case .send, .queue:
+            return .promptSubmit(sessionID: runtime, text: text, fence: fence, images: images, titlePreview: titlePreview,
+                                 voiceContext: voiceContext)
         case .steer: return .sessionSteer(sessionID: runtime, text: text, fence: fence)
         case .redirect: return .sessionRedirect(sessionID: runtime, text: text, fence: fence)
         }

@@ -652,6 +652,7 @@
 		C8240A000000000000000001 /* HermesConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8240A000000000000000002 /* HermesConnection.swift */; };
 		C87080000000000000000001 /* HermesBrowserSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87080000000000000000002 /* HermesBrowserSignIn.swift */; };
 		E1071000000000000000A001 /* HermesTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1071000000000000000A002 /* HermesTranscription.swift */; };
+		6C11E000000000000000A101 /* HermesVoiceLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A102 /* HermesVoiceLive.swift */; };
 		C8250A000000000000000001 /* HermesGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8250A000000000000000002 /* HermesGateway.swift */; };
 		C1601CA00000000000000001 /* HermesCanonicalProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */; };
 		C8970A000000000000000001 /* HermesCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8970A000000000000000002 /* HermesCompatibility.swift */; };
@@ -1425,6 +1426,7 @@
 		C8240A000000000000000002 /* HermesConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesConnection.swift"; sourceTree = "<group>"; };
 		C87080000000000000000002 /* HermesBrowserSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesBrowserSignIn.swift"; sourceTree = "<group>"; };
 		E1071000000000000000A002 /* HermesTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesTranscription.swift"; sourceTree = "<group>"; };
+		6C11E000000000000000A102 /* HermesVoiceLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesVoiceLive.swift"; sourceTree = "<group>"; };
 		C8250A000000000000000002 /* HermesGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesGateway.swift"; sourceTree = "<group>"; };
 		C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesCanonicalProtocol.swift"; sourceTree = "<group>"; };
 		C8970A000000000000000002 /* HermesCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesCompatibility.swift"; sourceTree = "<group>"; };
@@ -1943,6 +1945,7 @@
 				C8240A000000000000000002 /* HermesConnection.swift */,
 				C87080000000000000000002 /* HermesBrowserSignIn.swift */,
 				E1071000000000000000A002 /* HermesTranscription.swift */,
+				6C11E000000000000000A102 /* HermesVoiceLive.swift */,
 				C8250A000000000000000002 /* HermesGateway.swift */,
 				C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */,
 				C8970A000000000000000002 /* HermesCompatibility.swift */,
@@ -2839,6 +2842,7 @@
 				C8240A000000000000000001 /* HermesConnection.swift in Sources */,
 				C87080000000000000000001 /* HermesBrowserSignIn.swift in Sources */,
 				E1071000000000000000A001 /* HermesTranscription.swift in Sources */,
+				6C11E000000000000000A101 /* HermesVoiceLive.swift in Sources */,
 				C8250A000000000000000001 /* HermesGateway.swift in Sources */,
 				C1601CA00000000000000001 /* HermesCanonicalProtocol.swift in Sources */,
 				C8970A000000000000000001 /* HermesCompatibility.swift in Sources */,
