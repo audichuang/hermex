@@ -42,20 +42,6 @@ enum HermesDeepLink {
             && url.host?.lowercased() == newChatVoiceHost
     }
 
-    static let newVoiceCallHost = "new-voice-call"
-
-    static var newVoiceCallURL: URL? {
-        var components = URLComponents()
-        components.scheme = scheme
-        components.host = newVoiceCallHost
-        return components.url
-    }
-
-    static func isNewVoiceCallURL(_ url: URL) -> Bool {
-        url.scheme?.lowercased() == scheme
-            && url.host?.lowercased() == newVoiceCallHost
-    }
-
     static let newChatInProfileHost = "new-chat-profile"
 
     static let profileQueryItem = "profile"

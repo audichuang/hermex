@@ -19,10 +19,14 @@ struct ContentView: View {
                 didCheckInitialPendingShare = true
                 importPendingSharedDraftIfAvailable()
                 drainPendingIntentDeepLink()
+                drainPendingVoiceCall()
                 await UsageReports.shared.appBecameActive()
             }
             .onChange(of: intentRouter.pendingDeepLink) {
                 drainPendingIntentDeepLink()
+            }
+            .onChange(of: intentRouter.pendingVoiceCall) {
+                drainPendingVoiceCall()
             }
             .onChange(of: authManager.state) {
                 switchServer(pendingLinks.reroute(state: authManager.state, servers: authManager.servers,
@@ -121,11 +125,7 @@ struct ContentView: View {
 
     private func handleOpenURL(_ url: URL) {
         Task { await AgentLiveActivityManager.shared.dismissFinishedActivity(from: url) }
-        pendingLinks.webuiPush = nil
-        pendingLinks.hermesSession = nil
-        pendingLinks.hermesNewChat = nil
-        pendingLinks.hermesUsage = nil
-        pendingLinks.botWidget = nil
+        clearPendingLinks()
         if let destination = WebuiPushDestination(url: url) {
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
             return
@@ -133,11 +133,6 @@ struct ContentView: View {
 
         if HermesDeepLink.isNewChatVoiceURL(url) {
             openNewChat(autoStartsVoiceInput: true)
-            return
-        }
-
-        if HermesDeepLink.isNewVoiceCallURL(url) {
-            openNewChat(autoStartsVoiceInput: true, autoStartsVoiceCall: true)
             return
         }
 
@@ -246,6 +241,24 @@ struct ContentView: View {
         guard let url = intentRouter.pendingDeepLink else { return }
         intentRouter.pendingDeepLink = nil
         handleOpenURL(url)
+    }
+
+    /// Start Voice Call (#1091), in-process only: a new Hermes session that starts a call once its
+    /// host offers one. A webui server has no calls, so it opens New Chat with Voice there.
+    private func drainPendingVoiceCall() {
+        guard intentRouter.pendingVoiceCall != nil else { return }
+        intentRouter.pendingVoiceCall = nil
+        clearPendingLinks()
+        openNewChat(autoStartsVoiceInput: true, autoStartsVoiceCall: true)
+    }
+
+    /// A new link or request replaces whatever an earlier one still waits to open.
+    private func clearPendingLinks() {
+        pendingLinks.webuiPush = nil
+        pendingLinks.hermesSession = nil
+        pendingLinks.hermesNewChat = nil
+        pendingLinks.hermesUsage = nil
+        pendingLinks.botWidget = nil
     }
 
     private func importPendingSharedDraftIfAvailable() {
