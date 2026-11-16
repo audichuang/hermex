@@ -11,7 +11,10 @@ reply is spoken back. webui servers never offer it.
 Call audio goes from the phone directly to OpenAI over WebRTC, not through the
 user's host. The host mints the session with its own OpenAI key and returns only
 the session id and the vendor's SDP answer; the key never reaches the phone.
-The microphone usage string says the same. Hermex runs no relay or server for
+The microphone usage string says the same. Over the same peer connection's data
+channel the phone also sends the agent's reply text and tool names (commentary
+and thinking appends) to OpenAI, and the session the host mints is seeded with
+the chat's recent text turns (`history`). Hermex runs no relay or server for
 calls.
 
 ## Host contract
@@ -59,11 +62,14 @@ Read at the `HERMES_AGENT_TESTED_SHA` pin 3b421578 (`hermes_cli/web_routers/audi
    the last user utterance and sends it as a Send on the chat with
    `surface: "voice-live"` and `voice_context`. The user row appears as usual; no
    staged files or draft are touched.
-3. The reply streams into the voice as commentary a finished sentence at a time
-   (`。！？!?.` or a newline), at most 1400 characters per append, 300 when the
-   chunk is mostly CJK. Markdown is stripped. A new tool sends one quiet thinking
-   line. At the turn's end the unspoken rest is spoken; a turn with nothing
-   speakable says "Hermes finished that request without a spoken result."
+3. The reply (`message.delta`, and `message.interim` not already streamed)
+   goes into the voice as commentary a finished sentence at a time: a newline,
+   `。！？`, or `.!?` followed by whitespace or CJK. An append holds at most 1400
+   Latin or 300 CJK characters (the vendor caps it at 500 tokens). Code blocks,
+   list and heading markers, link targets and emphasis are stripped. A new tool
+   sends one quiet thinking line. At the turn's end the unspoken rest of the
+   reply, as the chat shows it, is spoken; a turn with nothing speakable sends the
+   quiet line "Hermes finished that request without a spoken result."
 
 ### Turn claim
 
@@ -74,9 +80,11 @@ then claims the turn its own submit started (the coordinator's turn count, and
 on a canonical host the reply's `admission_id`), speaks only that turn's frames,
 and settles when the coordinator finishes the turn, whichever way it ends. A
 newer delegation replaces the one in flight: the old turn is no longer spoken,
-and if it is still running it is stopped first. After lost frames the reply is
-rebuilt from the chat: if what was spoken is a prefix of the final text the rest
-is spoken, otherwise "Hermes finished; the result is in the chat."
+and if it is still running it is stopped first. After lost frames the call keeps
+its claim only when the snapshot's running turn is provably the same (same start,
+or on a canonical host the same started admission); otherwise it says "Hermes
+finished; the result is in the chat." A kept turn's reply is rebuilt from the
+chat, and the rest is spoken only while what was already spoken still starts it.
 
 ### Approvals during a call
 
@@ -94,7 +102,7 @@ on the phone screen."
   `suspendStreamForBackground`, so the reply keeps streaming into the call. When
   the call ends in the background, the #902 close happens then. The `audio`
   background mode is already declared. Whether a call survives a locked screen
-  is verified on a device only.
+  has not been verified; it needs a physical device.
 - The call ends on End, leaving the chat, the host replacing a Bot Chat, an audio
   interruption (phone call, Siri), the data channel or peer connection closing,
   and after 10 minutes with no speech and no delegation out. A route change does
