@@ -175,6 +175,13 @@ struct ContentView: View {
             return
         }
 
+        // Start Voice Call (#1091): a new Hermes session that starts a call once its host offers
+        // one. A webui server has no calls, so it opens New Chat with Voice there.
+        if HermesDeepLink.isNewVoiceCallURL(url) {
+            openNewChat(autoStartsVoiceInput: true, autoStartsVoiceCall: true)
+            return
+        }
+
         // A Hermes server's Profile opens a new session on that server (#1180), switching to it
         // or waiting for its sign-in first.
         if let destination = HermesNewChatDestination(url: url) {
@@ -264,11 +271,13 @@ struct ContentView: View {
         if let account { authManager.switchActiveServer(to: account) }
     }
 
-    /// New Chat and New Chat with Voice: a new Hermes session on an active Hermes server, in
-    /// the Profile its New Session uses (#1180), else the webui New Chat composer.
-    private func openNewChat(autoStartsVoiceInput: Bool) {
+    /// New Chat, New Chat with Voice and Start Voice Call: a new Hermes session on an active Hermes
+    /// server, in the Profile its New Session uses (#1180), else the webui New Chat composer.
+    /// A Hermes session takes the call in place of dictation.
+    private func openNewChat(autoStartsVoiceInput: Bool, autoStartsVoiceCall: Bool = false) {
         if let hermes = HermesNewChatDestination.onActiveServer(state: authManager.state, servers: authManager.servers,
-                                                                autoStartsVoiceInput: autoStartsVoiceInput) {
+                                                                autoStartsVoiceInput: autoStartsVoiceInput && !autoStartsVoiceCall,
+                                                                autoStartsVoiceCall: autoStartsVoiceCall) {
             switchServer(pendingLinks.open(hermes, state: authManager.state, servers: authManager.servers))
         } else if reachWebuiServer() {
             pendingLinks.newChatRequest = NewChatRequest(autoStartsVoiceInput: autoStartsVoiceInput)

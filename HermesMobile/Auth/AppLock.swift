@@ -41,7 +41,7 @@ struct AppLockCapability: Equatable {
 /// - It is a cover, not a gate: the app stays mounted behind it, so streams, Live Activities
 ///   and reconnects keep running, and deep links, App Intents, notification taps and share
 ///   handoffs land behind it. While locked, keyboard commands are off, "New Chat with Voice"
-///   holds dictation, and push presence reports no chat on screen.
+///   holds dictation, "Start Voice Call" holds its call, and push presence reports no chat on screen.
 /// - It can't cover other processes: notifications, Live Activities and the share sheet still
 ///   show their content, as the Settings footer says.
 @MainActor @Observable final class AppLock {

@@ -1592,13 +1592,15 @@ struct HermesSessionListCovers {
 
     /// `chat` for a view that builds it now. A New Session the host has named reopens by its key,
     /// so a rebuild (a size-class change, a side switch) shows that session instead of starting
-    /// another, and New Chat with Voice doesn't dictate again. A live chat's view keeps its model.
+    /// another, New Chat with Voice doesn't dictate again and Start Voice Call doesn't call again.
+    /// A live chat's view keeps its model.
     func building(_ chat: HermesSessionChat) -> HermesSessionChat {
         guard chat.id == self.chat?.id, case .new(let profile, _, _) = chat.target,
               case .hermesSession(_, _, let key?, _)? = chatDraftKey?.context else { return chat }
         var named = chat
         named.target = .session(profile: profile, key: key)
         named.autoStartsVoiceInput = false
+        named.autoStartsVoiceCall = false
         return named
     }
 

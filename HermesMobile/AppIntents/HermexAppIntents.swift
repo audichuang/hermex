@@ -92,6 +92,29 @@ struct NewChatVoiceIntent: AppIntent {
     }
 }
 
+/// "Start Voice Call" — opens Hermex on a new chat on the active Hermes server and starts a voice
+/// call once the host says the chat's Profile runs GPT-Live (#1091), so an Action-button press
+/// starts a hands-free call. A host that can't take a call says so in the composer instead. On a
+/// webui server, which has no calls, it opens New Chat with Voice.
+struct NewVoiceCallIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Voice Call"
+    static var description = IntentDescription("Open Hermex on a new chat and start a voice call.")
+
+    /// Foregrounds the app so the call — and the microphone — can run in-process. iOS 26 reads
+    /// `supportedModes`; iOS 18 to 25 read this.
+    static var openAppWhenRun: Bool = true
+
+    @available(iOS 26.0, *)
+    static var supportedModes: IntentModes { .foreground(.immediate) }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        UsageReports.shared.record(.appIntents)
+        AppIntentRouter.shared.requestDeepLink(HermesDeepLink.newVoiceCallURL)
+        return .result()
+    }
+}
+
 /// "New Chat in <Profile>" — opens Hermex on a new chat pinned to a specific server profile
 /// the user picks when configuring the Shortcut/Siri phrase (issue #339). The chosen
 /// `ProfileEntity` is carried through the same `AppIntentRouter`/deep-link plumbing as the
@@ -214,6 +237,16 @@ struct HermexShortcuts: AppShortcutsProvider {
             systemImageName: "mic.badge.plus"
         )
         AppShortcut(
+            intent: NewVoiceCallIntent(),
+            phrases: [
+                "Start a voice call in \(.applicationName)",
+                "Start a \(.applicationName) voice call",
+                "New \(.applicationName) voice call"
+            ],
+            shortTitle: "Start Voice Call",
+            systemImageName: "phone"
+        )
+        AppShortcut(
             intent: NewChatInProfileIntent(),
             phrases: [
                 "New \(\.$profile) chat in \(.applicationName)",
@@ -251,6 +284,8 @@ struct HermesNewChatDestination: Hashable {
     /// The Profile to start in; nil takes the one the Sessions list's New Session uses.
     let profile: String?
     var autoStartsVoiceInput = false
+    /// Start Voice Call opened it (#1091): its chat starts a call once the host offers one.
+    var autoStartsVoiceCall = false
     /// Fresh per request, so running the same Shortcut again opens another chat.
     let id = UUID()
 
@@ -263,10 +298,11 @@ struct HermesNewChatDestination: Hashable {
         case open
     }
 
-    init(server: URL, profile: String?, autoStartsVoiceInput: Bool = false) {
+    init(server: URL, profile: String?, autoStartsVoiceInput: Bool = false, autoStartsVoiceCall: Bool = false) {
         self.server = server
         self.profile = profile
         self.autoStartsVoiceInput = autoStartsVoiceInput
+        self.autoStartsVoiceCall = autoStartsVoiceCall
     }
 
     /// Parses a Hermes Profile's `new-chat-profile?server=…&profile=…`. Nil for any other link,
@@ -288,13 +324,14 @@ struct HermesNewChatDestination: Hashable {
         return url
     }
 
-    /// New Chat and New Chat with Voice on the active server when it is a Hermes server, signed in
-    /// or not; nil on a webui server, whose New Chat is unchanged.
+    /// New Chat, New Chat with Voice and Start Voice Call on the active server when it is a Hermes
+    /// server, signed in or not; nil on a webui server, whose New Chat is unchanged.
     @MainActor static func onActiveServer(state: AuthManager.State, servers: [ServerAccount],
-                                          autoStartsVoiceInput: Bool) -> Self? {
+                                          autoStartsVoiceInput: Bool, autoStartsVoiceCall: Bool = false) -> Self? {
         guard let active = state.server,
               servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes else { return nil }
-        return Self(server: active, profile: nil, autoStartsVoiceInput: autoStartsVoiceInput)
+        return Self(server: active, profile: nil, autoStartsVoiceInput: autoStartsVoiceInput,
+                    autoStartsVoiceCall: autoStartsVoiceCall)
     }
 
     /// Decided by the registry and auth state alone, as a session link is (`HermesSessionLinkRouter`).
@@ -313,6 +350,6 @@ struct HermesNewChatDestination: Hashable {
     @MainActor func chat(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesSessionChat? {
         guard entry.server == server, isLive, let profile = profile ?? listed else { return nil }
         return HermesSessionChat(server: server, connection: entry.connection, target: .new(profile: profile),
-                                 autoStartsVoiceInput: autoStartsVoiceInput)
+                                 autoStartsVoiceInput: autoStartsVoiceInput, autoStartsVoiceCall: autoStartsVoiceCall)
     }
 }
