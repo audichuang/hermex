@@ -939,6 +939,11 @@ struct HermesLostTurn: Equatable {
         try await engine.wire.speech(text: text, profile: engine.target.profile)
     }
 
+    /// This session's Profile's live voice setup, which gates Call (#1091); nil from an older host.
+    func voiceLiveStatus() async throws -> HermesVoiceLiveStatus? {
+        try await engine.wire.voiceLiveStatus(profile: engine.target.profile)
+    }
+
     /// A voice call's GPT-Live session in this session's Profile (#1091).
     func voiceLiveSession(sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
         try await engine.wire.voiceLiveSession(profile: engine.target.profile, sdp: sdp, history: history)

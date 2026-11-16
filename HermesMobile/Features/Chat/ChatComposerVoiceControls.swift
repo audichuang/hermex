@@ -332,3 +332,108 @@ struct ComposerVoiceRecordingBar: View {
         .accessibilityAction(named: Text("Cancel recording"), onCancel)
     }
 }
+
+/// Call, beside the mic in the card's toolbar (#1091), drawn like the mic.
+struct ComposerVoiceCallButton: View {
+    let isDisabled: Bool
+    let color: Color
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Image(systemName: "phone")
+                .font(.system(size: 17, weight: .regular))
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(Color(.appFillTertiary)).frame(width: 34, height: 34))
+                .foregroundStyle(color)
+                .contentShape(Circle())
+                .opacity(isDisabled ? 0.4 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(Text("Start voice call"))
+    }
+}
+
+/// The composer's bottom row while a voice call is on, in place of the toolbar (#1091): what
+/// the call is doing and the latest words said, then Mute and End. Static text, no motion: it
+/// only redraws when the call's status, caption or mute changes, and only this row reads them.
+struct ComposerVoiceCallRow: View {
+    let call: HermesVoiceCall
+    let circleSize: CGFloat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(statusText)
+                    .font(AppFont.footnote(weight: .semibold))
+                    .foregroundStyle(.appPrimary)
+                    .lineLimit(1)
+                if let caption = call.caption {
+                    HStack(spacing: 4) {
+                        Text(speakerName(caption.speaker))
+                            .fontWeight(.semibold)
+                            .fixedSize()
+                        // The newest words are at the end, so the start gives way.
+                        Text(verbatim: caption.text)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    }
+                    .font(AppFont.caption())
+                    .foregroundStyle(.appSecondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.updatesFrequently)
+
+            Button { call.setMuted(!call.isMuted) } label: {
+                Image(systemName: call.isMuted ? "mic.slash.fill" : "mic")
+                    .font(.system(size: 17, weight: .regular))
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color(.appFillTertiary)).frame(width: 34, height: 34))
+                    .foregroundStyle(call.isMuted ? Color.red : Color(.appTextSecondary))
+                    .contentShape(Circle())
+                    .opacity(isLive ? 1 : 0.4)
+            }
+            .buttonStyle(.plain)
+            // The microphone is the session's until it is up.
+            .disabled(!isLive)
+            .accessibilityLabel(Text(call.isMuted ? "Unmute" : "Mute"))
+
+            Button(action: call.end) {
+                Image(systemName: "phone.down.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: circleSize, height: circleSize)
+                    .background(Color.red)
+                    .foregroundStyle(.white)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.chatTactile(.icon))
+            .accessibilityLabel(Text("End call"))
+        }
+    }
+
+    private var isLive: Bool {
+        switch call.status {
+        case .listening, .thinking, .speaking: true
+        case .connecting, .ended: false
+        }
+    }
+
+    private var statusText: String {
+        switch call.status {
+        case .connecting, .ended: String(localized: "Connecting…")
+        case .listening: String(localized: "Listening")
+        case .thinking: String(localized: "Hermes is working")
+        case .speaking: String(localized: "Speaking")
+        }
+    }
+
+    private func speakerName(_ speaker: VoiceLiveSpeaker) -> String {
+        switch speaker {
+        case .user: String(localized: "You")
+        case .assistant: String(localized: "Hermes")
+        }
+    }
+}

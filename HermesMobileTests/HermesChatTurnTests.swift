@@ -747,6 +747,21 @@ import SwiftUI
         XCTAssertFalse(chat.client.http.keepsAliveForCall)
     }
 
+    /// A call the host refuses ends at once, and the composer shows the host's reason where it
+    /// shows a failed send; the call row goes (#1091).
+    func testARefusedVoiceCallShowsTheHostsReasonInTheComposer() async {
+        let chat = await openChat()
+        let transport = CallTransport()
+        let detail = "GPT-Live needs an OpenAI API key (OPENAI_API_KEY or voice.gpt_live.api_key)"
+        transport.startError = HermesVoiceLiveRefusal(status: 503, detail: detail)
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+
+        await chat.model.startVoiceCall()
+
+        XCTAssertNil(chat.model.voiceCallInProgress)
+        XCTAssertEqual(chat.model.sendErrorMessage, detail)
+    }
+
     /// Sends queued behind a canonical turn stay separate admissions, one bubble each in the
     /// host's order, as its recorded `pending` lists them, and the next turn takes only its own.
     func testCanonicalQueuedSendsStaySeparateAdmissions() async throws {
@@ -2110,8 +2125,9 @@ private extension BotJSON {
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
     private(set) var closes = 0
+    var startError: Error?
 
-    func start(history: [BotJSON]) async throws {}
+    func start(history: [BotJSON]) async throws { if let startError { throw startError } }
     func send(_ event: BotJSON) {}
     func setMuted(_ muted: Bool) {}
     func close() { closes += 1 }
