@@ -189,7 +189,7 @@ _Avoid_: stream id (for a Hermes turn), run id
 
 **Voice call**:
 A hands-free spoken conversation on a Hermes chat, offered when the chat's Profile chose GPT-Live (`voice.voice_chat_mode: gpt-live`) and its host has an OpenAI key. OpenAI's live voice model talks with the user and hands real work to Hermes as a delegation, which runs as an ordinary turn on the chat and is spoken back. See `docs/agents/voice-call.md`.
-_Avoid_: voice mode, voice chat (for dictation or voice notes), GPT-Live (for the feature)
+_Avoid_: voice mode, voice chat (the dictation shortcut's name), GPT-Live (for the feature)
 
 ## Screen
 
