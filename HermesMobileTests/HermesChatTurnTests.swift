@@ -1025,6 +1025,20 @@ import SwiftUI
         XCTAssertNotNil(chained.model.sendErrorMessage)
     }
 
+    /// A voice call hears when the chat loses its Hermes connection and when it attaches again
+    /// (#1091), which bounds how long a delegation waits on a host that is gone.
+    func testAVoiceCallHearsTheChatLoseAndRegainHermes() async {
+        let chat = await openChat()
+        var heard: [HermesVoiceTurnEvent] = []
+        chat.turn.voiceTurnObserver = { heard.append($0) }
+
+        chat.turn.engine.disconnect(BotFailure.rejected(400))
+        XCTAssertEqual(heard, [.hermesLost])
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertEqual(heard.filter { $0 == .hermesLost || $0 == .hermesRestored }, [.hermesLost, .hermesRestored])
+    }
+
     /// Start Voice Call (#1091) whose Call gate read fails says so and gives up: a later read
     /// that succeeds must not open the microphone long after the press.
     func testAFailedCallGateReadEndsStartVoiceCallsRequest() async {
