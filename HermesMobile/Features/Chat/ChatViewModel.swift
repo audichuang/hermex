@@ -3512,6 +3512,33 @@ final class ChatViewModel {
 
     var isOnVoiceCall: Bool { voiceCall.map { !$0.isEnded } ?? false }
 
+    /// The call while it is on, for the composer's call row: set as it starts and cleared as it
+    /// ends, so views that only ask "is a call on" don't follow its status or captions.
+    private(set) var voiceCallInProgress: HermesVoiceCall?
+
+    /// Whether this chat offers Call: its host's Profile chose GPT-Live and can run it. Read once
+    /// as the chat opens, on the chat's own connection; never on a webui chat (#1091).
+    private(set) var offersVoiceCall = false
+    @ObservationIgnored private var didLoadVoiceCallOffer = false
+
+    func loadVoiceCallOffer() async {
+        guard let hermesTurn, !didLoadVoiceCallOffer else { return }
+        didLoadVoiceCallOffer = true
+        // A failed read leaves Call hidden: an older host answers 404, and nothing else is billed.
+        let status = try? await hermesTurn.voiceLiveStatus()
+        offersVoiceCall = status?.offersCall == true
+    }
+
+    /// What the composer says when a call ends without the user hanging up.
+    static func voiceCallEndMessage(_ reason: HermesVoiceCall.EndReason) -> String? {
+        switch reason {
+        case .hungUp: nil
+        case .failed(let detail): detail
+        case .closed: String(localized: "The voice call disconnected.")
+        case .inactive: String(localized: "The voice call ended after 10 quiet minutes.")
+        }
+    }
+
     /// Starts a voice call on this Hermes chat and returns once its session is up or the start
     /// failed. While it is on, the chat's connection keeps its socket through the background, so
     /// the delegated reply keeps streaming into the call. The call ends when the chat leaves or
@@ -3519,11 +3546,19 @@ final class ChatViewModel {
     func startVoiceCall() async {
         guard !isOnVoiceCall, let call = makeVoiceCall() else { return }
         let connection = hermesTurn?.connection
+        // A new call's row replaces the last one's error.
+        if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }
         voiceCall = call
+        voiceCallInProgress = call
         connection?.keepsAliveForCall = true
-        call.onEnded = { [weak self, connection] in
+        call.onEnded = { [weak self, weak call, connection] in
             if connection?.owesBackgroundClose == true { self?.suspendStreamForBackground() }
             connection?.keepsAliveForCall = false
+            guard let self else { return }
+            if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
+            if case .ended(let reason)? = call?.status, let message = Self.voiceCallEndMessage(reason) {
+                self.sendErrorMessage = message
+            }
         }
         await call.start()
     }
