@@ -68,6 +68,9 @@ bullet); only the Hermex specifics are here.
   ```
 
 - Temporary parallel devices: `HERMEX tmp <task>`.
+- Agents working in parallel on the resident device take turns through one lock: wrap every
+  `scripts/test-sim` and `xcodebuild` call in `lockf -k /tmp/hermex-build.lock …`. Writing code can overlap;
+  builds and simulator runs wait in line.
 - `scripts/test-sim` has no default device: run `scripts/test-sim <udid>` with the assigned device's UDID,
   never its name or `booted`. Look up the resident's UDID by name each time; do not hard-code it:
 
@@ -141,7 +144,20 @@ stay reachable through their `testflight/*` tags.
 
 1. Cut `upstream/<topic>` from `origin/master` and cherry-pick the `Fork: upstreamable` commit(s)
    (`git log fork/develop --grep '^Fork: upstreamable'`), dropping the trailer.
-2. Follow upstream's `CONTRIBUTING.md` and PR template: English, linked issue, how it was tested, AI-use
-   disclosure. The owner approves the full text before it is sent.
+2. Follow upstream's `CONTRIBUTING.md` and PR template: English, linked issue, how it was tested. The
+   owner approves the full text before it is sent, and edits leave a public revision history that only
+   the web UI can delete (no API), so get it right the first time:
+   - No line says who did the work: no "Built with …", no author, model or reviewer names, even though
+     upstream asks for an AI-use line.
+   - Screenshots never show the owner's real sessions, titles, folders or chat text, and are not reused
+     from fork PRs or cropped from private ones. Capture a test session with a neutral title, or describe
+     the check in text.
+   - `gh --attach` needs write access to the target repo, so it fails upstream. Upload with `--attach` on a
+     fork PR or issue and paste the resulting `user-attachments` URL.
 3. `gh pr create -R uzairansaruzi/hermex --head audichuang:upstream/<topic>`. Once upstream merges it, the
    next rebase drops the fork's copy as empty.
+4. Upstream CI runs on fresh hosted runners. Some ship a broken `iPhone 17` simulator and fail before
+   building (`Unable to find a device matching the provided destination specifier`), and an unrelated test
+   can fail once. Rerun a failing test locally on the branch before blaming the runner. We can't rerun
+   upstream jobs, so close and reopen the PR, then wait on the new run with `gh-wait run <id>`:
+   `gh-wait pr` can still report the previous run's failure.
