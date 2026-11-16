@@ -3493,6 +3493,22 @@ final class ChatViewModel {
 
     // MARK: Voice call (#1091)
 
+    /// Builds a call's transport around the session opener; tests hand in a fake.
+    @ObservationIgnored var makeVoiceLiveTransport: @MainActor (@escaping VoiceLiveSessionOpener) -> any VoiceLiveTransport = {
+        WebRTCVoiceLiveTransport(openSession: $0)
+    }
+
+    /// A voice call on this Hermes chat, its session minted in the chat's Profile on the chat's
+    /// own connection. Nil on a webui chat.
+    func makeVoiceCall() -> HermesVoiceCall? {
+        guard let hermesTurn else { return nil }
+        let transport = makeVoiceLiveTransport { [weak hermesTurn] sdp, history in
+            guard let hermesTurn else { throw BotFailure.stale }
+            return try await hermesTurn.voiceLiveSession(sdp: sdp, history: history)
+        }
+        return HermesVoiceCall(transport: transport, chat: self)
+    }
+
     /// Sends a voice call's delegation as a Send on an idle Hermes chat: the user row shows at once,
     /// as a composer Send's does, and goes again unless the host started its turn. It never takes
     /// staged files, writes the draft or holds for a connection, and returns false for anything but
