@@ -2945,6 +2945,36 @@ final class ChatViewModel {
         hermes.recoverAfterLostAnswer()
     }
 
+
+    func submitVoicePrompt(_ prompt: String, context: String) async -> Bool {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let hermes = hermesTurn, hermes.isIdle, !text.isEmpty, !isViewingCachedData, !isClearingConversation,
+              !isHoldingWaitingSend, !isHermesSubmissionUncertain else { return false }
+        let promptID = "local-\(UUID().uuidString)"
+        isStartingChat = true
+        defer { isStartingChat = false }
+        archiveLiveActivityForNewTurn()
+        messages.append(ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: promptID))
+        let outcome: BotPromptOutcome
+        do {
+            isSubmittingHermesPrompt = true
+            defer { isSubmittingHermesPrompt = false }
+            outcome = try await hermes.submitVoice(text, context: context)
+        } catch {
+            rollbackOptimisticMessage(id: promptID)
+            if !(error is HermesChatTurnCoordinator.NotSent), !BotPromptMode.send.definitelyRejected(error) {
+                hermes.recoverAfterLostAnswer()
+            }
+            return false
+        }
+        guard outcome == .started else {
+            rollbackOptimisticMessage(id: promptID)
+            if outcome == .unknown { hermes.recoverAfterLostAnswer() }
+            return false
+        }
+        return true
+    }
+
     func restoreSubmissionMark(_ uncertain: Bool) {
         guard uncertain, let hermesTurn, hermesTurn.engine.connectionState != .connected else { return }
         isHermesSubmissionUncertain = true
@@ -8698,5 +8728,37 @@ final class ListenAudioSessionController: ListenAudioSessionControlling {
             false,
             options: ListenAudioSessionConfiguration.deactivationOptions
         )
+    }
+}
+
+/// A voice call drives its delegations through the chat it was started from (#1091).
+extension ChatViewModel: VoiceCallChatPort {
+    var isIdleForVoice: Bool { hermesTurn?.isIdle == true }
+    var isRunningTurn: Bool { activeStreamID != nil }
+    var turnAwaitsAnswer: Bool { hermesTurn?.turnAwaitsAnswer == true }
+
+    func interruptForVoice() async { await cancelActiveStream() }
+
+    func submitVoice(prompt: String, context: String) async -> Bool {
+        await submitVoicePrompt(prompt, context: context)
+    }
+
+    /// The latest turn's reply as the chat shows it: none when the latest turn has no reply row.
+    var voiceTurnReply: String? {
+        guard let last = messages.last(where: { $0.role == "user" || $0.role == "assistant" }),
+              last.role == "assistant" else { return nil }
+        return last.content
+    }
+
+    var voiceHistory: [(speaker: VoiceLiveSpeaker, text: String)] {
+        messages.compactMap { message in
+            guard let text = message.content, message.role == "user" || message.role == "assistant" else { return nil }
+            return (message.role == "user" ? .user : .assistant, text)
+        }
+    }
+
+    var voiceTurnEvents: ((HermesVoiceTurnEvent) -> Void)? {
+        get { hermesTurn?.voiceTurnObserver }
+        set { hermesTurn?.voiceTurnObserver = newValue }
     }
 }
