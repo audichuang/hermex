@@ -63,6 +63,23 @@ struct NewChatVoiceIntent: AppIntent {
     }
 }
 
+struct NewVoiceCallIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Voice Call"
+    static var description = IntentDescription("Open Hermex on a new chat and start a voice call.")
+
+    static var openAppWhenRun: Bool = true
+
+    @available(iOS 26.0, *)
+    static var supportedModes: IntentModes { .foreground(.immediate) }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        UsageReports.shared.record(.appIntents)
+        AppIntentRouter.shared.requestDeepLink(HermesDeepLink.newVoiceCallURL)
+        return .result()
+    }
+}
+
 struct NewChatInProfileIntent: AppIntent {
     static var title: LocalizedStringResource = "New Chat in Profile"
     static var description = IntentDescription("Open Hermex on a new chat pinned to a specific profile.")
@@ -168,6 +185,16 @@ struct HermexShortcuts: AppShortcutsProvider {
             systemImageName: "mic.badge.plus"
         )
         AppShortcut(
+            intent: NewVoiceCallIntent(),
+            phrases: [
+                "Start a voice call in \(.applicationName)",
+                "Start a \(.applicationName) voice call",
+                "New \(.applicationName) voice call"
+            ],
+            shortTitle: "Start Voice Call",
+            systemImageName: "phone"
+        )
+        AppShortcut(
             intent: NewChatInProfileIntent(),
             phrases: [
                 "New \(\.$profile) chat in \(.applicationName)",
@@ -200,6 +227,7 @@ struct HermesNewChatDestination: Hashable {
     let server: URL
     let profile: String?
     var autoStartsVoiceInput = false
+    var autoStartsVoiceCall = false
     let id = UUID()
 
     enum Route: Equatable {
@@ -209,10 +237,11 @@ struct HermesNewChatDestination: Hashable {
         case open
     }
 
-    init(server: URL, profile: String?, autoStartsVoiceInput: Bool = false) {
+    init(server: URL, profile: String?, autoStartsVoiceInput: Bool = false, autoStartsVoiceCall: Bool = false) {
         self.server = server
         self.profile = profile
         self.autoStartsVoiceInput = autoStartsVoiceInput
+        self.autoStartsVoiceCall = autoStartsVoiceCall
     }
 
     init?(url: URL) {
@@ -231,10 +260,11 @@ struct HermesNewChatDestination: Hashable {
     }
 
     @MainActor static func onActiveServer(state: AuthManager.State, servers: [ServerAccount],
-                                          autoStartsVoiceInput: Bool) -> Self? {
+                                          autoStartsVoiceInput: Bool, autoStartsVoiceCall: Bool = false) -> Self? {
         guard let active = state.server,
               servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes else { return nil }
-        return Self(server: active, profile: nil, autoStartsVoiceInput: autoStartsVoiceInput)
+        return Self(server: active, profile: nil, autoStartsVoiceInput: autoStartsVoiceInput,
+                    autoStartsVoiceCall: autoStartsVoiceCall)
     }
 
     @MainActor func route(state: AuthManager.State, servers: [ServerAccount]) -> Route {
@@ -249,6 +279,6 @@ struct HermesNewChatDestination: Hashable {
     @MainActor func chat(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesSessionChat? {
         guard entry.server == server, isLive, let profile = profile ?? listed else { return nil }
         return HermesSessionChat(server: server, connection: entry.connection, target: .new(profile: profile),
-                                 autoStartsVoiceInput: autoStartsVoiceInput)
+                                 autoStartsVoiceInput: autoStartsVoiceInput, autoStartsVoiceCall: autoStartsVoiceCall)
     }
 }

@@ -136,6 +136,11 @@ struct ContentView: View {
             return
         }
 
+        if HermesDeepLink.isNewVoiceCallURL(url) {
+            openNewChat(autoStartsVoiceInput: true, autoStartsVoiceCall: true)
+            return
+        }
+
         if let destination = HermesNewChatDestination(url: url) {
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
             return
@@ -207,9 +212,10 @@ struct ContentView: View {
         if let account { authManager.switchActiveServer(to: account) }
     }
 
-    private func openNewChat(autoStartsVoiceInput: Bool) {
+    private func openNewChat(autoStartsVoiceInput: Bool, autoStartsVoiceCall: Bool = false) {
         if let hermes = HermesNewChatDestination.onActiveServer(state: authManager.state, servers: authManager.servers,
-                                                                autoStartsVoiceInput: autoStartsVoiceInput) {
+                                                                autoStartsVoiceInput: autoStartsVoiceInput && !autoStartsVoiceCall,
+                                                                autoStartsVoiceCall: autoStartsVoiceCall) {
             switchServer(pendingLinks.open(hermes, state: authManager.state, servers: authManager.servers))
         } else if reachWebuiServer() {
             pendingLinks.newChatRequest = NewChatRequest(autoStartsVoiceInput: autoStartsVoiceInput)

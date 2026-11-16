@@ -859,6 +859,32 @@ import SwiftUI
             .compactMap { $0.url?.query }.filter { $0 == "profile=voice" }.count, 1)
     }
 
+    func testStartVoiceCallStartsOneCallOnlyWhenTheHostOffersIt() async {
+        let offered = await openChat(profile: "voice-on", target: .new(profile: "voice-on"),
+                                     voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        var calls = 0
+        offered.model.makeVoiceLiveTransport = { _ in calls += 1; return CallTransport() }
+        offered.model.requestVoiceCall()
+        await offered.model.voiceCallOfferRead?.value
+        XCTAssertTrue(offered.model.isRequestedVoiceCallReady)
+
+        await offered.model.startRequestedVoiceCall()
+        await offered.model.startRequestedVoiceCall()
+        XCTAssertEqual(calls, 1)
+        XCTAssertTrue(offered.model.isOnVoiceCall)
+        offered.model.endVoiceCall()
+
+        let chained = await openChat(profile: "voice-off",
+                                     voiceLive: .object(["ok": .bool(true), "mode": .string("chained"), "available": .bool(true)]))
+        chained.model.makeVoiceLiveTransport = { _ in calls += 1; return CallTransport() }
+        chained.model.requestVoiceCall()
+        await chained.model.voiceCallOfferRead?.value
+        await chained.model.startRequestedVoiceCall()
+        XCTAssertEqual(calls, 1)
+        XCTAssertFalse(chained.model.isOnVoiceCall)
+        XCTAssertNotNil(chained.model.sendErrorMessage)
+    }
+
     func testARefusedVoiceCallShowsTheHostsReasonInTheComposer() async {
         let chat = await openChat()
         let transport = CallTransport()

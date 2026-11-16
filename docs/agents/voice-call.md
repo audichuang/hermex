@@ -95,6 +95,18 @@ request is unanswered is not sent and does not stop the turn (a Stop would deny
 the approval); the voice says "That request is still waiting for your approval
 on the phone screen."
 
+## Start Voice Call
+
+The "Start Voice Call" App Shortcut (`NewVoiceCallIntent`, assignable to the
+Action button) opens `hermes-agent://new-voice-call`: a new chat on the active
+Hermes server in its New Session Profile, as New Chat with Voice does. Once that
+chat's Call gate has answered, and the app is active and unlocked, the chat
+starts the call through Call's own path, once per request; a gate that doesn't
+offer a call shows why in the composer instead (the host's `reason` when the
+Profile chose GPT-Live, else what a call needs). A gate read the socket's loss
+cut short keeps the request until the next attach. On a webui server it opens
+New Chat with Voice.
+
 ## Lifecycle and background
 
 - While a call is on, the chat's connection keeps its gateway socket through the
@@ -116,6 +128,5 @@ on the phone screen."
 - Chained mode (speech-to-text → turn → text-to-speech) and streaming read-aloud (#1740).
 - A spoken stop word.
 - CallKit, ringing and VoIP push.
-- An App Intent or Shortcut that starts a call.
 - A Live Activity for a call.
 - A speaker/receiver toggle (calls use the speaker).

@@ -2977,7 +2977,39 @@ final class ChatViewModel {
             voiceCallOfferRead = nil
             didReadVoiceCallOffer = true
             offersVoiceCall = status?.offersCall == true
+            voiceCallRefusal = Self.voiceCallRefusal(status)
+            if requestsVoiceCall { isRequestedVoiceCallReady = true }
         }
+    }
+
+    @ObservationIgnored private var voiceCallRefusal: String?
+    @ObservationIgnored private var requestsVoiceCall = false
+    private(set) var isRequestedVoiceCallReady = false
+
+    static func voiceCallRefusal(_ status: HermesVoiceLiveStatus?) -> String? {
+        guard status?.offersCall != true else { return nil }
+        if status?.mode == "gpt-live", let reason = status?.reason?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !reason.isEmpty {
+            return reason
+        }
+        return String(localized: "Voice calls need this Profile’s voice mode set to GPT-Live on the host.")
+    }
+
+    func requestVoiceCall() {
+        guard hermesTurn != nil else { return }
+        requestsVoiceCall = true
+        if didReadVoiceCallOffer { isRequestedVoiceCallReady = true }
+    }
+
+    func startRequestedVoiceCall() async {
+        guard isRequestedVoiceCallReady else { return }
+        isRequestedVoiceCallReady = false
+        requestsVoiceCall = false
+        guard offersVoiceCall else {
+            sendErrorMessage = voiceCallRefusal
+            return
+        }
+        await startVoiceCall()
     }
 
     static func voiceCallEndMessage(_ reason: HermesVoiceCall.EndReason) -> String? {

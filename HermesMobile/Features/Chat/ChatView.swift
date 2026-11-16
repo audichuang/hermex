@@ -480,6 +480,8 @@ struct ChatView: View {
         model.hermesBotChatRoot = hermesSession?.botChatRoot
         model.hermesLineageRoot = hermesSession?.lineageRoot
         model.onHermesDraftKeyChange = onHermesDraftKeyChange
+        // Only a model made here: a kept one already took its request.
+        if continuity.model == nil, hermesSession?.autoStartsVoiceCall == true { model.requestVoiceCall() }
         _viewModel = State(initialValue: model)
         _isScrolledNearBottom = State(initialValue: model.followLatch.isFollowing)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
@@ -731,7 +733,8 @@ struct ChatView: View {
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
             hermesTranscriber: hermesTranscriber,
             voiceCall: viewModel.voiceCallInProgress,
-            onStartVoiceCall: viewModel.offersVoiceCall ? { Task { await viewModel.startVoiceCall() } } : nil
+            onStartVoiceCall: viewModel.offersVoiceCall ? { Task { await viewModel.startVoiceCall() } } : nil,
+            onStartRequestedVoiceCall: viewModel.isRequestedVoiceCallReady ? { Task { await viewModel.startRequestedVoiceCall() } } : nil
         )
         .environment(\.layoutDirection, chatLayoutDirection)
         .background(

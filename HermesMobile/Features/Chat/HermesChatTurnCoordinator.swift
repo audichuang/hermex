@@ -40,6 +40,7 @@ struct HermesSessionChat: Hashable, Identifiable {
     var model: String? = nil
     var bot: BotProfile? = nil
     var autoStartsVoiceInput = false
+    var autoStartsVoiceCall = false
     var shareNotice: SharedSkipsNotice? = nil
 
     var policy: HermesChatPolicy { HermesChatPolicy(target: target, botChatRoot: botChatRoot) }

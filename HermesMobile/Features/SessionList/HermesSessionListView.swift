@@ -1357,6 +1357,7 @@ struct HermesSessionListCovers {
         var named = chat
         named.target = .session(profile: profile, key: key)
         named.autoStartsVoiceInput = false
+        named.autoStartsVoiceCall = false
         return named
     }
 
