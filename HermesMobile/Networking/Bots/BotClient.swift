@@ -163,6 +163,36 @@ import Foundation
         }
     }
 
+    /// The live voice setup for the Call button (#1091). Plain HTTP, like `speech`.
+    func voiceLiveStatus(profile: String) async throws -> HermesVoiceLiveStatus? {
+        let attempt = self.attempt
+        let reply = try await http.reply(.voiceLiveStatus(profile: profile), validateDispatch: { try self.checkOwner(attempt) })
+        try checkOwner(attempt)
+        if reply.status == 404 { return nil }
+        guard (200..<300).contains(reply.status) else { throw BotFailure.rejected(reply.status) }
+        return HermesVoiceLiveStatus((try? JSONDecoder().decode(BotJSON.self, from: reply.body)) ?? .null)
+    }
+
+    /// Starts a call's GPT-Live session (#1091). The host waits on the vendor, so this runs on
+    /// the provisioning deadline. Plain HTTP, like `speech`. The caller closes the peer
+    /// connection if it no longer wants the session: the host has no route that ends one.
+    func voiceLiveSession(profile: String, sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
+        let attempt = self.attempt
+        let reply = try await http.reply(.voiceLiveSession(profile: profile, sdp: sdp, history: history),
+                                         deadline: .provisioning, validateDispatch: { try self.checkOwner(attempt) })
+        try checkOwner(attempt)
+        let body = try? JSONDecoder().decode(BotJSON.self, from: reply.body)
+        guard (200..<300).contains(reply.status) else {
+            // FastAPI's validation 422 carries a list, and a proxy's page none: those keep the status.
+            if let detail = body?["detail"].text?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty {
+                throw HermesVoiceLiveRefusal(status: reply.status, detail: detail)
+            }
+            throw BotFailure.rejected(reply.status)
+        }
+        guard let answer = body?["transport"]["sdp"].text, !answer.isEmpty else { throw BotFailure.unsupported }
+        return HermesVoiceLiveSession(sessionID: body?["session"]["id"].text, answerSDP: answer)
+    }
+
     /// The bytes of a speak reply's `data_url`, `data:<mime>;base64,<audio>`.
     nonisolated static func speechAudio(fromReply body: Data) throws -> Data {
         guard let url = (try? JSONDecoder().decode(BotJSON.self, from: body))?["data_url"].text,
