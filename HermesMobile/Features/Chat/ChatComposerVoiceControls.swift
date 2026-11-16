@@ -423,7 +423,9 @@ struct ComposerVoiceCallRow: View {
 
     private var statusText: String {
         switch call.status {
-        case .connecting, .ended: String(localized: "Connecting…")
+        case .connecting: String(localized: "Connecting…")
+        // The row is on its way out.
+        case .ended: ""
         case .listening: String(localized: "Listening")
         case .thinking: String(localized: "Hermes is working")
         case .speaking: String(localized: "Speaking")
