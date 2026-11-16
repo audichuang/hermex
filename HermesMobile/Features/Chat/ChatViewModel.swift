@@ -3498,6 +3498,43 @@ final class ChatViewModel {
         hermes.recoverAfterLostAnswer()
     }
 
+    // MARK: Voice call (#1091)
+
+    /// Sends a voice call's delegation as a Send on an idle Hermes chat: the user row shows at once,
+    /// as a composer Send's does, and goes again unless the host started its turn. It never takes
+    /// staged files, writes the draft or holds for a connection, and returns false for anything but
+    /// a started turn, so the call can say so. A lost answer reattaches, whose snapshot shows
+    /// whether it ran; the composer's Send is not held for it.
+    func submitVoicePrompt(_ prompt: String, context: String) async -> Bool {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let hermes = hermesTurn, hermes.isIdle, !text.isEmpty, !isViewingCachedData, !isClearingConversation,
+              !isHoldingWaitingSend, !isHermesSubmissionUncertain else { return false }
+        let promptID = "local-\(UUID().uuidString)"
+        isStartingChat = true
+        defer { isStartingChat = false }
+        archiveLiveActivityForNewTurn()
+        messages.append(ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: promptID))
+        let outcome: BotPromptOutcome
+        do {
+            isSubmittingHermesPrompt = true
+            defer { isSubmittingHermesPrompt = false }
+            outcome = try await hermes.submitVoice(text, context: context)
+        } catch {
+            rollbackOptimisticMessage(id: promptID)
+            if !(error is HermesChatTurnCoordinator.NotSent), !BotPromptMode.send.definitelyRejected(error) {
+                hermes.recoverAfterLostAnswer()
+            }
+            return false
+        }
+        guard outcome == .started else {
+            // A queued one shows as the host's queued prompt instead.
+            rollbackOptimisticMessage(id: promptID)
+            if outcome == .unknown { hermes.recoverAfterLostAnswer() }
+            return false
+        }
+        return true
+    }
+
     /// A Hermes draft reopened with its submission still marked unresolved holds Send until
     /// the chat attaches, as a lost answer does (#508).
     func restoreSubmissionMark(_ uncertain: Bool) {
@@ -9878,5 +9915,37 @@ final class ListenAudioSessionController: ListenAudioSessionControlling {
             false,
             options: ListenAudioSessionConfiguration.deactivationOptions
         )
+    }
+}
+
+/// A voice call drives its delegations through the chat it was started from (#1091).
+extension ChatViewModel: VoiceCallChatPort {
+    var isIdleForVoice: Bool { hermesTurn?.isIdle == true }
+    var isRunningTurn: Bool { activeStreamID != nil }
+    var turnAwaitsAnswer: Bool { hermesTurn?.turnAwaitsAnswer == true }
+
+    func interruptForVoice() async { await cancelActiveStream() }
+
+    func submitVoice(prompt: String, context: String) async -> Bool {
+        await submitVoicePrompt(prompt, context: context)
+    }
+
+    /// The latest turn's reply as the chat shows it: none when the latest turn has no reply row.
+    var voiceTurnReply: String? {
+        guard let last = messages.last(where: { $0.role == "user" || $0.role == "assistant" }),
+              last.role == "assistant" else { return nil }
+        return last.content
+    }
+
+    var voiceHistory: [(speaker: VoiceLiveSpeaker, text: String)] {
+        messages.compactMap { message in
+            guard let text = message.content, message.role == "user" || message.role == "assistant" else { return nil }
+            return (message.role == "user" ? .user : .assistant, text)
+        }
+    }
+
+    var voiceTurnEvents: ((HermesVoiceTurnEvent) -> Void)? {
+        get { hermesTurn?.voiceTurnObserver }
+        set { hermesTurn?.voiceTurnObserver = newValue }
     }
 }
