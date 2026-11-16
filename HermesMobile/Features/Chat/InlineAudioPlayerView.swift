@@ -161,15 +161,24 @@ final class AudioAttachmentPlaybackCenter {
 /// dictation. The inline player consults this before commandeering the shared
 /// `AVAudioSession`: switching it to `.playback` mid-capture would tear down the
 /// live recording engine and silently interrupt dictation.
-@MainActor
+///
+/// It also names the one voice call (#1091) that holds the microphone and the audio session,
+/// process-wide, from its start until its teardown has put the session back. While one does,
+/// every composer keeps dictation and voice notes off.
+@MainActor @Observable
 final class ComposerAudioCaptureState {
     static let shared = ComposerAudioCaptureState()
 
-    /// A recording, a dictation or a voice call (#1091) holds the microphone.
+    /// A recording, a dictation or a voice call holds the microphone.
     var isCapturing: Bool { isRecording || isOnCall }
 
-    private var isRecording = false
-    private var isOnCall = false
+    /// A voice call holds the audio, live or still tearing down.
+    var isOnCall: Bool { callHolder != nil }
+
+    @ObservationIgnored private var isRecording = false
+    private var callHolder: ObjectIdentifier?
+    /// Tears the holding call down at once; held until that call lets go.
+    @ObservationIgnored private var releaseHolder: (@MainActor () -> Void)?
 
     private init() {}
 
@@ -179,10 +188,27 @@ final class ComposerAudioCaptureState {
         if capturing { UsageReports.shared.record(.voiceInput) }
     }
 
-    /// A voice call holds the microphone for its lifetime. It is not voice input, so it is not
-    /// tallied, and a late dictation teardown doesn't clear it.
-    func setOnCall(_ onCall: Bool) {
-        isOnCall = onCall
+    /// `call` takes the audio before it touches the session. A call still holding it, such as
+    /// one ended a moment ago that waits for its session to close, is torn down first through
+    /// its `release`, so it puts the session back before `call` reads it. A call is not voice
+    /// input, so it is not tallied.
+    func claimCall(_ call: AnyObject, release: @escaping @MainActor () -> Void) {
+        let id = ObjectIdentifier(call)
+        if callHolder != id, let previous = releaseHolder {
+            callHolder = nil
+            releaseHolder = nil
+            previous()
+        }
+        callHolder = id
+        releaseHolder = release
+    }
+
+    /// `call` put the session back. Only the holder lets go, so a call another one replaced
+    /// can't clear the newer call's hold.
+    func releaseCall(_ call: AnyObject) {
+        guard callHolder == ObjectIdentifier(call) else { return }
+        callHolder = nil
+        releaseHolder = nil
     }
 }
 
