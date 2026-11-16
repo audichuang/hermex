@@ -132,7 +132,17 @@ struct VoiceLiveSpeechCursor {
         let text = VoiceLiveProtocol.speakableText(reply)
         guard text.hasPrefix(spoken) else { return nil }
         let rest = Array(text.dropFirst(spoken.count))
-        let cut = finished ? rest.count : (VoiceLiveProtocol.sentenceEnds(in: rest, streaming: true).last ?? 0)
+        let cut: Int
+        if finished {
+            cut = rest.count
+        } else {
+            // A link still streaming reads as `[text` until its target closes; speaking
+            // into it would leave a `[` the finished text no longer has.
+            let restText = String(rest)
+            let openLink = restText.range(of: #"\[[^\]\n]*(\](\([^)\n]*)?)?$"#, options: .regularExpression)
+            let limit = openLink.map { restText[..<$0.lowerBound].count } ?? rest.count
+            cut = VoiceLiveProtocol.sentenceEnds(in: rest, streaming: true).last { $0 <= limit } ?? 0
+        }
         guard cut > 0 else { return nil }
         let piece = String(rest[..<cut])
         spoken += piece
@@ -143,8 +153,9 @@ struct VoiceLiveSpeechCursor {
 enum VoiceLiveProtocol {
     /// The vendor caps an append at 500 tokens. Latin text runs about four characters per
     /// token and CJK about one, so a chunk weighs CJK characters 1400/300 times as much:
-    /// 1400 Latin characters or 300 CJK ones fill it.
+    /// 1400 Latin characters or 300 CJK ones fill it, and a mostly CJK chunk stops at 300.
     private static let appendBudget = 4_200
+    private static let mostlyCJKLimit = 300
     private static let latinWeight = 3
     private static let cjkWeight = 14
 
@@ -291,9 +302,12 @@ enum VoiceLiveProtocol {
     static func prefixFittingAppend(_ text: String) -> String {
         var cost = 0
         var count = 0
+        var cjk = 0
         for character in text {
-            cost += isCJK(character) ? cjkWeight : latinWeight
-            if cost > appendBudget { break }
+            let isCJKCharacter = isCJK(character)
+            cost += isCJKCharacter ? cjkWeight : latinWeight
+            cjk += isCJKCharacter ? 1 : 0
+            if !fits(cost: cost, count: count + 1, cjk: cjk) { break }
             count += 1
         }
         return String(text.prefix(count))
@@ -302,7 +316,12 @@ enum VoiceLiveProtocol {
     private static let closers: Set<Character> = ["\"", "'", ")", "”", "’", "」", "』", "）", "】"]
 
     private static func fitsAppend(_ text: String) -> Bool {
-        text.reduce(0) { $0 + (isCJK($1) ? cjkWeight : latinWeight) } <= appendBudget
+        let cjk = text.reduce(0) { $0 + (isCJK($1) ? 1 : 0) }
+        return fits(cost: cjk * cjkWeight + (text.count - cjk) * latinWeight, count: text.count, cjk: cjk)
+    }
+
+    private static func fits(cost: Int, count: Int, cjk: Int) -> Bool {
+        cost <= appendBudget && (cjk * 2 <= count || count <= mostlyCJKLimit)
     }
 
     /// Han, kana, Hangul, and full-width forms: about one vendor token per character.

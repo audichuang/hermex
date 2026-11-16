@@ -41,7 +41,7 @@ final class VoiceLiveProtocolTests: XCTestCase {
         XCTAssertEqual(say[0]["delegation_id"].text, "del_7")
         XCTAssertEqual(say[0]["content"].text, "Done.")
         XCTAssertEqual(think?["type"].text, "session.thinking.append")
-        XCTAssertEqual(think?["delegation_id"], .null)
+        XCTAssertEqual(think?.fields?["delegation_id"], .null)
         XCTAssertEqual(think?["content"].text, "Hermes is working: terminal.")
         XCTAssertEqual(mute["type"].text, "session.input_audio.mute")
         XCTAssertEqual(Set([say[0]["event_id"].text, think?["event_id"].text, mute["event_id"].text]).count, 3)
@@ -89,6 +89,21 @@ final class VoiceLiveProtocolTests: XCTestCase {
 
         XCTAssertEqual(spoken, ["我查了一下，測試全部通過。", "接下來要部署嗎？", "目前版本是 3.14"])
         XCTAssertNil(cursor.advance(reply: reply, finished: true))
+    }
+
+    func testAReplyStreamedCharacterByCharacterIsSpokenWhole() {
+        for reply in ["詳情請看[常見問題？點這裡](https://a.b/c)。完成。", "See [Dr. Smith's notes](https://x.y/z) now. Done."] {
+            var cursor = VoiceLiveSpeechCursor()
+            var spoken = ""
+            var streamed = ""
+            for character in reply {
+                streamed.append(character)
+                spoken += cursor.advance(reply: streamed, finished: false) ?? ""
+            }
+            spoken += cursor.advance(reply: reply, finished: true) ?? ""
+
+            XCTAssertEqual(spoken, VoiceLiveProtocol.speakableText(reply))
+        }
     }
 
     func testSpeakableTextDropsCodeAndMarkup() {
