@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Lists strings this branch adds or changes in Localizable.xcstrings that lack a locale upstream's
+catalog has (FORK.md § Red lines: an upstreamable commit carries every locale upstream does).
+
+    scripts/fork/check-locales               # against origin/master
+    scripts/fork/check-locales <base-ref>
+
+`en` is the source language and is not required. Exits 1 when a string is missing a locale.
+"""
+import json
+import os
+import subprocess
+import sys
+
+CATALOG = "HermesMobile/Resources/Localizable.xcstrings"
+
+
+def strings(ref):
+    if ref is None:
+        with open(CATALOG, encoding="utf-8") as f:
+            return json.load(f)["strings"]
+    return json.loads(subprocess.check_output(["git", "show", f"{ref}:{CATALOG}"]))["strings"]
+
+
+def main():
+    base_ref = sys.argv[1] if len(sys.argv) > 1 else "origin/master"
+    os.chdir(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
+    base, head = strings(base_ref), strings(None)
+    locales = set().union(*(v.get("localizations", {}) for v in base.values())) - {"en"}
+    gaps = []
+    for key, value in sorted(head.items()):
+        if base.get(key) == value or value.get("shouldTranslate") is False:
+            continue
+        missing = sorted(locales - set(value.get("localizations", {})))
+        if missing:
+            gaps.append((key, missing))
+    if not gaps:
+        print(f"Every string added or changed since {base_ref} has all {len(locales)} upstream locales.")
+        return 0
+    print(f"{len(gaps)} string(s) added or changed since {base_ref} lack an upstream locale:")
+    for key, missing in gaps:
+        print(f"  {json.dumps(key, ensure_ascii=False)}: {', '.join(missing)}")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
