@@ -2946,6 +2946,19 @@ final class ChatViewModel {
     }
 
 
+    @ObservationIgnored var makeVoiceLiveTransport: @MainActor (@escaping VoiceLiveSessionOpener) -> any VoiceLiveTransport = {
+        WebRTCVoiceLiveTransport(openSession: $0)
+    }
+
+    func makeVoiceCall() -> HermesVoiceCall? {
+        guard let hermesTurn else { return nil }
+        let transport = makeVoiceLiveTransport { [weak hermesTurn] sdp, history in
+            guard let hermesTurn else { throw BotFailure.stale }
+            return try await hermesTurn.voiceLiveSession(sdp: sdp, history: history)
+        }
+        return HermesVoiceCall(transport: transport, chat: self)
+    }
+
     func submitVoicePrompt(_ prompt: String, context: String) async -> Bool {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let hermes = hermesTurn, hermes.isIdle, !text.isEmpty, !isViewingCachedData, !isClearingConversation,

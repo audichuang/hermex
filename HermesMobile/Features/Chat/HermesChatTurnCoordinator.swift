@@ -601,6 +601,10 @@ struct HermesLostTurn: Equatable {
         try await engine.wire.speech(text: text, profile: engine.target.profile)
     }
 
+    func voiceLiveSession(sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
+        try await engine.wire.voiceLiveSession(profile: engine.target.profile, sdp: sdp, history: history)
+    }
+
     func recoverAfterLostAnswer() {
         guard engine.isActive else { return }
         rebuildAfterGap()
