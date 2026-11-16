@@ -8644,6 +8644,8 @@ extension ChatViewModel: HermesChatTurnDelegate {
     /// the chat is scrolled to, once a history read succeeds: until then the empty chat shows
     /// the failure and its retry.
     func hermesBotChatWasReplaced() {
+        // The call was talking about the old chat (#1091).
+        endVoiceCall()
         messages = []
         hasOlderMessages = false
         latestRunOutcome = nil
