@@ -165,14 +165,24 @@ final class AudioAttachmentPlaybackCenter {
 final class ComposerAudioCaptureState {
     static let shared = ComposerAudioCaptureState()
 
-    private(set) var isCapturing = false
+    /// A recording, a dictation or a voice call (#1091) holds the microphone.
+    var isCapturing: Bool { isRecording || isOnCall }
+
+    private var isRecording = false
+    private var isOnCall = false
 
     private init() {}
 
     /// Every composer recording and dictation starts here, so it also tallies voice input (#1662).
     func setCapturing(_ capturing: Bool) {
-        isCapturing = capturing
+        isRecording = capturing
         if capturing { UsageReports.shared.record(.voiceInput) }
+    }
+
+    /// A voice call holds the microphone for its lifetime. It is not voice input, so it is not
+    /// tallied, and a late dictation teardown doesn't clear it.
+    func setOnCall(_ onCall: Bool) {
+        isOnCall = onCall
     }
 }
 

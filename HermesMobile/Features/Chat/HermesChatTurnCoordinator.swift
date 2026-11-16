@@ -947,6 +947,11 @@ struct HermesLostTurn: Equatable {
         try await engine.wire.speech(text: text, profile: engine.target.profile)
     }
 
+    /// A voice call's GPT-Live session in this session's Profile (#1091).
+    func voiceLiveSession(sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
+        try await engine.wire.voiceLiveSession(profile: engine.target.profile, sdp: sdp, history: history)
+    }
+
     /// A prompt's answer was lost or unreadable: reattach and rebuild, so the snapshot shows
     /// whether it ran (#508). Nothing is resent. A chat already left attaches when it reopens.
     func recoverAfterLostAnswer() {
