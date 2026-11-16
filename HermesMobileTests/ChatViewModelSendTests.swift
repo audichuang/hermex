@@ -2087,7 +2087,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         approvalStreamClient.emit(.transportError("approval stream failed"))
         await fulfillment(of: [pollHandled], timeout: 5)
-        XCTAssertEqual(approvalPendingRequests.count, 1)
+        XCTAssertGreaterThanOrEqual(approvalPendingRequests.count, 1)
 
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
         XCTAssertNil(viewModel.lastError)

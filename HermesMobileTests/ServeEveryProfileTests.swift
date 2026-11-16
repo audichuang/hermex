@@ -31,7 +31,7 @@ import XCTest
         model.keepers[bot.id] = "dev"
         await model.removeDuplicates()?.value
 
-        let removal = try XCTUnwrap(HermesHostFixture.requests.first { $0.httpMethod == "DELETE" })
+        let removal = try XCTUnwrap(HermesHostFixture.requests.first { $0.httpMethod == "DELETE" && $0.url?.path == "/api/env" })
         let body = try JSONDecoder().decode(BotJSON.self, from: XCTUnwrap(apiTestBodyData(from: removal)))
         XCTAssertEqual(body["key"].text, "TELEGRAM_BOT_TOKEN")
         XCTAssertEqual(body["profile"].text, "default")
