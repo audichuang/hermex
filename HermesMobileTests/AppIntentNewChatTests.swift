@@ -65,6 +65,30 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatVoiceURL)
     }
 
+    // MARK: - Start Voice Call (#1091)
+
+    /// Start Voice Call queues its own link, which no other new-chat route takes, and on the active
+    /// Hermes server opens a new chat that starts a call instead of dictating.
+    @MainActor
+    func testStartVoiceCallOpensANewHermesChatThatStartsACall() async throws {
+        _ = try await NewVoiceCallIntent().perform()
+        let url = try XCTUnwrap(AppIntentRouter.shared.pendingDeepLink)
+        XCTAssertEqual(url, HermesDeepLink.newVoiceCallURL)
+        XCTAssertTrue(HermesDeepLink.isNewVoiceCallURL(url))
+        XCTAssertFalse(HermesDeepLink.isNewChatURL(url))
+        XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(url))
+        XCTAssertNil(HermesNewChatDestination(url: url))
+
+        let destination = try XCTUnwrap(HermesNewChatDestination.onActiveServer(
+            state: .loggedIn(server: studio), servers: servers, autoStartsVoiceInput: false, autoStartsVoiceCall: true))
+        let connection = BotConnection(id: UUID(), name: "Host", address: studio, username: "me", password: "secret")
+        let chat = try XCTUnwrap(destination.chat(on: HermesSessionListEntry(server: studio, connection: connection, profile: nil),
+                                                  listed: "default", isLive: true))
+        XCTAssertEqual(chat.target, .new(profile: "default"))
+        XCTAssertTrue(chat.autoStartsVoiceCall)
+        XCTAssertFalse(chat.autoStartsVoiceInput)
+    }
+
     // MARK: - On a Hermes server (#1180)
 
     private let hermes = URL(string: "https://hermes.example")!
