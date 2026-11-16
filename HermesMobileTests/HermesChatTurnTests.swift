@@ -1353,6 +1353,25 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime-2")])
     }
 
+    func testAVoiceCallEndsWhenItsBotChatIsReplaced() async {
+        let chat = await openChat(target: .canonicalChat(profile: "default"), history: [userRow("Old question")])
+        chat.model.suspendStreamForBackground()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()
+        chat.host.always("session.list", .init(result: .object(["sessions": .array([
+            .object(["id": .string("new-root"), "resolved_id": .string("new-tip")])
+        ])])))
+        chat.host.always("session.resume", .init(result: resume(running: false, runtime: "runtime-2", key: "new-tip")))
+        serveHistory([assistantRow("Fresh start", id: 1)], key: "new-tip")
+
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.root, "new-root")
+        XCTAssertEqual(chat.model.voiceCall?.status, .ended(.hungUp))
+        XCTAssertEqual(transport.closes, 1)
+    }
+
+
     func testAPlanParsesTolerantlyAndSkipsMalformedItems() {
         let plan = HermesPlan(.object([
             "revision": .number(3),

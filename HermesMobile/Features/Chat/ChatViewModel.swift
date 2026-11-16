@@ -7732,6 +7732,8 @@ extension ChatViewModel: HermesChatTurnDelegate {
     }
 
     func hermesBotChatWasReplaced() {
+        // The call was talking about the old chat (#1091).
+        endVoiceCall()
         messages = []
         hasOlderMessages = false
         latestRunOutcome = nil
