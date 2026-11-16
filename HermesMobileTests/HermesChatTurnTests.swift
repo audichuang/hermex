@@ -1552,6 +1552,26 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime-2")])
     }
 
+    /// A voice call on a Bot Chat the host replaced hangs up as the attach follows the new chat
+    /// (#1091): the call was about the old one.
+    func testAVoiceCallEndsWhenItsBotChatIsReplaced() async {
+        let chat = await openChat(target: .canonicalChat(profile: "default"), history: [userRow("Old question")])
+        chat.model.suspendStreamForBackground()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()
+        chat.host.always("session.list", .init(result: .object(["sessions": .array([
+            .object(["id": .string("new-root"), "resolved_id": .string("new-tip")])
+        ])])))
+        chat.host.always("session.resume", .init(result: resume(running: false, runtime: "runtime-2", key: "new-tip")))
+        serveHistory([assistantRow("Fresh start", id: 1)], key: "new-tip")
+
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.root, "new-root")
+        XCTAssertEqual(chat.model.voiceCall?.status, .ended(.hungUp))
+        XCTAssertEqual(transport.closes, 1)
+    }
+
     // MARK: Plan and outcome (#1139)
 
     /// The host's plan reads tolerantly: blank and malformed items drop, an item with no id
