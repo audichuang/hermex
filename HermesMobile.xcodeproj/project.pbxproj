@@ -1065,7 +1065,7 @@
 		6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceLiveProtocolTests.swift; sourceTree = "<group>"; };
 		6C11E000000000000000A302 /* HermesVoiceCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/HermesVoiceCall.swift"; sourceTree = "<group>"; };
 		6C11E000000000000000A304 /* HermesVoiceCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceCallTests.swift; sourceTree = "<group>"; };
-		6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCVoiceLiveTransport.swift; sourceTree = "<group>"; };
+		6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/WebRTCVoiceLiveTransport.swift"; sourceTree = "<group>"; };
 		C0DE22000000000000000004 /* ChatHapticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHapticsTests.swift; sourceTree = "<group>"; };
 		C08730000000000000000F01 /* HorizontalOverflowEdgeFadesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalOverflowEdgeFadesTests.swift; sourceTree = "<group>"; };
 		C08800000000000000000002 /* SessionHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHaptics.swift; sourceTree = "<group>"; };
