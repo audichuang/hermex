@@ -575,6 +575,8 @@ struct ChatView: View {
         model.hermesBotChatRoot = hermesSession?.botChatRoot
         model.hermesLineageRoot = hermesSession?.lineageRoot
         model.onHermesDraftKeyChange = onHermesDraftKeyChange
+        // Only a model made here: a kept one already took its request.
+        if continuity.model == nil, hermesSession?.autoStartsVoiceCall == true { model.requestVoiceCall() }
         _viewModel = State(initialValue: model)
         // Until its first report, a reader who wasn't following reads as away from the live edge,
         // so the bottom a rebuilt transcript opens at doesn't re-arm follow.
@@ -851,7 +853,8 @@ struct ChatView: View {
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
             hermesTranscriber: hermesTranscriber,
             voiceCall: viewModel.voiceCallInProgress,
-            onStartVoiceCall: viewModel.offersVoiceCall ? { Task { await viewModel.startVoiceCall() } } : nil
+            onStartVoiceCall: viewModel.offersVoiceCall ? { Task { await viewModel.startVoiceCall() } } : nil,
+            onStartRequestedVoiceCall: viewModel.isRequestedVoiceCallReady ? { Task { await viewModel.startRequestedVoiceCall() } } : nil
         )
         // The composer flips wholesale with the transcript under the RTL
         // toggle (#259): input, placeholder, and chrome mirror together.

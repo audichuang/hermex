@@ -917,6 +917,7 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
                                        username: "fixture", password: "fixture-only")
         var started = HermesSessionChat(server: server, connection: connection, target: .new(profile: "default"))
         started.autoStartsVoiceInput = true
+        started.autoStartsVoiceCall = true
         var covers = HermesSessionListCovers()
         covers.chat = started
         XCTAssertEqual(covers.building(started).target, .new(profile: "default"))
@@ -926,6 +927,7 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
         XCTAssertEqual(rebuilt.target, .session(profile: "default", key: "fresh"))
         XCTAssertEqual(rebuilt.id, started.id, "The live chat keeps its view identity")
         XCTAssertFalse(rebuilt.autoStartsVoiceInput, "A rebuild doesn't dictate again")
+        XCTAssertFalse(rebuilt.autoStartsVoiceCall, "A rebuild doesn't call again")
     }
 
     func testConfirmedSearchRowRemovalClosesOnlyItsOwnChat() {

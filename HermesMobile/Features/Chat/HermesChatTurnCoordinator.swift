@@ -97,6 +97,8 @@ struct HermesSessionChat: Hashable, Identifiable {
     var bot: BotProfile? = nil
     /// New Chat with Voice opened it on a Hermes server (#1180): its composer starts dictation.
     var autoStartsVoiceInput = false
+    /// Start Voice Call opened it (#1091): it starts a call once the host offers one.
+    var autoStartsVoiceCall = false
     /// What the share this new session opened for left out (#1401), which its composer says once.
     var shareNotice: SharedSkipsNotice? = nil
 
