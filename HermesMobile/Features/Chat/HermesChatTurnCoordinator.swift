@@ -944,6 +944,9 @@ struct HermesLostTurn: Equatable {
         try await engine.wire.voiceLiveSession(profile: engine.target.profile, sdp: sdp, history: history)
     }
 
+    /// The connection this chat's socket is on, which a voice call keeps open in the background.
+    var connection: HermesConnection? { (engine.wire as? BotClient)?.http }
+
     /// A prompt's answer was lost or unreadable: reattach and rebuild, so the snapshot shows
     /// whether it ran (#508). Nothing is resent. A chat already left attaches when it reopens.
     func recoverAfterLostAnswer() {

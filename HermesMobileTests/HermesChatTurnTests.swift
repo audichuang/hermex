@@ -713,6 +713,40 @@ import SwiftUI
         XCTAssertEqual(chat.model.voiceTurnReply, "It builds. \n\nTests pass.")
     }
 
+    /// A voice call keeps the chat attached through the background (#1091), so the reply it
+    /// delegated keeps streaming into the call; when the call ends there, the chat suspends then,
+    /// as the background would have, and its connection closes the socket (#902).
+    func testAVoiceCallKeepsTheChatAttachedInTheBackgroundUntilItEnds() async {
+        let chat = await openChat()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()
+        XCTAssertTrue(chat.model.isOnVoiceCall)
+
+        chat.client.http.closeForBackground()
+        chat.model.suspendStreamForBackground()
+        XCTAssertTrue(chat.turn.engine.isActive)
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+
+        chat.model.endVoiceCall()
+        XCTAssertFalse(chat.turn.engine.isActive)
+        XCTAssertFalse(chat.client.http.keepsAliveForCall)
+        XCTAssertFalse(chat.client.http.owesBackgroundClose)
+    }
+
+    /// Leaving the chat hangs up its voice call, closing the billed session (#1091).
+    func testLeavingTheChatEndsItsVoiceCall() async {
+        let chat = await openChat()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()
+
+        chat.model.suspendStreamForNavigation()
+        XCTAssertEqual(chat.model.voiceCall?.status, .ended(.hungUp))
+        XCTAssertEqual(transport.closes, 1)
+        XCTAssertFalse(chat.client.http.keepsAliveForCall)
+    }
+
     /// Sends queued behind a canonical turn stay separate admissions, one bubble each in the
     /// host's order, as its recorded `pending` lists them, and the next turn takes only its own.
     func testCanonicalQueuedSendsStaySeparateAdmissions() async throws {
@@ -2048,4 +2082,17 @@ private extension BotJSON {
         fields[key] = value
         return .object(fields)
     }
+}
+
+/// A voice call's session that opens at once and counts its closes.
+@MainActor private final class CallTransport: VoiceLiveTransport {
+    var onEvent: ((VoiceLiveServerEvent) -> Void)?
+    var onClosed: ((String) -> Void)?
+    var onSpeakingChange: ((Bool) -> Void)?
+    private(set) var closes = 0
+
+    func start(history: [BotJSON]) async throws {}
+    func send(_ event: BotJSON) {}
+    func setMuted(_ muted: Bool) {}
+    func close() { closes += 1 }
 }
