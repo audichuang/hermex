@@ -1031,6 +1031,13 @@ struct MessageComposerView: View {
         voiceCall != nil
     }
 
+    /// A voice call holds the microphone and audio session: this chat's, another chat's under a
+    /// pushed screen, or one still tearing down after End. Dictation and voice notes would take
+    /// the session from it (#1091).
+    private var isAudioHeldByCall: Bool {
+        isOnVoiceCall || ComposerAudioCaptureState.shared.isOnCall
+    }
+
     /// Dictation locks the draft from the mic tap until its words have landed.
     private var isDictating: Bool {
         voiceInput.state != .idle
@@ -1674,7 +1681,7 @@ struct MessageComposerView: View {
         }
 
         return holdsHostControls
-            || isOnVoiceCall
+            || isAudioHeldByCall
             || isSending
             || isCompressingSession
             || isWaitingForStream
@@ -1689,6 +1696,7 @@ struct MessageComposerView: View {
     private var isVoiceNoteRecordingDisabled: Bool {
         !showsSessionControls
             || holdsHostControls
+            || isAudioHeldByCall
             || isSending
             || isSendingVoiceNote
             || isCompressingSession

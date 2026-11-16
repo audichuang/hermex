@@ -25,10 +25,11 @@ enum VoiceLiveTransportError: LocalizedError {
 
 /// The WebRTC transport for a GPT-Live voice call (#1091), Hermes Desktop's `voice-live.ts`:
 /// one audio-only peer connection to OpenAI and its `oai-events` data channel. The host only
-/// mints the session; call audio goes from the phone straight to the vendor. It owns the
-/// microphone and the shared audio session for the call's lifetime and puts both back when it
-/// tears down. The host has no route that ends a session, so closing the peer connection is
-/// the only way to stop billing: every path ends in `finalize`.
+/// mints the session; call audio goes from the phone straight to the vendor. It holds the
+/// microphone and the shared audio session (`ComposerAudioCaptureState.claimCall`) from opening
+/// until it tears down and puts the session back; a newer call tears it down first. The host
+/// has no route that ends a session, so closing the peer connection is the only way to stop
+/// billing: every path ends in `finalize`.
 @MainActor final class WebRTCVoiceLiveTransport: VoiceLiveTransport {
     static let dataChannelLabel = "oai-events"
     static let iceGatheringTimeout: Duration = .seconds(10)
@@ -87,10 +88,14 @@ enum VoiceLiveTransportError: LocalizedError {
     }
 
     /// Desktop's graceful close: ask for `session.closed`, tear down when it comes or after 15 s.
-    /// The timer holds the transport, so a call its owner already dropped still tears down.
+    /// The user hears and is heard no more from now on. A session still opening has no open
+    /// channel, so it tears down at once and the opening stops at its next step. The timer holds
+    /// the transport, so a call its owner already dropped still tears down.
     func close() {
         guard !finalized, !closeRequested else { return }
         closeRequested = true
+        microphone?.isEnabled = false
+        peer?.receivers.forEach { $0.track?.isEnabled = false }
         guard sendNow(VoiceLiveClientEvents.close) else { return finalize(reason: "close_requested") }
         closeTimer = Task {
             try? await Task.sleep(for: Self.closeTimeout)
@@ -106,8 +111,12 @@ enum VoiceLiveTransportError: LocalizedError {
             throw VoiceLiveTransportError.microphoneDenied
         }
         try checkStillOpening()
+        // Before the session is read, so a call still tearing down puts it back first.
+        ComposerAudioCaptureState.shared.claimCall(self) { [self] in
+            _ = sendNow(VoiceLiveClientEvents.close)
+            finalize(reason: "replaced")
+        }
         audioSession = try VoiceCallAudioSession.begin()
-        ComposerAudioCaptureState.shared.setOnCall(true)
         observeInterruptions()
 
         _ = Self.sslReady
@@ -309,7 +318,7 @@ enum VoiceLiveTransportError: LocalizedError {
         peer?.close()
         channel = nil; microphone = nil; peer = nil; factory = nil
         audioSession?.end(); audioSession = nil
-        ComposerAudioCaptureState.shared.setOnCall(false)
+        ComposerAudioCaptureState.shared.releaseCall(self)
         if isSpeaking { isSpeaking = false; onSpeakingChange?(false) }
         if let reason { onClosed?(closeRequested ? "close_requested" : reason) }
     }
@@ -390,6 +399,8 @@ private final class WebRTCVoiceLiveRelay: NSObject, RTCPeerConnectionDelegate, R
         return previous
     }
 
+    /// `setActive(false)` deactivates on the last balanced call with
+    /// `.notifyOthersOnDeactivation` (`RTCAudioSession.h`), so music paused by the call resumes.
     func end() {
         let session = RTCAudioSession.sharedInstance()
         RTCAudioSessionConfiguration.setWebRTC(webRTCDefault)

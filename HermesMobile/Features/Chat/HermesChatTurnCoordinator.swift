@@ -2302,6 +2302,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         // The engine released the held frames just before this.
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
         needsSignIn = false
+        voiceTurnObserver?(.hermesRestored)
         delegate?.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
         if let historyFailure {
             reportHistoryFailure(historyFailure)
@@ -2351,6 +2352,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {
         endScreenUse()
         drivenLiveActivity?.markStale()
+        // A host that stays unreachable must not hold a voice call's delegation open forever (#1091).
+        voiceTurnObserver?(.hermesLost)
         if failure == .rejected(401) { needsSignIn = true }
         guard !retrying else { return }
         var unserved: HermesUnservedProfile?
@@ -2380,6 +2383,10 @@ enum HermesVoiceTurnEvent: Equatable {
     case settled(lostTrack: Bool)
     /// Some turn ended; the chat may be idle.
     case turnEnded
+    /// The chat's Hermes connection dropped, whether or not it is retrying.
+    case hermesLost
+    /// The chat attached again.
+    case hermesRestored
 }
 
 extension HermesChatTurnCoordinator {
