@@ -55,6 +55,7 @@ The gate is local and goes in the PR body:
 
 - the focused `scripts/test-sim <udid>` selection `AGENTS.md` § Verifying asks for, with its result;
 - `python3 ci/check_string_catalog.py --derived-data .build/DerivedData --configuration Debug-iphonesimulator`;
+- `scripts/fork/check-locales` when the catalog changed: a new or changed string has every upstream locale;
 - for UI, evidence of how it looks (simulator or device screenshot, or a rendered view).
 
 ## Simulators on this Mac
@@ -134,17 +135,23 @@ Put the fork's commits back on top of the newest upstream `master`. Work from on
 git fetch --multiple origin fork
 base=$(git rev-parse fork/develop)
 git push fork "${base}:refs/heads/backup/develop-$(date +%Y%m%d)"   # rollback point
-git switch --detach "$base"
+git worktree add --detach ../hermex-wt/rebase "$base" && cd ../hermex-wt/rebase   # never the main checkout
 git rebase --onto origin/master $(git merge-base "$base" origin/master)
-# resolve conflicts commit by commit; a fork commit upstream already took comes out empty: drop it
+# resolve conflicts commit by commit; a fork commit upstream already took comes out empty: drop it.
+# If upstream merged it reworked, it conflicts instead: git checkout --ours <files>, then git rebase --skip
 # recheck every upstreamable commit against the new upstream (a locale it added, an API it renamed)
-# and fold fixes in: git commit --fixup=<owner>, then git rebase -i --autosquash origin/master
+# (scripts/fork/check-locales) and fold fixes in: git commit --fixup=<owner>, then
+# GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash origin/master
 # run the merge gate, then:
 git push --force-with-lease=develop:${base} fork HEAD:refs/heads/develop
 ```
 
 Rebase open PR branches afterwards with `git rebase --onto fork/develop <their old base>`. Released commits
 stay reachable through their `testflight/*` tags.
+
+The first release after a rebase always stops at the `main` check: the old `main` is on the old history.
+Run `git range-diff <old base>..<backup> origin/master..HEAD`; use `ALLOW_DROP=1` only when the missing
+commits are ones upstream merged and the only changed ones are those whose conflicts you resolved.
 
 ## Upstream PRs
 
@@ -161,7 +168,8 @@ stay reachable through their `testflight/*` tags.
    - `gh --attach` needs write access to the target repo, so it fails upstream. Upload with `--attach` on a
      fork PR or issue and paste the resulting `user-attachments` URL.
 3. `gh pr create -R uzairansaruzi/hermex --head audichuang:upstream/<topic>`. Once upstream merges it, the
-   next rebase drops the fork's copy as empty.
+   next rebase drops the fork's copy (see Upstream rebase). Then check `upstream/<topic>` still points at
+   the PR's merged head (`gh pr view <n> --json headRefOid`) and delete it on `fork` and locally.
 4. Upstream CI runs on fresh hosted runners. Some ship a broken `iPhone 17` simulator and fail before
    building (`Unable to find a device matching the provided destination specifier`), and an unrelated test
    can fail once. Rerun a failing test locally on the branch before blaming the runner. We can't rerun
