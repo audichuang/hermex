@@ -849,7 +849,9 @@ struct ChatView: View {
             showsNewChatControls: showsNewChatControls,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
-            hermesTranscriber: hermesTranscriber
+            hermesTranscriber: hermesTranscriber,
+            voiceCall: viewModel.voiceCallInProgress,
+            onStartVoiceCall: viewModel.offersVoiceCall ? { Task { await viewModel.startVoiceCall() } } : nil
         )
         // The composer flips wholesale with the transcript under the RTL
         // toggle (#259): input, placeholder, and chrome mirror together.
@@ -2936,7 +2938,8 @@ struct ChatView: View {
         async let chatStartup: Void = performInitialAsyncWork()
         async let gitAvailability: Void = loadInitialGitAvailability()
         async let draftAttachments: Void = restoreDraftAttachmentsIfNeeded()
-        _ = await (chatStartup, gitAvailability, draftAttachments)
+        async let voiceCallOffer: Void = viewModel.loadVoiceCallOffer()
+        _ = await (chatStartup, gitAvailability, draftAttachments, voiceCallOffer)
     }
 
     private func performInitialAsyncWork() async {

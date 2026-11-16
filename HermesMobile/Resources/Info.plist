@@ -112,7 +112,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Hermex connects to your Hermes backend on your local network to load bots and chat.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Hermex needs microphone access to dictate text into the message composer.</string>
+	<string>Hermex needs microphone access to dictate text into the message composer and for voice calls. Voice call audio goes from this iPhone directly to OpenAI, not through your Hermes server.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Hermex needs camera access to capture and attach photos directly in chat.</string>
 	<key>NSFaceIDUsageDescription</key>
