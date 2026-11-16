@@ -52,6 +52,7 @@ struct ContentView: View {
             .onChange(of: scenePhase) {
                 if scenePhase == .background { HermesConnections.shared.closeForBackground() }
                 guard scenePhase == .active else { return }
+                HermesConnections.shared.returnedFromBackground()
                 Task { await UsageReports.shared.appBecameActive() }
                 importPendingSharedDraftIfAvailable()
                 Task { await reconcileOrphanedLiveActivities(notifiesOnCompletion: false) }

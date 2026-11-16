@@ -733,6 +733,8 @@ final class ChatViewModel {
         listenPreparationTask?.cancel()
         listenPlaybackTicker?.invalidate()
         initialSessionPrefetch?.task.cancel()
+        // A voice call is billed until its session closes, so the model going hangs it up (#1091).
+        if let call = _voiceCall { Task { @MainActor in call.end() } }
     }
 
     func setShowsLiveActivityResponseExcerpts(_ shows: Bool) {
@@ -2948,6 +2950,26 @@ final class ChatViewModel {
 
     @ObservationIgnored var makeVoiceLiveTransport: @MainActor (@escaping VoiceLiveSessionOpener) -> any VoiceLiveTransport = {
         WebRTCVoiceLiveTransport(openSession: $0)
+    }
+
+    private(set) var voiceCall: HermesVoiceCall?
+
+    var isOnVoiceCall: Bool { voiceCall.map { !$0.isEnded } ?? false }
+
+    func startVoiceCall() async {
+        guard !isOnVoiceCall, let call = makeVoiceCall() else { return }
+        let connection = hermesTurn?.connection
+        voiceCall = call
+        connection?.keepsAliveForCall = true
+        call.onEnded = { [weak self, connection] in
+            if connection?.owesBackgroundClose == true { self?.suspendStreamForBackground() }
+            connection?.keepsAliveForCall = false
+        }
+        await call.start()
+    }
+
+    func endVoiceCall() {
+        voiceCall?.end()
     }
 
     func makeVoiceCall() -> HermesVoiceCall? {
@@ -6007,12 +6029,16 @@ final class ChatViewModel {
         }
     }
 
+    /// A voice call keeps the chat attached in the background (#1091); it suspends when the call ends.
     func suspendStreamForBackground() {
+        guard !isOnVoiceCall else { return }
         pauseWaitingSend()
         suspendActiveStreamConnection()
     }
 
+    /// Leaving the chat hangs up its voice call (#1091).
     func suspendStreamForNavigation() {
+        endVoiceCall()
         suspendActiveStreamConnection()
     }
 

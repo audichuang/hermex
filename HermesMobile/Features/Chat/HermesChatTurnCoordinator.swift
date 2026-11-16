@@ -605,6 +605,8 @@ struct HermesLostTurn: Equatable {
         try await engine.wire.voiceLiveSession(profile: engine.target.profile, sdp: sdp, history: history)
     }
 
+    var connection: HermesConnection? { (engine.wire as? BotClient)?.http }
+
     func recoverAfterLostAnswer() {
         guard engine.isActive else { return }
         rebuildAfterGap()

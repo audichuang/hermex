@@ -86,6 +86,25 @@ import OSLog
         ([liveGateway] + profileGateways.values.map(\.gateway)).compactMap { $0 }
     }
 
+    var keepsAliveForCall = false {
+        didSet { if !keepsAliveForCall, owesBackgroundClose { closeForBackground() } }
+    }
+    private(set) var owesBackgroundClose = false
+
+    func closeForBackground() {
+        guard !keepsAliveForCall else {
+            if !owesBackgroundClose { HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): kept open in background, voice call") }
+            owesBackgroundClose = true
+            return
+        }
+        owesBackgroundClose = false
+        liveGateways.forEach { $0.closeForBackground() }
+    }
+
+    func returnedFromBackground() {
+        owesBackgroundClose = false
+    }
+
     func makeConsumerID() -> Int {
         consumerCount += 1
         return consumerCount
@@ -551,7 +570,12 @@ import OSLog
     }
 
     func closeForBackground() {
-        current?.liveGateways.forEach { $0.closeForBackground() }
+        current?.closeForBackground()
+    }
+
+    /// The app is active again: a voice call that ends now leaves the socket open (#1091).
+    func returnedFromBackground() {
+        current?.returnedFromBackground()
     }
 
     func networkPathDidChange() {

@@ -818,6 +818,36 @@ import SwiftUI
         XCTAssertEqual(chat.model.voiceTurnReply, "It builds. \n\nTests pass.")
     }
 
+    func testAVoiceCallKeepsTheChatAttachedInTheBackgroundUntilItEnds() async {
+        let chat = await openChat()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()
+        XCTAssertTrue(chat.model.isOnVoiceCall)
+
+        chat.client.http.closeForBackground()
+        chat.model.suspendStreamForBackground()
+        XCTAssertTrue(chat.turn.engine.isActive)
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+
+        chat.model.endVoiceCall()
+        XCTAssertFalse(chat.turn.engine.isActive)
+        XCTAssertFalse(chat.client.http.keepsAliveForCall)
+        XCTAssertFalse(chat.client.http.owesBackgroundClose)
+    }
+
+    func testLeavingTheChatEndsItsVoiceCall() async {
+        let chat = await openChat()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()
+
+        chat.model.suspendStreamForNavigation()
+        XCTAssertEqual(chat.model.voiceCall?.status, .ended(.hungUp))
+        XCTAssertEqual(transport.closes, 1)
+        XCTAssertFalse(chat.client.http.keepsAliveForCall)
+    }
+
     func testCanonicalQueuedSendsStaySeparateAdmissions() async throws {
         let rows = try XCTUnwrap(try canonical("canonical-resume-queued")["pending"].list)
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(running: true, pending: rows), canonical: true)
@@ -1999,4 +2029,17 @@ private extension BotJSON {
         fields[key] = value
         return .object(fields)
     }
+}
+
+/// A voice call's session that opens at once and counts its closes.
+@MainActor private final class CallTransport: VoiceLiveTransport {
+    var onEvent: ((VoiceLiveServerEvent) -> Void)?
+    var onClosed: ((String) -> Void)?
+    var onSpeakingChange: ((Bool) -> Void)?
+    private(set) var closes = 0
+
+    func start(history: [BotJSON]) async throws {}
+    func send(_ event: BotJSON) {}
+    func setMuted(_ muted: Bool) {}
+    func close() { closes += 1 }
 }
