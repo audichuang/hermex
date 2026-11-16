@@ -21,11 +21,15 @@ struct ContentView: View {
                 // Cold launch: an App Intent may have queued a deep link before this
                 // view appeared (e.g. Action button "New Chat"). Drain it now (#337).
                 drainPendingIntentDeepLink()
+                drainPendingVoiceCall()
                 await UsageReports.shared.appBecameActive()
             }
             .onChange(of: intentRouter.pendingDeepLink) {
                 // Warm launch: the intent set the deep link after the view appeared.
                 drainPendingIntentDeepLink()
+            }
+            .onChange(of: intentRouter.pendingVoiceCall) {
+                drainPendingVoiceCall()
             }
             .onChange(of: authManager.state) {
                 // A held conversation link resolves again once sign-in or a server switch
@@ -157,11 +161,7 @@ struct ContentView: View {
 
     private func handleOpenURL(_ url: URL) {
         Task { await AgentLiveActivityManager.shared.dismissFinishedActivity(from: url) }
-        pendingLinks.webuiPush = nil
-        pendingLinks.hermesSession = nil
-        pendingLinks.hermesNewChat = nil
-        pendingLinks.hermesUsage = nil
-        pendingLinks.botWidget = nil
+        clearPendingLinks()
         if let destination = WebuiPushDestination(url: url) {
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
             return
@@ -172,13 +172,6 @@ struct ContentView: View {
         // `autoStartsVoiceInput` so the composer begins dictation once it appears (#338).
         if HermesDeepLink.isNewChatVoiceURL(url) {
             openNewChat(autoStartsVoiceInput: true)
-            return
-        }
-
-        // Start Voice Call (#1091): a new Hermes session that starts a call once its host offers
-        // one. A webui server has no calls, so it opens New Chat with Voice there.
-        if HermesDeepLink.isNewVoiceCallURL(url) {
-            openNewChat(autoStartsVoiceInput: true, autoStartsVoiceCall: true)
             return
         }
 
@@ -320,6 +313,24 @@ struct ContentView: View {
         guard let url = intentRouter.pendingDeepLink else { return }
         intentRouter.pendingDeepLink = nil
         handleOpenURL(url)
+    }
+
+    /// Start Voice Call (#1091), in-process only: a new Hermes session that starts a call once its
+    /// host offers one. A webui server has no calls, so it opens New Chat with Voice there.
+    private func drainPendingVoiceCall() {
+        guard intentRouter.pendingVoiceCall != nil else { return }
+        intentRouter.pendingVoiceCall = nil
+        clearPendingLinks()
+        openNewChat(autoStartsVoiceInput: true, autoStartsVoiceCall: true)
+    }
+
+    /// A new link or request replaces whatever an earlier one still waits to open.
+    private func clearPendingLinks() {
+        pendingLinks.webuiPush = nil
+        pendingLinks.hermesSession = nil
+        pendingLinks.hermesNewChat = nil
+        pendingLinks.hermesUsage = nil
+        pendingLinks.botWidget = nil
     }
 
     private func importPendingSharedDraftIfAvailable() {

@@ -60,23 +60,6 @@ enum HermesDeepLink {
             && url.host?.lowercased() == newChatVoiceHost
     }
 
-    /// Host for "open a new chat *and* start a voice call", used by the "Start Voice Call" App
-    /// Intent (#1091). Its own host, so no other new-chat link starts a billed call.
-    static let newVoiceCallHost = "new-voice-call"
-
-    /// `hermes-agent://new-voice-call` (scheme follows the active build, e.g. `-branch`).
-    static var newVoiceCallURL: URL? {
-        var components = URLComponents()
-        components.scheme = scheme
-        components.host = newVoiceCallHost
-        return components.url
-    }
-
-    static func isNewVoiceCallURL(_ url: URL) -> Bool {
-        url.scheme?.lowercased() == scheme
-            && url.host?.lowercased() == newVoiceCallHost
-    }
-
     /// Host for "open the New Chat composer pinned to a specific profile", used by the
     /// "New Chat in <Profile>" App Intent (issue #339). A distinct host from the other
     /// new-chat hosts so the three intents never alias; the profile name rides as a query
