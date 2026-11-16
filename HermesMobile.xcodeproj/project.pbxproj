@@ -100,6 +100,8 @@
 		1A2B3C4D5E6F700000000008 /* KeychainAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F700000000098 /* KeychainAccess */; };
 		5417A7400000000000000092 /* SwiftMath in Frameworks */ = {isa = PBXBuildFile; productRef = 5417A7400000000000000091 /* SwiftMath */; };
 		6C11E000000000000000A092 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 6C11E000000000000000A091 /* WebRTC */; };
+		6C11E000000000000000A201 /* VoiceLiveProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A202 /* VoiceLiveProtocol.swift */; };
+		6C11E000000000000000A203 /* VoiceLiveProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */; };
 		6C11E000000000000000A001 /* WebRTCVoiceLiveTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */; };
 		1A2B3C4D5E6F7000000000A0 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */; };
 		1A2B3C4D5E6F7000000000A1 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B1 /* AuthManager.swift */; };
@@ -1057,6 +1059,8 @@
 		C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitControlsVisibilityPolicy.swift; sourceTree = "<group>"; };
 		C27800000000000000000004 /* ChatGitControlsVisibilityPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitControlsVisibilityPolicyTests.swift; sourceTree = "<group>"; };
 		C0DE22000000000000000002 /* ChatHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHaptics.swift; sourceTree = "<group>"; };
+		6C11E000000000000000A202 /* VoiceLiveProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/VoiceLiveProtocol.swift"; sourceTree = "<group>"; };
+		6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceLiveProtocolTests.swift; sourceTree = "<group>"; };
 		6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCVoiceLiveTransport.swift; sourceTree = "<group>"; };
 		C0DE22000000000000000004 /* ChatHapticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHapticsTests.swift; sourceTree = "<group>"; };
 		C08730000000000000000F01 /* HorizontalOverflowEdgeFadesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalOverflowEdgeFadesTests.swift; sourceTree = "<group>"; };
@@ -1722,6 +1726,7 @@
 				C0390000000000000000000D /* APIClientUploadTests.swift */,
 				C03250000000000000F105 /* APIClientTranscribeTests.swift */,
 				C03260000000000000F102 /* APIClientTTSTests.swift */,
+				6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */,
 				C03270000000000000F102 /* APIClientSessionExportTests.swift */,
 				C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */,
 				C03251000000000000F106 /* ComposerVoiceInputServerRecordingTests.swift */,
@@ -2277,6 +2282,7 @@
 				0D1CE5F12B9E4D4D9E5A01C1 /* SlashCommandExecutor.swift */,
 				FC2A37872AC842629FBDDFA4 /* SlashCommandAutocompleteView.swift */,
 				6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */,
+				6C11E000000000000000A202 /* VoiceLiveProtocol.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -3149,6 +3155,7 @@
 				C27800000000000000000001 /* ChatGitControlsVisibilityPolicy.swift in Sources */,
 				C0DE22000000000000000001 /* ChatHaptics.swift in Sources */,
 				6C11E000000000000000A001 /* WebRTCVoiceLiveTransport.swift in Sources */,
+				6C11E000000000000000A201 /* VoiceLiveProtocol.swift in Sources */,
 				C08800000000000000000001 /* SessionHaptics.swift in Sources */,
 				031031031031031031031009 /* DisplayMathView.swift in Sources */,
 				031031031031031031031001 /* MarkdownMathSegmenter.swift in Sources */,
@@ -3330,6 +3337,7 @@
 				C0391000000000000000000D /* APIClientUploadTests.swift in Sources */,
 				C03250000000000000B105 /* APIClientTranscribeTests.swift in Sources */,
 				C03260000000000000B102 /* APIClientTTSTests.swift in Sources */,
+				6C11E000000000000000A203 /* VoiceLiveProtocolTests.swift in Sources */,
 				C03270000000000000B102 /* APIClientSessionExportTests.swift in Sources */,
 				C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */,
 				C03251000000000000B106 /* ComposerVoiceInputServerRecordingTests.swift in Sources */,
