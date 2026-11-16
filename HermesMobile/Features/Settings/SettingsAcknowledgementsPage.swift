@@ -27,6 +27,7 @@ struct AcknowledgementNotice: Hashable {
         case "Splash": URL(staticString: "https://github.com/JohnSundell/Splash")
         case "swift-cmark": URL(staticString: "https://github.com/swiftlang/swift-cmark")
         case "SwiftMath": URL(staticString: "https://github.com/mgriebling/SwiftMath")
+        case "WebRTC": URL(staticString: "https://github.com/stasel/WebRTC")
         default: nil
         }
     }
