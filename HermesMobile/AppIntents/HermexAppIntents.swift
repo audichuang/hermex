@@ -17,7 +17,16 @@ final class AppIntentRouter {
     /// appeared (cold launch) or after (warm launch).
     var pendingDeepLink: URL?
 
+    /// Start Voice Call's request (#1091), drained by `ContentView` like `pendingDeepLink`. It has
+    /// no URL: any app or link can open one without asking, and a call opens the microphone and
+    /// bills the user's OpenAI key. New on every request, so a repeat press opens another chat.
+    var pendingVoiceCall: UUID?
+
     private init() {}
+
+    func requestVoiceCall() {
+        pendingVoiceCall = UUID()
+    }
 
     /// Records a deep link for the view layer to route. No-op on a nil URL so callers can
     /// pass the optional `HermesDeepLink` builders without unwrapping.
@@ -110,7 +119,7 @@ struct NewVoiceCallIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         UsageReports.shared.record(.appIntents)
-        AppIntentRouter.shared.requestDeepLink(HermesDeepLink.newVoiceCallURL)
+        AppIntentRouter.shared.requestVoiceCall()
         return .result()
     }
 }
