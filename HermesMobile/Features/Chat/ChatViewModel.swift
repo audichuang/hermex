@@ -3516,17 +3516,30 @@ final class ChatViewModel {
     /// ends, so views that only ask "is a call on" don't follow its status or captions.
     private(set) var voiceCallInProgress: HermesVoiceCall?
 
-    /// Whether this chat offers Call: its host's Profile chose GPT-Live and can run it. Read once
-    /// as the chat opens, on the chat's own connection; never on a webui chat (#1091).
+    /// Whether this chat offers Call: its host's Profile chose GPT-Live and can run it. Read on
+    /// the chat's own connection once the host answers; never on a webui chat (#1091).
     private(set) var offersVoiceCall = false
-    @ObservationIgnored private var didLoadVoiceCallOffer = false
+    @ObservationIgnored private var didReadVoiceCallOffer = false
+    /// The read in flight, for tests to await.
+    @ObservationIgnored private(set) var voiceCallOfferRead: Task<Void, Never>?
 
-    func loadVoiceCallOffer() async {
-        guard let hermesTurn, !didLoadVoiceCallOffer else { return }
-        didLoadVoiceCallOffer = true
-        // A failed read leaves Call hidden: an older host answers 404, and nothing else is billed.
-        let status = try? await hermesTurn.voiceLiveStatus()
-        offersVoiceCall = status?.offersCall == true
+    /// Asks the host as the chat attaches, until it answers. An older host's 404 is an answer
+    /// (no Call); a read the socket's loss cut short tries again at the next attach.
+    private func readVoiceCallOfferIfNeeded() {
+        guard let hermesTurn, !didReadVoiceCallOffer, voiceCallOfferRead == nil else { return }
+        voiceCallOfferRead = Task { [weak self, hermesTurn] in
+            let status: HermesVoiceLiveStatus?
+            do {
+                status = try await hermesTurn.voiceLiveStatus()
+            } catch {
+                self?.voiceCallOfferRead = nil
+                return
+            }
+            guard let self else { return }
+            voiceCallOfferRead = nil
+            didReadVoiceCallOffer = true
+            offersVoiceCall = status?.offersCall == true
+        }
     }
 
     /// What the composer says when a call ends without the user hanging up.
@@ -9053,6 +9066,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
             if errorMessage != nil { errorMessage = nil }
             if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
             releaseSubmissionMark()
+            readVoiceCallOfferIfNeeded()
             deliverWaitingSendIfReady()
             if needsHermesForkCheck { Task { [weak self] in await self?.resolveHermesForkOrigin() } }
             return

@@ -962,6 +962,16 @@ import SwiftUI
         XCTAssertFalse(chat.client.http.keepsAliveForCall)
     }
 
+    /// Call shows once the chat's own host says its Profile runs GPT-Live (#1091).
+    func testCallShowsWhenTheChatsHostRunsGPTLive() async {
+        let chat = await openChat(voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        await chat.model.voiceCallOfferRead?.value
+
+        XCTAssertTrue(chat.model.offersVoiceCall)
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/audio/voice-live/status" }
+            .map { $0.url?.query }, ["profile=default"])
+    }
+
     /// A call the host refuses ends at once, and the composer shows the host's reason where it
     /// shows a failed send; the call row goes (#1091).
     func testARefusedVoiceCallShowsTheHostsReasonInTheComposer() async {
@@ -2056,7 +2066,8 @@ import SwiftUI
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
                           rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
                           botChatRoot: String? = nil, ratingPromptState: RatingPromptState? = nil,
-                          replay: BotJSON? = nil, noticeTimer: HermesHostNotices.Timer? = nil) async -> Chat {
+                          replay: BotJSON? = nil, noticeTimer: HermesHostNotices.Timer? = nil,
+                          voiceLive: BotJSON? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
@@ -2068,7 +2079,7 @@ import SwiftUI
             "messages": .array([]), "info": .object(["profile_name": .string(profile)])
         ])))
         let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline, canonical: canonical))
-        serveHistory(history, key: key)
+        serveHistory(history, key: key, voiceLive: voiceLive)
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: target ?? .session(profile: profile, key: key), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, lineageRoot: lineageRoot,
@@ -2302,8 +2313,9 @@ import SwiftUI
     }
 
     /// Serves `rows` as session `key`'s settled history, every page the same.
-    private func serveHistory(_ rows: [BotJSON], key: String = "tip") {
+    private func serveHistory(_ rows: [BotJSON], key: String = "tip", voiceLive: BotJSON? = nil) {
         _ = HermesHostFixture.configuration { request in
+            if let voiceLive, request.url?.path == "/api/audio/voice-live/status" { return .json(200, voiceLive) }
             guard request.url?.path == "/api/sessions/\(key)/messages" else { return nil }
             return .json(200, .object(["session_id": .string(key), "messages": .array(rows)]))
         }
