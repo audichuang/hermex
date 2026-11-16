@@ -19,6 +19,10 @@ struct HermesVoiceLiveStatus: Equatable, Sendable {
         self.init(mode: body["mode"].text, available: body["available"].flag == true, reason: body["reason"].text,
                   model: body["model"].text, voice: body["voice"].text)
     }
+
+    /// Whether the chat offers Call: the Profile chose GPT-Live and a key resolves, as Hermes
+    /// Desktop gates it. `available` alone would show a billed call on a Profile that never chose it.
+    var offersCall: Bool { mode == "gpt-live" && available }
 }
 
 /// A GPT-Live session the host minted for one call: the vendor's answer to the offer.

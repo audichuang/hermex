@@ -166,6 +166,14 @@ final class APIClientTTSTests: APIClientTestCase {
         XCTAssertNil(older)
     }
 
+    /// Call shows only for a Profile that chose GPT-Live and can run it: a key alone (the generic
+    /// `OPENAI_API_KEY`) would otherwise offer a billed call on a chained Profile.
+    func testCallShowsOnlyForAProfileThatChoseGPTLiveAndCanRunIt() {
+        XCTAssertTrue(HermesVoiceLiveStatus(mode: "gpt-live", available: true).offersCall)
+        XCTAssertFalse(HermesVoiceLiveStatus(mode: "chained", available: true).offersCall)
+        XCTAssertFalse(HermesVoiceLiveStatus(mode: "gpt-live", available: false).offersCall)
+    }
+
     /// The host waits on the vendor, so the offer goes out on the long deadline, and the answer
     /// comes back for the peer connection.
     func testTheSessionTradesTheOfferForTheAnswerOnTheLongDeadline() async throws {

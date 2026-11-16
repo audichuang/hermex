@@ -2956,14 +2956,43 @@ final class ChatViewModel {
 
     var isOnVoiceCall: Bool { voiceCall.map { !$0.isEnded } ?? false }
 
+    private(set) var voiceCallInProgress: HermesVoiceCall?
+
+    private(set) var offersVoiceCall = false
+    @ObservationIgnored private var didLoadVoiceCallOffer = false
+
+    func loadVoiceCallOffer() async {
+        guard let hermesTurn, !didLoadVoiceCallOffer else { return }
+        didLoadVoiceCallOffer = true
+        let status = try? await hermesTurn.voiceLiveStatus()
+        offersVoiceCall = status?.offersCall == true
+    }
+
+    static func voiceCallEndMessage(_ reason: HermesVoiceCall.EndReason) -> String? {
+        switch reason {
+        case .hungUp: nil
+        case .failed(let detail): detail
+        case .closed: String(localized: "The voice call disconnected.")
+        case .inactive: String(localized: "The voice call ended after 10 quiet minutes.")
+        }
+    }
+
     func startVoiceCall() async {
         guard !isOnVoiceCall, let call = makeVoiceCall() else { return }
         let connection = hermesTurn?.connection
+        // A new call's row replaces the last one's error.
+        if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }
         voiceCall = call
+        voiceCallInProgress = call
         connection?.keepsAliveForCall = true
-        call.onEnded = { [weak self, connection] in
+        call.onEnded = { [weak self, weak call, connection] in
             if connection?.owesBackgroundClose == true { self?.suspendStreamForBackground() }
             connection?.keepsAliveForCall = false
+            guard let self else { return }
+            if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
+            if case .ended(let reason)? = call?.status, let message = Self.voiceCallEndMessage(reason) {
+                self.sendErrorMessage = message
+            }
         }
         await call.start()
     }
