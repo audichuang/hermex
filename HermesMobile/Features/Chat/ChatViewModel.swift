@@ -3033,7 +3033,7 @@ final class ChatViewModel {
         }
     }
 
-    @ObservationIgnored private var owesNavigationSuspend = false
+    @ObservationIgnored private(set) var owesNavigationSuspend = false
 
     @discardableResult
     func startVoiceCall() -> Task<Void, Never>? {
