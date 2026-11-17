@@ -3038,7 +3038,9 @@ final class ChatViewModel {
     }
 
     @ObservationIgnored private var owesNavigationSuspend = false
-    @ObservationIgnored var viewsOnScreen = 0
+    @ObservationIgnored var viewsOnScreen = 0 {
+        didSet { if oldValue == 0, viewsOnScreen > 0 { liveCall.follow(self) } }
+    }
 
     @discardableResult
     func startVoiceCall() -> Task<Void, Never>? {
@@ -3049,29 +3051,53 @@ final class ChatViewModel {
             return nil
         }
         guard let call = makeVoiceCall() else { return nil }
-        let connection = hermesTurn?.connection
         // A new call's row replaces the last one's error.
         if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }
-        voiceCall = call
-        voiceCallInProgress = call
-        connection?.callStarted()
-        connection?.onRetire = { [weak call] in call?.end() }
+        voiceCallArrived(call)
         liveCall.begin(call, model: self)
-        call.onEnded = { [weak self, weak call, connection] in
-            guard let self else { return }
-            if self.owesNavigationSuspend {
-                self.owesNavigationSuspend = false
-                self.suspendActiveStreamConnection()
-            } else if connection?.owesBackgroundClose == true {
-                self.suspendStreamForBackground()
-            }
-            connection?.callEnded()
-            connection?.onRetire = nil
-            // The call bar says why a call dropped, and offers Call again.
-            if let call { self.liveCall.ended(call) }
-            if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
+        // The call may have moved to another chat by then; the app's call owner lets that one go.
+        call.onEnded = { [weak call, liveCall] in
+            if let call { liveCall.ended(call) }
         }
         return Task { [call] in await call.start() }
+    }
+
+    /// The chat's session is read-only (a delegated subagent's, or one the host marks so): it takes
+    /// no Send, so a voice call never moves to it or delegates into it. `ChatView` sets it.
+    @ObservationIgnored var isReadOnlyForVoice = false
+
+    /// The connection `voiceCallArrived` holds open for the call, released by `voiceCallLeft`.
+    @ObservationIgnored private var voiceCallConnection: HermesConnection?
+
+    /// The app's call now talks on this chat, from its start or moved here from the chat the user
+    /// left: the chat's connection keeps its socket through the background and its stream under a
+    /// pushed screen, so the delegated reply keeps streaming into the call.
+    func voiceCallArrived(_ call: HermesVoiceCall) {
+        voiceCall = call
+        voiceCallInProgress = call
+        let connection = hermesTurn?.connection
+        voiceCallConnection = connection
+        connection?.callStarted()
+        connection?.onRetire = { [weak call] in call?.end() }
+    }
+
+    /// The call ended, or moved to the chat the user opened: this chat lets go of what it held
+    /// for it, suspending in the background or with no view of it on screen. An ended call stays
+    /// as `voiceCall` with its reason; a moved one leaves none.
+    func voiceCallLeft(_ call: HermesVoiceCall) {
+        guard voiceCallInProgress === call else { return }
+        voiceCallInProgress = nil
+        if !call.isEnded { voiceCall = nil }
+        let connection = voiceCallConnection
+        voiceCallConnection = nil
+        if owesNavigationSuspend {
+            owesNavigationSuspend = false
+            suspendActiveStreamConnection()
+        } else if connection?.owesBackgroundClose == true {
+            suspendStreamForBackground()
+        }
+        connection?.callEnded()
+        connection?.onRetire = nil
     }
 
     func endVoiceCall() {
@@ -3089,7 +3115,7 @@ final class ChatViewModel {
 
     func submitVoicePrompt(_ prompt: String, context: String) async -> Bool {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let hermes = hermesTurn, hermes.isIdle, !text.isEmpty, !isViewingCachedData, !isClearingConversation,
+        guard let hermes = hermesTurn, hermes.isIdle, !text.isEmpty, !isReadOnlyForVoice, !isViewingCachedData, !isClearingConversation,
               !isHoldingWaitingSend, !isHermesSubmissionUncertain else { return false }
         let promptID = "local-\(UUID().uuidString)"
         isStartingChat = true

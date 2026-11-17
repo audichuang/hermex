@@ -98,6 +98,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         static let resultInChat = "Hermes finished; the result is in the chat."
         static let needsApproval = "Hermes needs your approval on the phone screen."
         static let stillWaiting = "That request is still waiting for your approval on the phone screen."
+        static let movedChat = "The user opened another chat. That request goes on in the previous chat, and its result will be there."
         static func working(_ tool: String) -> String { "Hermes is working: \(tool). Not done yet." }
     }
 
@@ -189,6 +190,27 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         let live = onLive
         onLive = nil
         live?()
+    }
+
+    /// The call now talks on `next`, the chat the user opened, as Hermes Desktop's call follows
+    /// its window's open chat: a delegation not yet sent, and every later one, goes there. One
+    /// already sent stays with the chat it went to and is no longer spoken; the voice hears where
+    /// its result will be. The session is not seeded again: the voice keeps what it heard.
+    func move(to next: any VoiceCallChatPort) {
+        guard !isEnded, next !== chat else { return }
+        chat?.voiceTurnEvents = nil
+        if let current = delegation, current.phase != .waiting {
+            delegation = nil
+            think(Line.movedChat, delegationID: current.id)
+        }
+        interruptSent = false
+        cancelHermesLostGrace?(); cancelHermesLostGrace = nil
+        chat = next
+        if didStart { next.voiceTurnEvents = { [weak self] in self?.receiveTurn($0) } }
+        guard isLive else { return }
+        refreshStatus()
+        armInactivity()
+        if delegation != nil { advance() }
     }
 
     /// Hangs up; `reason` says why when it isn't the user.

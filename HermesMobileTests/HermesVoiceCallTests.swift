@@ -305,6 +305,31 @@ import XCTest
     /// The calls under test: the session's callbacks hold theirs weakly, as the chat will.
     private var calls: [HermesVoiceCall] = []
 
+    /// Desktop's call talks on the open chat: once the user opens another, a request in flight
+    /// stays with its chat and is no longer spoken, and the next request goes to the new chat.
+    func testMovingToAnotherChatSendsTheNextRequestThereAndStopsSpeakingTheOldTurn() async {
+        let (call, transport, first, _) = await startedCall()
+        await delegate(transport, first)
+        let second = FakeChat()
+
+        call.move(to: second)
+        first.emit(.reply("The old answer. "))
+        first.emit(.settled(lostTrack: false))
+
+        XCTAssertNil(first.voiceTurnEvents)
+        XCTAssertTrue(transport.commentary.isEmpty, "the left chat's turn is not spoken")
+        XCTAssertEqual(transport.thinking, [HermesVoiceCall.Line.movedChat])
+        XCTAssertEqual(call.status, .listening)
+
+        let submitted = expectation(description: "The next request goes to the open chat")
+        second.onSubmit = { submitted.fulfill() }
+        transport.hear(.user, "Now list the tests.")
+        transport.onEvent?(.delegation(id: "d2"))
+        await fulfillment(of: [submitted], timeout: 5)
+        XCTAssertEqual(first.submits.count, 1)
+        XCTAssertEqual(second.submits.count, 1)
+    }
+
     private func startedCall() async -> (HermesVoiceCall, FakeTransport, FakeChat, ManualScheduler) {
         let transport = FakeTransport(), chat = FakeChat(), scheduler = ManualScheduler()
         let call = HermesVoiceCall(transport: transport, chat: chat, scheduler: scheduler)
