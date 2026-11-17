@@ -1008,6 +1008,23 @@ import SwiftUI
         XCTAssertNotNil(chained.model.sendErrorMessage)
     }
 
+    /// Voice Call on a session row (#1091) continues that session, as a Desktop call on an open
+    /// chat does: the call it starts is seeded with the session's saved turns.
+    func testACallRequestedOnASavedSessionIsSeededWithItsTurns() async throws {
+        let chat = await openChat(profile: "voice-seed", history: [userRow("Check the build", id: 1), assistantRow("It passed.", id: 2)],
+                                  voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        chat.model.requestVoiceCall()
+        await chat.model.voiceCallOfferRead?.value
+
+        await chat.model.startRequestedVoiceCall()?.value
+
+        let seeded = transport.history.compactMap { $0["content"].list?.first?["text"].text }
+        XCTAssertEqual(seeded, ["Check the build", "It passed."])
+        chat.model.endVoiceCall()
+    }
+
     /// A voice call hears when the chat loses its Hermes connection and when it attaches again
     /// (#1091), which bounds how long a delegation waits on a host that is gone.
     func testAVoiceCallHearsTheChatLoseAndRegainHermes() async {
@@ -2466,7 +2483,10 @@ private extension BotJSON {
     var onStart: (() -> Void)?
     private var parked: CheckedContinuation<Void, Never>?
 
+    private(set) var history: [BotJSON] = []
+
     func start(history: [BotJSON]) async throws {
+        self.history = history
         onStart?()
         if parksStart { await withCheckedContinuation { parked = $0 } }
         if let startError { throw startError }
