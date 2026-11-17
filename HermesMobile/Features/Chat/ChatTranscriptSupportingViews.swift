@@ -353,7 +353,7 @@ struct ChatScrollObserver: UIViewRepresentable {
 @MainActor final class ChatContinuity: Equatable {
     private(set) var model: ChatViewModel?
     var didLoadMessages = false
-    private var viewsOnScreen: [(id: UUID, returnsWaitingSend: (String, HermesWaitingSend.Return) -> Void)] = []
+    private var viewsOnScreen: [(id: UUID, model: ChatViewModel, returnsWaitingSend: (String, HermesWaitingSend.Return) -> Void)] = []
     private var transcriptsOnScreen: [ChatScrollPositionController] = []
     private var lastTranscript: ChatScrollPositionController?
 
@@ -368,14 +368,21 @@ struct ChatScrollObserver: UIViewRepresentable {
 
     func viewAppeared(_ view: UUID, model: ChatViewModel,
                       returnsWaitingSend: @escaping (String, HermesWaitingSend.Return) -> Void) {
-        viewsOnScreen.removeAll { $0.id == view }
-        viewsOnScreen.append((view, returnsWaitingSend))
+        if let shown = viewsOnScreen.first(where: { $0.id == view }) {
+            shown.model.viewsOnScreen -= 1
+            viewsOnScreen.removeAll { $0.id == view }
+        }
+        viewsOnScreen.append((view, model, returnsWaitingSend))
+        model.viewsOnScreen += 1
         self.model = model
         model.onWaitingSendReturned = returnsWaitingSend
     }
 
     func viewDisappeared(_ view: UUID) -> Bool {
-        viewsOnScreen.removeAll { $0.id == view }
+        if let leaving = viewsOnScreen.first(where: { $0.id == view }) {
+            leaving.model.viewsOnScreen -= 1
+            viewsOnScreen.removeAll { $0.id == view }
+        }
         if let staying = viewsOnScreen.last { model?.onWaitingSendReturned = staying.returnsWaitingSend }
         return viewsOnScreen.isEmpty
     }
