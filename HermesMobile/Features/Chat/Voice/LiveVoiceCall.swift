@@ -68,6 +68,23 @@ import Observation
     /// A view of the call's chat is on screen, so going back to it has nothing to close.
     var showsCallChat: Bool { (model?.viewsOnScreen ?? 0) > 0 }
 
+    /// What going back to the call's chat takes on a side (Sessions or Bots) of the home.
+    enum ReopenStep: Equatable {
+        /// The chat is on screen.
+        case stay
+        /// Another chat or none is open there: open the call's.
+        case open
+        /// The call's chat is open under a pushed screen. Setting the same value again keeps
+        /// that screen, so the side closes the chat and opens it again on the next turn.
+        case reopen
+    }
+
+    /// `isOpen`: the side's open chat is the call's (its chat value, or its bot).
+    func reopenStep(isOpen: Bool) -> ReopenStep {
+        guard isOpen else { return .open }
+        return showsCallChat ? .stay : .reopen
+    }
+
     /// Starts a new call on the dropped call's chat and goes back to it.
     func callAgain() {
         guard let drop else { return }
