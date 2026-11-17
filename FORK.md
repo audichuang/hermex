@@ -78,15 +78,23 @@ bullet); only the Hermex specifics are here.
   lockf -k /tmp/hermex-build.lock sim-vault restore "HERMEX iPhone 18 Pro Max"
   ```
 
-  Only when that exits 3 (no archive), 4 (runtime removed) or 5 (NAS share not mounted), create a blank one
-  (no further owner confirmation needed); any other non-zero exit means stop and report. Creation does not
-  boot it:
+  Only when that exits 3 (no archive) or 4 (runtime removed), create a blank one (no further owner
+  confirmation needed). After a 4, replace `iOS-27-2` below with the newest iOS runtime
+  `xcrun simctl list runtimes` shows. Creation does not boot it:
 
   ```zsh
   xcrun simctl create "HERMEX iPhone 18 Pro Max" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-2
   ```
 
-  When a batch of work is done, park it again (it must be shut down first; this frees about 6 GB):
+  Exit 5 means the NAS share (`/Volumes/WorkSpace`) is not mounted. A LaunchAgent remounts it every
+  5 minutes, so wait and retry the restore; if it stays unmounted, stop and report. Do not create a
+  same-name resident then: parking that blank device later would replace the logged-in archive (`sim-vault`
+  refuses with exit 7). If the work cannot wait, use a `HERMEX tmp <task>` device. Any other non-zero exit
+  means stop and report.
+
+  When a batch of work is done and no other session is using the resident (an install, launch or manual UI
+  check outside the build lock counts as using it), park it again. `--shutdown` shuts it down first; this
+  frees about 6 GB:
 
   ```zsh
   lockf -k /tmp/hermex-build.lock sim-vault park "HERMEX iPhone 18 Pro Max" --shutdown
