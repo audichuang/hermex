@@ -103,6 +103,39 @@ on the phone screen." The check runs again right before each Stop, so a request
 waiting behind one turn is dropped the same way when the next turn already waits
 on an approval.
 
+## Calls and sessions
+
+Upstream has no call object and no call session (read at upstream `e162dabd`).
+The host mints a voice session from `{sdp, history?}` and the Profile alone and
+keeps nothing; `session.id` in its answer is the vendor's. A call touches a
+Hermes session only when a delegation goes out as `prompt.submit` on it, and
+`surface: "voice-live"` marks that one turn, never the session
+(`gateway/session_surface.py`). Desktop's call belongs to its window's composer
+and delegates to whichever chat that window has open; its wake word opens a
+fresh chat and starts the call there (`wake_word.start_new_session`, default on),
+or starts it on the open chat when that is off. A new chat's session is created
+by its first delegation, as by a typed first message. Hermex follows the same
+model:
+
+- **Where a call starts.** Call in any Hermes chat's composer (that session); New
+  Voice Call in the Sessions list's New Session menu (long press) and the Start
+  Voice Call Shortcut (a fresh session in the New Session Profile); Voice Call in a
+  session row's context menu (that session). Each opens the chat with
+  `HermesSessionChat.autoStartsVoiceCall`, which starts the call once the chat's
+  gate answers, or shows why not. The menu entries hide while a call is on.
+- **Which session it talks on.** The chat on screen. Opening another chat of the
+  same server, saved connection and Profile moves the call there
+  (`LiveVoiceCall.follow`, `HermesVoiceCall.move(to:)`): a delegation not yet sent
+  and every later one goes to it; one already sent finishes in the chat it went to,
+  is no longer spoken, and the voice is told its result is there. The voice is not
+  seeded again. A chat in another Profile leaves the call where it is: the voice
+  was minted with its Profile's key and voice. With no chat on screen (the list,
+  Settings) the call stays on the last one.
+- **Continuing a session.** End and Call again on the same chat: each call is a
+  new voice session seeded with the chat's recent text turns, so what earlier calls
+  delegated, and their replies, carry over; what the voice said without delegating
+  is not stored (upstream #149111).
+
 ## Start Voice Call
 
 The "Start Voice Call" App Shortcut (`NewVoiceCallIntent`, assignable to the
@@ -124,10 +157,11 @@ Voice.
 ## Ownership and the call screen
 
 - The call belongs to the app, not to the screen it started on. `LiveVoiceCall.shared`
-  holds the call and its chat's `ChatViewModel` from the start until the call ends, so
-  leaving the chat, opening another, or going to Settings keeps it talking, its stream
-  attached and its approval cards live. There is one call per app: Call on another chat
-  goes back to the call that is on and builds no session.
+  holds the call and its current chat's `ChatViewModel` until the call ends, so
+  leaving the chat or going to Settings keeps it talking, its stream attached and its
+  approval cards live; opening another chat of its Profile moves it there (§ Calls
+  and sessions). There is one call per app: a request to call on a chat in another
+  Profile goes back to the call that is on and builds no session.
 - Any view that opens the call's chat (a list row, a Bot Chat, an Archived row, a
   session link, a push or Live Activity tap, a chat pushed from another) takes the
   call's model instead of making another (`LiveVoiceCall.model(for:)`, `ChatContinuity.resume`):
