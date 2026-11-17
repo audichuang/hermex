@@ -258,8 +258,8 @@ struct MessageComposerView: View {
     var uploadsAttachmentsOnSend = false
     var onCancelAttachmentUpload: (() -> Void)?
     var hermesTranscriber: ComposerTranscriber?
-    /// The chat's voice call while it is on (#1091): its row replaces the toolbar, and the mic
-    /// stays off so dictation can't take the audio session from it.
+    /// The chat's voice call while it is on (#1091): the mic and Call stay off so dictation can't
+    /// take the audio session from it. Its controls are in the call bar.
     var voiceCall: HermesVoiceCall?
     /// Starts a voice call; nil hides Call (a webui chat, or a host whose Profile didn't choose GPT-Live).
     var onStartVoiceCall: (() -> Void)?
@@ -541,8 +541,6 @@ struct MessageComposerView: View {
                 Group {
                     if isDictating {
                         dictationRow.transition(.opacity)
-                    } else if let voiceCall {
-                        ComposerVoiceCallRow(call: voiceCall, circleSize: circleSize).transition(.opacity)
                     } else {
                         toolbarRow.transition(.asymmetric(
                             insertion: .opacity.animation(reduceMotion ? nil : .easeIn(duration: 0.12).delay(0.14)),
@@ -551,7 +549,6 @@ struct MessageComposerView: View {
                     }
                 }
                     .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isDictating)
-                    .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isOnVoiceCall)
                     .padding(.horizontal)
                     .padding(.top, 8)
                     .frame(maxWidth: .infinity)
@@ -838,7 +835,6 @@ struct MessageComposerView: View {
     private var isExpanded: Bool {
         isCardOpen
             || isDictating
-            || isOnVoiceCall
             || !quotes.isEmpty
             || shouldRestoreFocusAfterPresentation
     }
@@ -915,6 +911,8 @@ struct MessageComposerView: View {
                         modelEffortControl(showsTitle: false)
                     }
 
+                    voiceCallButton
+
                     voiceControlButton
 
                     actionButton
@@ -928,6 +926,15 @@ struct MessageComposerView: View {
         .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
     }
 
+    @ViewBuilder private var voiceCallButton: some View {
+        if let onStartVoiceCall, !isAudioHeldByCall {
+            ComposerVoiceCallButton(isDisabled: holdsHostControls, color: metaControlColor) {
+                isFocused = false
+                onStartVoiceCall()
+            }
+        }
+    }
+
     private var toolbarRow: some View {
         HStack(alignment: .center, spacing: 8) {
             plusButton(usesGlass: true)
@@ -938,14 +945,7 @@ struct MessageComposerView: View {
 
             Spacer(minLength: 0)
 
-            if let onStartVoiceCall {
-                // Dictation hides this row, so the mic is free whenever Call shows.
-                ComposerVoiceCallButton(isDisabled: holdsHostControls, color: metaControlColor) {
-                    // The keyboard would cover the chat the call talks about.
-                    isFocused = false
-                    onStartVoiceCall()
-                }
-            }
+            voiceCallButton
 
             voiceControlButton
 
