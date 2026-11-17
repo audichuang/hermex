@@ -104,6 +104,8 @@
 		6C11E000000000000000A203 /* VoiceLiveProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */; };
 		6C11E000000000000000A301 /* HermesVoiceCall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A302 /* HermesVoiceCall.swift */; };
 		6C11E000000000000000A303 /* HermesVoiceCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A304 /* HermesVoiceCallTests.swift */; };
+		6C11E000000000000000A307 /* LiveVoiceCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A308 /* LiveVoiceCallTests.swift */; };
+		6C11E000000000000000A305 /* LiveVoiceCall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A306 /* LiveVoiceCall.swift */; };
 		6C11E000000000000000A001 /* WebRTCVoiceLiveTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */; };
 		1A2B3C4D5E6F7000000000A0 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */; };
 		1A2B3C4D5E6F7000000000A1 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B1 /* AuthManager.swift */; };
@@ -1065,6 +1067,8 @@
 		6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceLiveProtocolTests.swift; sourceTree = "<group>"; };
 		6C11E000000000000000A302 /* HermesVoiceCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/HermesVoiceCall.swift"; sourceTree = "<group>"; };
 		6C11E000000000000000A304 /* HermesVoiceCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceCallTests.swift; sourceTree = "<group>"; };
+		6C11E000000000000000A308 /* LiveVoiceCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveVoiceCallTests.swift; sourceTree = "<group>"; };
+		6C11E000000000000000A306 /* LiveVoiceCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/LiveVoiceCall.swift"; sourceTree = "<group>"; };
 		6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/WebRTCVoiceLiveTransport.swift"; sourceTree = "<group>"; };
 		C0DE22000000000000000004 /* ChatHapticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHapticsTests.swift; sourceTree = "<group>"; };
 		C08730000000000000000F01 /* HorizontalOverflowEdgeFadesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalOverflowEdgeFadesTests.swift; sourceTree = "<group>"; };
@@ -1732,6 +1736,7 @@
 				C03260000000000000F102 /* APIClientTTSTests.swift */,
 				6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */,
 				6C11E000000000000000A304 /* HermesVoiceCallTests.swift */,
+				6C11E000000000000000A308 /* LiveVoiceCallTests.swift */,
 				C03270000000000000F102 /* APIClientSessionExportTests.swift */,
 				C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */,
 				C03251000000000000F106 /* ComposerVoiceInputServerRecordingTests.swift */,
@@ -2289,6 +2294,7 @@
 				6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */,
 				6C11E000000000000000A202 /* VoiceLiveProtocol.swift */,
 				6C11E000000000000000A302 /* HermesVoiceCall.swift */,
+				6C11E000000000000000A306 /* LiveVoiceCall.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -3163,6 +3169,7 @@
 				6C11E000000000000000A001 /* WebRTCVoiceLiveTransport.swift in Sources */,
 				6C11E000000000000000A201 /* VoiceLiveProtocol.swift in Sources */,
 				6C11E000000000000000A301 /* HermesVoiceCall.swift in Sources */,
+				6C11E000000000000000A305 /* LiveVoiceCall.swift in Sources */,
 				C08800000000000000000001 /* SessionHaptics.swift in Sources */,
 				031031031031031031031009 /* DisplayMathView.swift in Sources */,
 				031031031031031031031001 /* MarkdownMathSegmenter.swift in Sources */,
@@ -3346,6 +3353,7 @@
 				C03260000000000000B102 /* APIClientTTSTests.swift in Sources */,
 				6C11E000000000000000A203 /* VoiceLiveProtocolTests.swift in Sources */,
 				6C11E000000000000000A303 /* HermesVoiceCallTests.swift in Sources */,
+				6C11E000000000000000A307 /* LiveVoiceCallTests.swift in Sources */,
 				C03270000000000000B102 /* APIClientSessionExportTests.swift in Sources */,
 				C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */,
 				C03251000000000000B106 /* ComposerVoiceInputServerRecordingTests.swift in Sources */,
