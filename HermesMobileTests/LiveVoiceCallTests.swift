@@ -115,21 +115,50 @@ import XCTest
         call.end()
     }
 
-    /// The bar knows whether the call's chat is on screen: a screen pushed over it hides it, and
-    /// the bar's tap must bring it back; once a view shows it again there is nothing to close.
+    /// The bar knows whether a view of the call's chat is on screen: a screen pushed over it
+    /// hides it, and the bar's tap must bring it back; once a view shows it again there is
+    /// nothing to close.
     func testTheOwnerKnowsWhetherTheCallsChatIsOnScreen() async throws {
         let owner = LiveVoiceCall()
         let chat = await openChat(owner: owner)
+        let continuity = ChatContinuity(), view = UUID()
+        continuity.viewAppeared(view, model: chat.model) { _, _ in }
         chat.model.makeVoiceLiveTransport = { _ in FakeTransport() }
         let started = try XCTUnwrap(chat.model.startVoiceCall())
         await started.value
         XCTAssertTrue(owner.showsCallChat)
 
-        chat.model.suspendStreamForNavigation()
+        pushScreen(over: view, continuity, chat.model)
         XCTAssertFalse(owner.showsCallChat, "a screen pushed over the chat")
+        continuity.viewAppeared(view, model: chat.model) { _, _ in }
         await chat.model.reconnectStreamIfNeeded()
         XCTAssertTrue(owner.showsCallChat, "the chat is back on screen")
         owner.call?.end()
+    }
+
+    /// A call that drops and starts again with Call again while a screen still covers its chat
+    /// leaves the chat hidden: the bar's tap still has that screen to close.
+    func testCallAgainUnderAPushedScreenStillKnowsTheChatIsHidden() async throws {
+        let owner = LiveVoiceCall()
+        let chat = await openChat(owner: owner)
+        let continuity = ChatContinuity(), view = UUID()
+        continuity.viewAppeared(view, model: chat.model) { _, _ in }
+        var transports: [FakeTransport] = []
+        chat.model.makeVoiceLiveTransport = { _ in let next = FakeTransport(); transports.append(next); return next }
+        let started = try XCTUnwrap(chat.model.startVoiceCall())
+        await started.value
+        pushScreen(over: view, continuity, chat.model)
+
+        transports.last?.onClosed?("connection_lost")
+        owner.callAgain()
+        XCTAssertNotNil(owner.call)
+        XCTAssertFalse(owner.showsCallChat, "the pushed screen still covers the chat")
+        owner.call?.end()
+    }
+
+    /// What `ChatView.onDisappear` does when a screen is pushed over the chat.
+    private func pushScreen(over view: UUID, _ continuity: ChatContinuity, _ model: ChatViewModel) {
+        if continuity.viewDisappeared(view) { model.suspendStreamForNavigation() }
     }
 
     /// A muted call's bar says Muted rather than Listening.

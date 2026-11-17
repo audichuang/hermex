@@ -66,7 +66,7 @@ import Observation
     var reopensTo: HermesSessionChat? { model?.hermesSeat }
 
     /// A view of the call's chat is on screen, so going back to it has nothing to close.
-    var showsCallChat: Bool { model.map { !$0.owesNavigationSuspend } ?? false }
+    var showsCallChat: Bool { (model?.viewsOnScreen ?? 0) > 0 }
 
     /// Starts a new call on the dropped call's chat and goes back to it.
     func callAgain() {
