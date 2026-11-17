@@ -17,19 +17,40 @@ import Observation
     @ObservationIgnored private var host: (server: URL, connectionID: UUID)?
     /// New each time something asks to go back to the call's chat; the Hermes home routes there.
     private(set) var reopenRequest: UUID?
+    /// The last call dropped without the user hanging up: the bar says why and offers Call again
+    /// until it is dismissed or another call starts.
+    private(set) var drop: Drop? {
+        didSet { droppedModel = drop?.model }
+    }
+    /// `drop`'s chat, for `model(for:)`, which must not read what a view observes.
+    @ObservationIgnored private var droppedModel: ChatViewModel?
+
+    struct Drop {
+        let message: String
+        /// The chat the call was on, kept for Call again.
+        let model: ChatViewModel
+        let server: URL
+        let connectionID: UUID
+    }
 
     init() {}
 
     /// `model` started `call`; held until `ended`.
     func begin(_ call: HermesVoiceCall, model: ChatViewModel) {
+        drop = nil
         self.call = call
         self.model = model
         host = model.hermesConversation.map { ($0.server, $0.connectionID) }
     }
 
-    /// `call` ended by any path; its chat is let go.
+    /// `call` ended by any path; its chat is let go unless the call dropped, which keeps it
+    /// for Call again.
     func ended(_ call: HermesVoiceCall) {
         guard call === self.call else { return }
+        if case .ended(let reason) = call.status, let message = ChatViewModel.voiceCallEndMessage(reason),
+           let model, let host {
+            drop = Drop(message: message, model: model, server: host.server, connectionID: host.connectionID)
+        }
         self.call = nil
         model = nil
         host = nil
@@ -41,8 +62,22 @@ import Observation
         reopenRequest = UUID()
     }
 
+    /// The chat the bar goes back to: the call's while it is on.
+    var reopensTo: HermesSessionChat? { model?.hermesSeat }
+
+    /// Starts a new call on the dropped call's chat and goes back to it.
+    func callAgain() {
+        guard let drop else { return }
+        self.drop = nil
+        guard drop.model.startVoiceCall() != nil else { return }
+        requestReopen()
+    }
+
+    func dismissDrop() { drop = nil }
+
     /// The model of the call's chat when `chat` opens that chat, so its new view takes the
-    /// call's model instead of making another. Reads nothing a view observes: `ChatView.init`
+    /// call's model instead of making another; after a drop, the dropped call's, which Call
+    /// again calls on. Reads nothing a view observes: `ChatView.init`
     /// calls it inside its parent's update.
     ///
     /// Each opening of a chat is a new `HermesSessionChat`, so a match is the chat value that
@@ -50,7 +85,7 @@ import Observation
     /// connection and target: the Profile's Bot Chat, or the session by its current key or its
     /// lineage root.
     func model(for chat: HermesSessionChat) -> ChatViewModel? {
-        guard let model else { return nil }
+        guard let model = model ?? droppedModel else { return nil }
         if model.hermesSeat?.id == chat.id { return model }
         guard let conversation = model.hermesConversation, conversation.server == chat.server,
               conversation.connectionID == chat.connection.id else { return nil }
@@ -72,6 +107,7 @@ import Observation
     /// The active signed-in server is now `server` (nil: signed out or none): a call on any other
     /// ends, since everything scoped to a server goes with it.
     func endUnless(server: URL?) {
+        if let drop, drop.server != server { self.drop = nil }
         guard let call, let host, host.server != server else { return }
         call.end()
     }
@@ -79,6 +115,7 @@ import Observation
     /// `server`'s saved connection is now `connectionID` (nil: removed). A call on a replaced
     /// record ends, as a sign-out would.
     func endUnless(connectionID: UUID?, on server: URL) {
+        if let drop, drop.server == server, drop.connectionID != connectionID { self.drop = nil }
         guard let call, let host, host.server == server, host.connectionID != connectionID else { return }
         call.end()
     }

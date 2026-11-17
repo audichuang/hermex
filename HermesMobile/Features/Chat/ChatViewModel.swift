@@ -3029,6 +3029,7 @@ final class ChatViewModel {
         case .failed(let detail): detail
         case .closed: String(localized: "The voice call disconnected.")
         case .inactive: String(localized: "The voice call ended after 10 quiet minutes.")
+        case .chatReplaced: String(localized: "The host replaced this Bot Chat, so the voice call ended.")
         }
     }
 
@@ -3059,11 +3060,9 @@ final class ChatViewModel {
                 self.suspendStreamForBackground()
             }
             connection?.callEnded()
+            // The call bar says why a call dropped, and offers Call again.
             if let call { self.liveCall.ended(call) }
             if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
-            if case .ended(let reason)? = call?.status, let message = Self.voiceCallEndMessage(reason) {
-                self.sendErrorMessage = message
-            }
         }
         return Task { [call] in await call.start() }
     }
@@ -7838,7 +7837,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
 
     func hermesBotChatWasReplaced() {
         // The call was talking about the old chat (#1091).
-        endVoiceCall()
+        voiceCall?.end(.chatReplaced)
         messages = []
         hasOlderMessages = false
         latestRunOutcome = nil

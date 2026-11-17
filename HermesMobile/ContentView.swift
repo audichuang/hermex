@@ -12,6 +12,8 @@ struct ContentView: View {
 
     var body: some View {
         content
+            // The app's voice call, above every screen (#1091).
+            .safeAreaInset(edge: .top, spacing: 0) { LiveVoiceCallBar() }
             .moveToHermesNotices(authManager)
             .onOpenURL(perform: handleOpenURL)
             .task {
@@ -635,6 +637,7 @@ struct HermesServerHome: View {
             if sessions == nil { pendingSessionDestination = nil; return }
             tab = .sessions; settings = nil; isPresentingAddServer = false
         }
+        .onChange(of: LiveVoiceCall.shared.reopenRequest) { reopenVoiceCallChat() }
         .onChange(of: pendingNewChat, initial: true) {
             guard pendingNewChat != nil else { return }
             if sessions == nil { pendingNewChat = nil; return }
@@ -680,6 +683,21 @@ struct HermesServerHome: View {
             }
         }
         .onAppear(perform: readConnection)
+    }
+
+    private func reopenVoiceCallChat() {
+        guard let seat = LiveVoiceCall.shared.reopensTo, seat.server == server else { return }
+        settings = nil
+        isPresentingAddServer = false
+        if let bot = seat.bot {
+            tab = .bots
+            if inbox.selection.profile?.id != bot.id { inbox.selection.profile = bot }
+        } else if let navigation = sessions?.navigation {
+            tab = .sessions
+            guard navigation.covers.chat?.id != seat.id else { return }
+            navigation.covers.bringForward()
+            navigation.covers.chat = seat
+        }
     }
 
     private func readConnection() {

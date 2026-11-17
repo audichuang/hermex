@@ -371,7 +371,7 @@ struct ComposerVoiceCallRow: View {
             .disabled(!isLive)
             .accessibilityLabel(Text(call.isMuted ? "Unmute" : "Mute"))
 
-            Button(action: call.end) {
+            Button { call.end() } label: {
                 Image(systemName: "phone.down.fill")
                     .font(.system(size: 16, weight: .semibold))
                     .frame(width: circleSize, height: circleSize)
