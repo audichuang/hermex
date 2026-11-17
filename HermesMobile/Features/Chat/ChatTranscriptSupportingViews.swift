@@ -361,6 +361,11 @@ struct ChatScrollObserver: UIViewRepresentable {
 
     nonisolated static func == (lhs: ChatContinuity, rhs: ChatContinuity) -> Bool { lhs === rhs }
 
+    func resume(_ model: ChatViewModel) {
+        self.model = model
+        didLoadMessages = true
+    }
+
     func viewAppeared(_ view: UUID, model: ChatViewModel,
                       returnsWaitingSend: @escaping (String, HermesWaitingSend.Return) -> Void) {
         viewsOnScreen.removeAll { $0.id == view }

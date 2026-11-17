@@ -373,6 +373,7 @@ final class ChatViewModel {
     var followLatch = ChatScrollPolicy.FollowLatch()
     var expandedTurnKeys: Set<String> = []
     @ObservationIgnored var hermesBotChatRoot: String?
+    @ObservationIgnored var hermesSeat: HermesSessionChat?
     @ObservationIgnored var hermesLineageRoot: String?
     @ObservationIgnored private var hermesCacheEpoch: Int?
     private func applyCompressionAnchorMetadata(from session: SessionDetail?) {
@@ -3035,7 +3036,13 @@ final class ChatViewModel {
 
     @discardableResult
     func startVoiceCall() -> Task<Void, Never>? {
-        guard !isOnVoiceCall, let call = makeVoiceCall() else { return nil }
+        guard !isOnVoiceCall else { return nil }
+        // One call per app: Call on another chat goes back to the call that is on.
+        if liveCall.call != nil {
+            liveCall.requestReopen()
+            return nil
+        }
+        guard let call = makeVoiceCall() else { return nil }
         let connection = hermesTurn?.connection
         // A new call's row replaces the last one's error.
         if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }

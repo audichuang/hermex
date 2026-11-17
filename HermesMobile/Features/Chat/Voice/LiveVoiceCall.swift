@@ -15,6 +15,8 @@ import Observation
     @ObservationIgnored private(set) var model: ChatViewModel?
     /// The server and saved connection the call runs on.
     @ObservationIgnored private var host: (server: URL, connectionID: UUID)?
+    /// New each time something asks to go back to the call's chat; the Hermes home routes there.
+    private(set) var reopenRequest: UUID?
 
     init() {}
 
@@ -31,6 +33,40 @@ import Observation
         self.call = nil
         model = nil
         host = nil
+    }
+
+    /// Goes back to the call's chat from wherever the app is.
+    func requestReopen() {
+        guard model != nil else { return }
+        reopenRequest = UUID()
+    }
+
+    /// The model of the call's chat when `chat` opens that chat, so its new view takes the
+    /// call's model instead of making another. Reads nothing a view observes: `ChatView.init`
+    /// calls it inside its parent's update.
+    ///
+    /// Each opening of a chat is a new `HermesSessionChat`, so a match is the chat value that
+    /// opened it (a new session, until its first prompt, has nothing else), or the same server,
+    /// connection and target: the Profile's Bot Chat, or the session by its current key or its
+    /// lineage root.
+    func model(for chat: HermesSessionChat) -> ChatViewModel? {
+        guard let model else { return nil }
+        if model.hermesSeat?.id == chat.id { return model }
+        guard let conversation = model.hermesConversation, conversation.server == chat.server,
+              conversation.connectionID == chat.connection.id else { return nil }
+        switch chat.target {
+        case .canonicalChat(let profile):
+            guard case .canonicalChat(profile) = conversation.target else { return nil }
+            return model
+        case .session(let profile, let key):
+            guard conversation.target.profile == profile else { return nil }
+            if case .session(_, key) = conversation.target { return model }
+            if model.hermesSessionLink?.key == key { return model }
+            if let root = model.hermesLineageRoot, root == chat.lineageRoot ?? key { return model }
+            return nil
+        case .new:
+            return nil
+        }
     }
 
     /// The active signed-in server is now `server` (nil: signed out or none): a call on any other
