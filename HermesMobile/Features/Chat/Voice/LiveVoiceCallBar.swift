@@ -49,19 +49,13 @@ private struct LiveVoiceCallBarStyle: ViewModifier {
 private struct LiveVoiceCallRow: View {
     let call: HermesVoiceCall
     let owner: LiveVoiceCall
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let phase = LiveVoiceCallBar.Phase(call)
         HStack(spacing: 8) {
             Button(action: owner.requestReopen) {
                 HStack(spacing: 8) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.green)
-                        // Moves only while the voice speaks; still otherwise and under Reduce Motion.
-                        .symbolEffect(.variableColor.iterative, options: .repeating,
-                                      isActive: phase == .speaking && !reduceMotion)
+                    LiveVoiceWaveform(level: call.audioLevel, tint: waveformTint(phase))
                         .accessibilityHidden(true)
                     Text(statusText(phase))
                         .font(AppFont.footnote(weight: .semibold))
@@ -104,6 +98,15 @@ private struct LiveVoiceCallRow: View {
         }
     }
 
+    /// Green for the voice, the accent for the user, grey while nothing can be heard.
+    private func waveformTint(_ phase: LiveVoiceCallBar.Phase?) -> Color {
+        switch phase {
+        case .speaking: .green
+        case .listening, .thinking: .accentColor
+        case .muted, .connecting, nil: Color(.appTextSecondary)
+        }
+    }
+
     private func isLive(_ phase: LiveVoiceCallBar.Phase?) -> Bool {
         switch phase {
         case .listening, .muted, .thinking, .speaking: true
@@ -121,6 +124,49 @@ private struct LiveVoiceCallRow: View {
         // The bar is on its way out.
         case nil: ""
         }
+    }
+}
+
+/// The call's sound as bars that rise and fall with it: the voice's while it speaks, the user's
+/// microphone otherwise. The transport reads the level ten times a second while the call is up, so
+/// the bars move only with sound and lie flat in silence. Under Reduce Motion they stay still and
+/// only light up while there is sound.
+struct LiveVoiceWaveform: View {
+    let level: Double
+    let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Tallest in the middle, like a voice memo's level meter.
+    private static let profile: [Double] = [0.45, 0.7, 0.9, 1, 0.9, 0.7, 0.45]
+    private static let height: CGFloat = 22
+    private static let minHeight: CGFloat = 3
+
+    var body: some View {
+        let loudness = Self.loudness(level)
+        HStack(spacing: 2.5) {
+            ForEach(Self.profile.indices, id: \.self) { index in
+                Capsule()
+                    .fill(tint.opacity(reduceMotion && loudness == 0 ? 0.35 : 1))
+                    .frame(width: 3, height: barHeight(index, loudness))
+            }
+        }
+        .frame(height: Self.height)
+        .animation(reduceMotion ? nil : .linear(duration: 0.1), value: level)
+    }
+
+    private func barHeight(_ index: Int, _ loudness: Double) -> CGFloat {
+        let shape = Self.profile[index]
+        if reduceMotion { return Self.minHeight + (Self.height - Self.minHeight) * shape * 0.6 }
+        // Each reading sways the bars apart, so they don't scale as one block.
+        let sway = 0.7 + 0.3 * abs(sin(level * 997 + Double(index) * 0.9))
+        return Self.minHeight + (Self.height - Self.minHeight) * loudness * shape * sway
+    }
+
+    /// WebRTC's linear `audioLevel` mapped from -50 dB (flat) to -10 dB (full height), so quiet
+    /// speech still shows.
+    static func loudness(_ level: Double) -> Double {
+        guard level > 0 else { return 0 }
+        return min(1, max(0, (20 * log10(level) + 50) / 40))
     }
 }
 
