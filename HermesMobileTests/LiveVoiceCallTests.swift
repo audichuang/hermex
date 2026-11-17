@@ -334,6 +334,7 @@ import XCTest
     var onEvent: ((VoiceLiveServerEvent) -> Void)?
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
+    var onAudioLevel: ((Double) -> Void)?
     private(set) var closes = 0
 
     func start(history: [BotJSON]) async throws {}

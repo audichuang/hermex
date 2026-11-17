@@ -12,6 +12,9 @@ import Observation
     var onClosed: ((String) -> Void)? { get set }
     /// The voice started or stopped producing audio.
     var onSpeakingChange: ((Bool) -> Void)? { get set }
+    /// How loud the call is right now (0...1): the voice or the unmuted microphone, whichever is
+    /// louder. Zero once the session is torn down.
+    var onAudioLevel: ((Double) -> Void)? { get set }
     /// Opens the microphone and the peer connection, and trades the offer for the host-minted
     /// session seeded with `history`.
     func start(history: [BotJSON]) async throws
@@ -106,6 +109,8 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     private(set) var isMuted = false
     /// The latest stretch of speech, the user's or the voice's.
     private(set) var caption: Caption?
+    /// The transport's `onAudioLevel`, for the call bar's waveform. Only the bar reads it.
+    private(set) var audioLevel = 0.0
 
     var isEnded: Bool { if case .ended = status { return true }; return false }
 
@@ -157,6 +162,10 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         transport.onEvent = { [weak self] in self?.receive($0) }
         transport.onClosed = { [weak self] in self?.transportDidClose($0) }
         transport.onSpeakingChange = { [weak self] in self?.speakingDidChange($0) }
+        transport.onAudioLevel = { [weak self] level in
+            guard let self, !self.isEnded || level == 0, level != self.audioLevel else { return }
+            self.audioLevel = level
+        }
         chat?.voiceTurnEvents = { [weak self] in self?.receiveTurn($0) }
         do {
             try await transport.start(history: VoiceLiveProtocol.liveHistory(chat?.voiceHistory ?? []))
@@ -184,6 +193,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     private func finish(_ reason: EndReason, closesTransport: Bool) {
         guard !isEnded else { return }
         status = .ended(reason)
+        audioLevel = 0
         isLive = false
         cancelInactivity?(); cancelInactivity = nil
         cancelHermesLostGrace?(); cancelHermesLostGrace = nil

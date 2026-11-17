@@ -34,13 +34,17 @@ enum VoiceLiveTransportError: LocalizedError {
     static let dataChannelLabel = "oai-events"
     static let iceGatheringTimeout: Duration = .seconds(10)
     static let closeTimeout: Duration = .seconds(15)
-    static let speakingProbeInterval: Duration = .milliseconds(250)
+    /// Fast enough for the call bar's waveform to follow speech.
+    static let speakingProbeInterval: Duration = .milliseconds(100)
     /// Inbound `audioLevel` (0...1) above which the voice counts as talking.
     static let speakingLevel = 0.03
+    /// Quiet readings in a row (half a second) before the voice counts as done talking.
+    static let quietProbesToStop = 5
 
     var onEvent: ((VoiceLiveServerEvent) -> Void)?
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
+    var onAudioLevel: ((Double) -> Void)?
 
     private let openSession: VoiceLiveSessionOpener
     private let relay = WebRTCVoiceLiveRelay()
@@ -55,7 +59,8 @@ enum VoiceLiveTransportError: LocalizedError {
     private var speakingProbe: Task<Void, Never>?
     private var isSpeaking = false
     /// Starts quiet, so the first silent reading is not a blip of Speaking.
-    private var quietProbes = 2
+    private var quietProbes = quietProbesToStop
+    private var isMuted = false
     private var didStart = false
     private var closeRequested = false
     private var finalized = false
@@ -84,6 +89,7 @@ enum VoiceLiveTransportError: LocalizedError {
     }
 
     func setMuted(_ muted: Bool) {
+        isMuted = muted
         microphone?.isEnabled = !muted
     }
 
@@ -247,11 +253,15 @@ enum VoiceLiveTransportError: LocalizedError {
         onEvent?(event)
     }
 
-    fileprivate func inboundAudioLevel(_ level: Double?) {
-        guard !finalized, let level else { return }
+    fileprivate func audioLevels(inbound: Double?, microphone: Double?) {
+        guard !finalized else { return }
+        // A muted microphone's source still hears the room; the waveform must not.
+        let heard = isMuted ? 0 : microphone ?? 0
+        onAudioLevel?(max(inbound ?? 0, heard))
+        guard let level = inbound else { return }
         let loud = level > Self.speakingLevel
         quietProbes = loud ? 0 : quietProbes + 1
-        let speaking = loud || quietProbes < 2
+        let speaking = loud || quietProbes < Self.quietProbesToStop
         guard speaking != isSpeaking else { return }
         isSpeaking = speaking
         onSpeakingChange?(speaking)
@@ -260,17 +270,20 @@ enum VoiceLiveTransportError: LocalizedError {
     // MARK: Speaking probe
 
     /// Desktop's analyser on the voice's track: the inbound audio level, polled while the call is
-    /// up. Without a reading the call simply never shows Speaking.
+    /// up, and the microphone's for the waveform. Without a reading the call simply never shows
+    /// Speaking.
     private func armSpeakingProbe() {
         speakingProbe = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.speakingProbeInterval)
                 guard !Task.isCancelled, let peer = self?.peer else { return }
                 let report = await peer.statistics()
-                let level = report.statistics.values.first {
-                    $0.type == "inbound-rtp" && ($0.values["kind"] as? String) == "audio"
-                }.flatMap { ($0.values["audioLevel"] as? NSNumber)?.doubleValue }
-                self?.inboundAudioLevel(level)
+                func level(_ type: String) -> Double? {
+                    report.statistics.values.first {
+                        $0.type == type && ($0.values["kind"] as? String) == "audio"
+                    }.flatMap { ($0.values["audioLevel"] as? NSNumber)?.doubleValue }
+                }
+                self?.audioLevels(inbound: level("inbound-rtp"), microphone: level("media-source"))
             }
         }
     }
@@ -320,6 +333,7 @@ enum VoiceLiveTransportError: LocalizedError {
         audioSession?.end(); audioSession = nil
         ComposerAudioCaptureState.shared.releaseCall(self)
         if isSpeaking { isSpeaking = false; onSpeakingChange?(false) }
+        onAudioLevel?(0)
         if let reason { onClosed?(closeRequested ? "close_requested" : reason) }
     }
 }
