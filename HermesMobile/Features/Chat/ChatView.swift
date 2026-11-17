@@ -319,6 +319,8 @@ struct ChatView: View {
     /// When true, the composer auto-starts voice dictation on appear — set by the
     /// "New Chat with Voice" App Intent (#338). Defaults to false for normal opens.
     let autoStartsVoiceInput: Bool
+    /// Start Voice Call opened it (#1091): the keyboard stays down for the call.
+    private let opensForVoiceCall: Bool
     let draftStore: ChatDraftStore
     /// Store holding the durable app-owned copies of staged attachments.
     let draftAttachmentStore: any ChatDraftAttachmentStoring
@@ -542,6 +544,7 @@ struct ChatView: View {
         self.onAPIError = onAPIError
         self.loadsInitialMessages = loadsInitialMessages
         self.autoStartsVoiceInput = autoStartsVoiceInput
+        opensForVoiceCall = hermesSession?.autoStartsVoiceCall == true
         self.draftStore = draftStore ?? .shared
         let resolvedDraftAttachmentStore = draftAttachmentStore ?? ChatDraftAttachmentStore.shared
         self.draftAttachmentStore = resolvedDraftAttachmentStore
@@ -4457,7 +4460,7 @@ struct ChatView: View {
         guard !didApplyInitialComposerFocusPolicy else { return }
         guard didCompleteInitialAppearance, isInitialComposerFocusContentReady else { return }
 
-        if !viewModel.messages.isEmpty {
+        if !viewModel.messages.isEmpty || opensForVoiceCall {
             didApplyInitialComposerFocusPolicy = true
             return
         }
