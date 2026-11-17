@@ -188,9 +188,28 @@ import XCTest
         chat.turn.connection?.retire()
         XCTAssertNil(owner.call, "the call ends with its connection")
         XCTAssertEqual(transport.closes, 1)
+    }
+
+    /// A dropped call keeps its chat for Call again, but not once that chat's connection is
+    /// retired: no reopened chat takes its model and Call again starts nothing on it.
+    func testADroppedCallsRetiredChatIsNotReused() async throws {
+        let owner = LiveVoiceCall()
+        let chat = await openChat(owner: owner)
+        var built = 0
+        var transports: [FakeTransport] = []
+        chat.model.makeVoiceLiveTransport = { _ in built += 1; let next = FakeTransport(); transports.append(next); return next }
+        let started = try XCTUnwrap(chat.model.startVoiceCall())
+        await started.value
+        transports.last?.onClosed?("connection_lost")
+        XCTAssertNotNil(owner.drop)
+
+        chat.turn.connection?.retire()
         let reopened = HermesSessionChat(server: Self.server, connection: Self.connection,
                                          target: .session(profile: "default", key: "tip"))
-        XCTAssertNil(owner.model(for: reopened))
+        XCTAssertNil(owner.model(for: reopened), "no reopened chat takes the retired model")
+        owner.callAgain()
+        XCTAssertEqual(built, 1, "Call again starts nothing on it")
+        XCTAssertNil(owner.call)
     }
 
     /// A legacy webui server's Bots chats offer no call: calls are a Hermes server's.
