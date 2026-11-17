@@ -3540,7 +3540,8 @@ final class ChatViewModel {
     /// (no Call); a failed read tries again at the next attach. Start Voice Call's request ends
     /// with a failed read, so a later answer never opens the microphone long after the press.
     private func readVoiceCallOfferIfNeeded() {
-        guard let hermesTurn, !didReadVoiceCallOffer, voiceCallOfferRead == nil else { return }
+        // A legacy webui server's Bots chats get no call: new features are a Hermes server's.
+        guard let hermesTurn, liveCall.webuiServer != server, !didReadVoiceCallOffer, voiceCallOfferRead == nil else { return }
         voiceCallOfferRead = Task { [weak self, hermesTurn] in
             let status: HermesVoiceLiveStatus?
             do {

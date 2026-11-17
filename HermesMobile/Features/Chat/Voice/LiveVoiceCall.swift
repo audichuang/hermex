@@ -33,6 +33,10 @@ import Observation
         let connectionID: UUID
     }
 
+    /// The active server when it is a legacy webui server: its Bots chats offer no call, since
+    /// the bar's way back to the call's chat lives in the Hermes home. `ContentView` sets it.
+    @ObservationIgnored var webuiServer: URL?
+
     init() {}
 
     /// `model` started `call`; held until `ended`.
