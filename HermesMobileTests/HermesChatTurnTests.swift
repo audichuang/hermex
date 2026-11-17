@@ -819,9 +819,8 @@ import SwiftUI
         XCTAssertEqual(chat.model.sendErrorMessage, VoiceLiveTransportError.peerConnectionFailed.errorDescription)
     }
 
-    /// A call the host refuses ends at once, and the composer shows the host's reason where it
-    /// shows a failed send; the call row goes (#1091).
-    func testARefusedVoiceCallShowsTheHostsReasonInTheComposer() async {
+    /// A call the host refuses ends at once, and the call bar shows the host's reason (#1091).
+    func testARefusedVoiceCallShowsTheHostsReasonInTheCallBar() async {
         let chat = await openChat()
         let transport = CallTransport()
         let detail = "GPT-Live needs an OpenAI API key (OPENAI_API_KEY or voice.gpt_live.api_key)"
@@ -831,7 +830,7 @@ import SwiftUI
         await chat.model.startVoiceCall()?.value
 
         XCTAssertNil(chat.model.voiceCallInProgress)
-        XCTAssertEqual(chat.model.sendErrorMessage, detail)
+        XCTAssertEqual(chat.model.liveCall.drop?.message, detail)
     }
 
     /// Sends queued behind a canonical turn stay separate admissions, one bubble each in the
@@ -1440,7 +1439,8 @@ import SwiftUI
 
         await chat.model.reconnectStreamIfNeeded()
         XCTAssertEqual(chat.turn.engine.root, "new-root")
-        XCTAssertEqual(chat.model.voiceCall?.status, .ended(.hungUp))
+        XCTAssertEqual(chat.model.voiceCall?.status, .ended(.chatReplaced))
+        XCTAssertNotNil(chat.model.liveCall.drop, "the bar says why the call ended")
         XCTAssertEqual(transport.closes, 1)
     }
 

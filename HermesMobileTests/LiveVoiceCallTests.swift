@@ -115,6 +115,50 @@ import XCTest
         call.end()
     }
 
+    /// A muted call's bar says Muted rather than Listening.
+    func testAMutedCallShowsMuted() async throws {
+        let owner = LiveVoiceCall()
+        let chat = await openChat(owner: owner)
+        chat.model.makeVoiceLiveTransport = { _ in FakeTransport() }
+        let started = try XCTUnwrap(chat.model.startVoiceCall())
+        await started.value
+        let call = try XCTUnwrap(owner.call)
+        XCTAssertEqual(LiveVoiceCallBar.Phase(call), .listening)
+
+        call.setMuted(true)
+        XCTAssertEqual(LiveVoiceCallBar.Phase(call), .muted)
+        call.setMuted(false)
+        XCTAssertEqual(LiveVoiceCallBar.Phase(call), .listening)
+        call.end()
+    }
+
+    /// A dropped session leaves its reason in the bar with Call again, which starts a new call on
+    /// the same chat and goes back to it. End leaves no notice.
+    func testADroppedCallSaysWhyAndCallsAgainOnTheSameChat() async throws {
+        let owner = LiveVoiceCall()
+        let chat = await openChat(owner: owner)
+        var transports: [FakeTransport] = []
+        chat.model.makeVoiceLiveTransport = { _ in let next = FakeTransport(); transports.append(next); return next }
+        let started = try XCTUnwrap(chat.model.startVoiceCall())
+        await started.value
+
+        transports.last?.onClosed?("connection_lost")
+        XCTAssertNil(owner.call)
+        XCTAssertEqual(owner.drop?.message, ChatViewModel.voiceCallEndMessage(.closed("connection_lost")))
+        let reopened = HermesSessionChat(server: Self.server, connection: Self.connection,
+                                         target: .session(profile: "default", key: "tip"))
+        XCTAssertTrue(owner.model(for: reopened) === chat.model, "reopening the chat finds the one Call again calls on")
+
+        owner.callAgain()
+        XCTAssertNil(owner.drop)
+        XCTAssertEqual(transports.count, 2, "a new session")
+        XCTAssertTrue(owner.model === chat.model, "on the same chat")
+        XCTAssertNotNil(owner.reopenRequest, "and back to it")
+
+        owner.call?.end()
+        XCTAssertNil(owner.drop, "End is not a drop")
+    }
+
     // MARK: Fixture
 
     private static let server = URL(string: "https://hermes.example")!

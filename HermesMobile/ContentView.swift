@@ -12,6 +12,8 @@ struct ContentView: View {
 
     var body: some View {
         content
+            // The app's voice call, above every screen (#1091).
+            .safeAreaInset(edge: .top, spacing: 0) { LiveVoiceCallBar() }
             .moveToHermesNotices(authManager)
             .onOpenURL(perform: handleOpenURL)
             .task {
@@ -831,6 +833,9 @@ struct HermesServerHome: View {
             if sessions == nil { pendingSessionDestination = nil; return }
             tab = .sessions; settings = nil; isPresentingAddServer = false
         }
+        // The voice call's bar goes back to the call's chat (#1091), here rather than through a
+        // session link, so a new session with no key yet and a host out of reach still open.
+        .onChange(of: LiveVoiceCall.shared.reopenRequest) { reopenVoiceCallChat() }
         // So does a Shortcut's new session (#1180), which the list opens.
         .onChange(of: pendingNewChat, initial: true) {
             guard pendingNewChat != nil else { return }
@@ -880,6 +885,23 @@ struct HermesServerHome: View {
             }
         }
         .onAppear(perform: readConnection)
+    }
+
+    /// Closes what covers the home and shows the voice call's chat: its bot's Bot Chat, or the
+    /// chat on the Sessions side. A chat already showing stays as it is.
+    private func reopenVoiceCallChat() {
+        guard let seat = LiveVoiceCall.shared.reopensTo, seat.server == server else { return }
+        settings = nil
+        isPresentingAddServer = false
+        if let bot = seat.bot {
+            tab = .bots
+            if inbox.selection.profile?.id != bot.id { inbox.selection.profile = bot }
+        } else if let navigation = sessions?.navigation {
+            tab = .sessions
+            guard navigation.covers.chat?.id != seat.id else { return }
+            navigation.covers.bringForward()
+            navigation.covers.chat = seat
+        }
     }
 
     /// A new list only when the saved record changed: a sign-in changed in Settings keeps its UUID.
