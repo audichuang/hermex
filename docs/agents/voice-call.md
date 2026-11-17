@@ -6,7 +6,7 @@ live voice model (`gpt-live-1`) handles speech in and out over WebRTC; it has no
 tools, so real work goes to Hermes as an ordinary turn on the open chat and the
 reply is spoken back. Calls are a Hermes server's only: a legacy webui server
 never offers one, its own chats or the Hermes chats on its Bots page, since the
-call bar's way back to the call's chat lives in the Hermes home.
+call's way back to its chat lives in the Hermes home.
 
 ## Where call audio goes
 
@@ -59,8 +59,9 @@ Read at the `HERMES_AGENT_TESTED_SHA` pin 3b421578 (`hermes_cli/web_routers/audi
 
 1. Call (beside the composer mic, in the collapsed pill and the card) dismisses
    the keyboard, asks for the microphone, opens the peer connection with no ICE
-   servers, and posts the offer. The call bar appears above every screen (see
-   Ownership and the call bar); the composer stays as it was.
+   servers, and posts the offer. The call opens full screen and rings until the
+   session is up, then beeps and taps (see Ownership and the call screen); the
+   composer stays as it was.
 2. The voice emits `session.delegation.created`. The call builds a prompt from
    the last user utterance and sends it as a Send on the chat with
    `surface: "voice-live"` and `voice_context`. The user row appears as usual; no
@@ -120,7 +121,7 @@ could not connect. Try again in a moment." in the composer, so a later read neve
 starts a call long after the press. On a webui server it opens New Chat with
 Voice.
 
-## Ownership and the call bar
+## Ownership and the call screen
 
 - The call belongs to the app, not to the screen it started on. `LiveVoiceCall.shared`
   holds the call and its chat's `ChatViewModel` from the start until the call ends, so
@@ -132,16 +133,22 @@ Voice.
   call's model instead of making another (`LiveVoiceCall.model(for:)`, `ChatContinuity.resume`):
   the chat value it opened from, or the same server, connection and target (the
   Profile's Bot Chat, or the session by its current key or lineage root).
-- The call bar (`LiveVoiceCallBar`) is stacked above `ContentView`'s content, so every
+- Every call starts full screen (`LiveVoiceCallScreen`, a sheet from `ContentView`):
+  an orb whose colours follow the phase and flow with the call's sound, the status
+  and the latest words, the call's timer, and glass buttons for the audio output
+  (the system's `AVRoutePickerView`: iPhone, Speaker, AirPods), Mute and End.
+  Swiping it down or Minimize (`LiveVoiceCall.isExpanded`) leaves the pill.
+- The pill (`LiveVoiceCallBar`) floats above `ContentView`'s content, stacked so every
   screen and its navigation bar starts below it (a top safe-area inset left the navigation
-  bars under it); sheets still cover it. It shows a waveform that moves only while the
-  voice speaks (still under Reduce Motion), the status (Muted over Listening), Mute and End. A tap goes
-  back to the call's chat through the Hermes home, not a session link: Settings and
-  Add Server close, then the bot's Bot Chat or the Sessions chat opens.
+  bars under it); sheets still cover it. It shows a waveform of the call's level, the
+  status (Muted over Listening), the timer, Mute and End; a tap opens the full screen.
+  Show chat on the full screen minimizes it and goes back to the call's chat through
+  the Hermes home, not a session link: Settings and Add Server close, then the bot's
+  Bot Chat or the Sessions chat opens.
 - The call ends on End, ten quiet minutes, switching server or signing out (and a
   replaced saved connection), the host replacing a Bot Chat, an audio interruption
   (phone call, Siri), or the data channel or peer connection closing. Every end but
-  End and a server change is a drop: the bar keeps its reason with Call again, which
+  End and a server change is a drop: the pill keeps its reason with Call again, which
   starts a new call on the same chat, until dismissed. The ten minutes are counted
   from the last speech by either side or delegation out; there is no absolute cap. A
   delegation whose turn waits on an approval or question counts as quiet from when it
@@ -166,7 +173,9 @@ Voice.
   phone can close it: the peer connection it was minted for is already gone, so
   it never connects.
 - The call owns `.playAndRecord` + `.voiceChat` on the speaker with Bluetooth
-  allowed, and restores the previous session when it ends. It holds the
+  allowed (the output button moves it), with haptics allowed while recording for the
+  connected tap. The ringback and beep are tones the app makes (`VoiceCallTones`),
+  played beside WebRTC's audio and never into the microphone track. It restores the previous session when it ends. It holds the
   microphone and audio session process-wide (`ComposerAudioCaptureState`) from
   opening until its teardown has put the session back: meanwhile every
   composer's mic, dictation, voice notes and Call are off, and a new call tears
@@ -178,6 +187,20 @@ Voice.
 
 - Chained mode (speech-to-text → turn → text-to-speech) and streaming read-aloud (#1740).
 - A spoken stop word.
-- CallKit, ringing and VoIP push.
+- CallKit and VoIP push (the ringback is the app's own tone, not an incoming call).
 - A Live Activity for a call.
-- A speaker/receiver toggle (calls use the speaker).
+
+## Diagnosing calls
+
+- A drop's notice ends with the raw reason and how long the call was up, e.g.
+  `(expired, 29s)`. `expired` near 30 s means OpenAI heard no microphone audio
+  (always on the simulator, which has none); `connection_lost` is the peer
+  connection or data channel closing (the app treats WebRTC's transient
+  `disconnected` as lost, as Desktop does); `interrupted` is a phone call or Siri.
+- A delegated request that reached Hermes is an ordinary turn in the host's
+  `agent.log` for that Profile; none during a call means the voice never
+  delegated or the app never sent it. The session route itself logs nothing.
+- `scripts/fork/voice-live-probe` places a real call from the Mac with the host's
+  session config and spoken questions, and prints when the voice answers,
+  delegates and closes, to tell the vendor side from the phone. It bills
+  `OPENAI_API_KEY`.

@@ -1,0 +1,23 @@
+#!/bin/zsh
+# Times a GPT-Live call end to end from this Mac, without a phone (docs/agents/voice-call.md § Diagnosing calls).
+#
+#   OPENAI_API_KEY=… scripts/fork/voice-live-probe [hermes-delay-s=6] [seconds=120]
+#
+# It opens a real session billed to OPENAI_API_KEY (export it from your secret store; never pass it as an
+# argument), speaks two Mandarin questions with `say`, and prints when the voice answers, delegates and
+# closes. HERMES_SRC points at the hermes-agent checkout whose session config to use (default: the host's
+# ~/.hermes/hermes-agent). The Python environment (aiortc) is kept in ~/Library/Caches/hermex-voice-probe.
+set -euo pipefail
+[[ -n "${OPENAI_API_KEY:-}" ]] || { print -u2 "Set OPENAI_API_KEY in the environment first."; exit 1 }
+here=${0:A:h}
+venv=~/Library/Caches/hermex-voice-probe/.venv
+if [[ ! -x $venv/bin/python ]]; then
+  uv venv -q --python 3.12 $venv
+  uv pip install -q --python $venv/bin/python aiortc numpy
+fi
+speech=$(mktemp -d)
+trap 'rm -rf $speech' EXIT
+say -v Meijia -o $speech/greeting.aiff "你好，聽得到嗎"
+say -v Meijia -o $speech/request.aiff "請幫我查一下我明天的行事曆有什麼安排"
+for f in greeting request; do afconvert -f WAVE -d LEI16@48000 -c 1 $speech/$f.aiff $speech/$f.wav; done
+PROBE_SPEECH_DIR=$speech $venv/bin/python -I $here/voice_live_probe.py "$@"
