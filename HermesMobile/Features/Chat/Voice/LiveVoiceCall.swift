@@ -18,6 +18,9 @@ import UIKit
     @ObservationIgnored private var host: (server: URL, connectionID: UUID)?
     /// New each time something asks to go back to the call's chat; the Hermes home routes there.
     private(set) var reopenRequest: UUID?
+    /// The call fills the screen (`LiveVoiceCallScreen`); otherwise it is the floating pill.
+    /// Every call starts full screen; swiping it down or Minimize makes it the pill.
+    private(set) var isExpanded = false
     /// The last call dropped without the user hanging up: the bar says why and offers Call again
     /// until it is dismissed or another call starts.
     private(set) var drop: Drop? {
@@ -49,8 +52,24 @@ import UIKit
         self.call = call
         self.model = model
         host = model.hermesConversation.map { ($0.server, $0.connectionID) }
+        isExpanded = true
         tones.ring()
         call.onLive = { [tones] in tones.connected() }
+    }
+
+    /// The pill goes back to the full-screen call.
+    func expand() {
+        guard call != nil else { return }
+        isExpanded = true
+    }
+
+    /// The full-screen call becomes the pill over whatever screen is under it.
+    func minimize() { isExpanded = false }
+
+    /// Minimizes the call over its chat, for an approval or the reply in full.
+    func showChat() {
+        minimize()
+        requestReopen()
     }
 
     /// `call` ended by any path; its chat is let go unless the call dropped, which keeps it
@@ -58,6 +77,7 @@ import UIKit
     func ended(_ call: HermesVoiceCall) {
         guard call === self.call else { return }
         tones.stop()
+        isExpanded = false
         if case .ended(let reason) = call.status, let message = ChatViewModel.voiceCallEndMessage(reason),
            let model, let host {
             drop = Drop(message: message, model: model, server: host.server, connectionID: host.connectionID)
