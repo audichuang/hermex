@@ -78,6 +78,8 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         case failed(String)
         /// The session closed on its own: `connection_lost` or the vendor's reason.
         case closed(String)
+        /// The host replaced the Bot Chat the call talked on.
+        case chatReplaced
     }
 
     struct Caption: Equatable {
@@ -169,7 +171,8 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         refreshStatus()
     }
 
-    func end() { finish(.hungUp, closesTransport: true) }
+    /// Hangs up; `reason` says why when it isn't the user.
+    func end(_ reason: EndReason = .hungUp) { finish(reason, closesTransport: true) }
 
     func setMuted(_ muted: Bool) {
         guard isLive, !isEnded, muted != isMuted else { return }
