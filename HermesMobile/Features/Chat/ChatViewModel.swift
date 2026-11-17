@@ -2971,7 +2971,8 @@ final class ChatViewModel {
     @ObservationIgnored private(set) var voiceCallOfferRead: Task<Void, Never>?
 
     private func readVoiceCallOfferIfNeeded() {
-        guard let hermesTurn, !didReadVoiceCallOffer, voiceCallOfferRead == nil else { return }
+        // A legacy webui server's Bots chats get no call: new features are a Hermes server's.
+        guard let hermesTurn, liveCall.webuiServer != server, !didReadVoiceCallOffer, voiceCallOfferRead == nil else { return }
         voiceCallOfferRead = Task { [weak self, hermesTurn] in
             let status: HermesVoiceLiveStatus?
             do {

@@ -4,7 +4,9 @@ A voice call lets the user talk to their agent hands-free on a Hermes chat, the
 way Hermes Desktop's `voice.voice_chat_mode: gpt-live` does (#1091). OpenAI's
 live voice model (`gpt-live-1`) handles speech in and out over WebRTC; it has no
 tools, so real work goes to Hermes as an ordinary turn on the open chat and the
-reply is spoken back. webui servers never offer it.
+reply is spoken back. Calls are a Hermes server's only: a legacy webui server
+never offers one, its own chats or the Hermes chats on its Bots page, since the
+call bar's way back to the call's chat lives in the Hermes home.
 
 ## Where call audio goes
 

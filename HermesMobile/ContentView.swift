@@ -34,6 +34,13 @@ struct ContentView: View {
             .onChange(of: intentRouter.pendingVoiceCall) {
                 drainPendingVoiceCall()
             }
+            .onChange(of: authManager.state, initial: true) {
+                if case .loggedIn(let server) = authManager.state, authManager.kind(of: server) == .webui {
+                    LiveVoiceCall.shared.webuiServer = server
+                } else {
+                    LiveVoiceCall.shared.webuiServer = nil
+                }
+            }
             .onChange(of: authManager.state) {
                 if case .loggedIn(let server) = authManager.state {
                     LiveVoiceCall.shared.endUnless(server: server)
