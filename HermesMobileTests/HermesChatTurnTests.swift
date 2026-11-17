@@ -852,40 +852,6 @@ import SwiftUI
         XCTAssertFalse(chat.client.http.keepsAliveForCall)
     }
 
-    func testClosingTheChatHangsUpItsVoiceCall() async {
-        var chat: Chat? = await openChat()
-        let transport = CallTransport()
-        let closed = expectation(description: "The call's session closes")
-        transport.onClose = { closed.fulfill() }
-        chat?.model.makeVoiceLiveTransport = { _ in transport }
-        await chat?.model.startVoiceCall()?.value
-        chat?.model.suspendStreamForNavigation()
-        let turn = chat?.turn
-
-        chat = nil
-        await fulfillment(of: [closed], timeout: 5)
-        XCTAssertEqual(turn?.engine.isActive, false)
-    }
-
-    func testClosingTheChatWhileItsCallConnectsHangsItUp() async {
-        var chat: Chat? = await openChat()
-        let transport = CallTransport()
-        let opening = expectation(description: "The call's session starts opening")
-        let closed = expectation(description: "The call's session closes")
-        transport.onStart = { opening.fulfill() }
-        transport.parksStart = true
-        transport.onClose = { closed.fulfill() }
-        chat?.model.makeVoiceLiveTransport = { _ in transport }
-        chat?.model.startVoiceCall()
-        await fulfillment(of: [opening], timeout: 5)
-        chat?.model.suspendStreamForNavigation()
-        let http = chat?.client.http
-
-        chat = nil
-        await fulfillment(of: [closed], timeout: 5)
-        XCTAssertEqual(http?.keepsAliveForCall, false)
-    }
-
     func testCallShowsWhenTheChatsHostRunsGPTLive() async {
         // Its own Profile, so a status read an earlier test's chat left in flight can't count here.
         let chat = await openChat(profile: "voice",
@@ -1907,6 +1873,8 @@ import SwiftUI
             draftStore: drafts ?? ChatDraftStore(persistence: InMemoryDraftPersistence(), debounceDuration: .seconds(60)),
             backend: .hermes(turn)
         )
+        // Each chat's own call owner, so no test's call outlives it into the next.
+        model.liveCall = LiveVoiceCall()
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, turn: turn, host: host, client: client, liveActivity: liveActivity)

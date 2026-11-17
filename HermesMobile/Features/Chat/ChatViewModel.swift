@@ -733,8 +733,6 @@ final class ChatViewModel {
         listenPreparationTask?.cancel()
         listenPlaybackTicker?.invalidate()
         initialSessionPrefetch?.task.cancel()
-        // A voice call is billed until its session closes, so the model going hangs it up (#1091).
-        if let call = _voiceCall { Task { @MainActor in call.end() } }
     }
 
     func setShowsLiveActivityResponseExcerpts(_ shows: Bool) {
@@ -2952,6 +2950,12 @@ final class ChatViewModel {
         WebRTCVoiceLiveTransport(openSession: $0)
     }
 
+    @ObservationIgnored var liveCall = LiveVoiceCall.shared
+
+    var hermesConversation: (server: URL, connectionID: UUID, target: ConversationTarget)? {
+        hermesTurn.map { ($0.engine.server, $0.engine.connection.id, $0.engine.target) }
+    }
+
     private(set) var voiceCall: HermesVoiceCall?
 
     var isOnVoiceCall: Bool { voiceCall.map { !$0.isEnded } ?? false }
@@ -3038,27 +3042,22 @@ final class ChatViewModel {
         voiceCall = call
         voiceCallInProgress = call
         connection?.callStarted()
-        call.onEnded = { [weak self, weak call, connection, hermesTurn] in
-            if let self {
-                if self.owesNavigationSuspend {
-                    self.owesNavigationSuspend = false
-                    self.suspendActiveStreamConnection()
-                } else if connection?.owesBackgroundClose == true {
-                    self.suspendStreamForBackground()
-                }
-            } else {
-                // The chat went with the call on: its stream detaches now, as leaving would have.
-                hermesTurn?.suspendActiveStreamConnection()
+        liveCall.begin(call, model: self)
+        call.onEnded = { [weak self, weak call, connection] in
+            guard let self else { return }
+            if self.owesNavigationSuspend {
+                self.owesNavigationSuspend = false
+                self.suspendActiveStreamConnection()
+            } else if connection?.owesBackgroundClose == true {
+                self.suspendStreamForBackground()
             }
             connection?.callEnded()
-            guard let self else { return }
+            if let call { self.liveCall.ended(call) }
             if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
             if case .ended(let reason)? = call?.status, let message = Self.voiceCallEndMessage(reason) {
                 self.sendErrorMessage = message
             }
         }
-        // Only the call waits for its session, so a chat closed while it connects lets its model
-        // go, and the model going hangs the call up.
         return Task { [call] in await call.start() }
     }
 
@@ -6131,8 +6130,7 @@ final class ChatViewModel {
     }
 
     /// The chat's last view left: a screen pushed over it, or the chat closing. During a voice
-    /// call both keep the stream (#1091): a push must not hang up, and a closing chat's model goes,
-    /// which ends the call and suspends then.
+    /// call both keep the stream (#1091), which the call hears; it suspends when the call ends.
     func suspendStreamForNavigation() {
         guard !isOnVoiceCall else {
             owesNavigationSuspend = true

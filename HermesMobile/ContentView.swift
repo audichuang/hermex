@@ -29,6 +29,11 @@ struct ContentView: View {
                 drainPendingVoiceCall()
             }
             .onChange(of: authManager.state) {
+                if case .loggedIn(let server) = authManager.state {
+                    LiveVoiceCall.shared.endUnless(server: server)
+                } else {
+                    LiveVoiceCall.shared.endUnless(server: nil)
+                }
                 switchServer(pendingLinks.reroute(state: authManager.state, servers: authManager.servers,
                                                   isBotModeEnabled: isBotModeEnabled))
                 shares.endReview()
@@ -678,6 +683,7 @@ struct HermesServerHome: View {
     private func readConnection() {
         let saved = try? BotConnectionStore().load(server: server)
         guard saved != sessions?.entry.connection else { return }
+        LiveVoiceCall.shared.endUnless(connectionID: saved?.id, on: server)
         if let reviewing = shortcutReview.chat { shortcutReview.end(reviewing) }
         sessions = saved.map { HermesSessionsSide(server: server, connection: $0) }
     }
