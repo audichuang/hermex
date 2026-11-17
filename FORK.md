@@ -161,6 +161,9 @@ quick phone test; its tag still records the commit. `DRY_RUN=1` prints the steps
 lacks changes the current `main` has, judged by merging `main` into it, so squash-renamed commits pass (a
 release from a `develop` that misses an unmerged PR would silently drop features); `ALLOW_DROP=1` only after checking `git diff fork/main HEAD`. If the upload succeeds
 but recording fails, it prints the commands to push the tag and `main`; never re-upload to fix a record.
+It then waits until App Store Connect lists the build `VALID` and `IN_BETA_TESTING` and prints `Ready`; tell the
+owner a build is out only after that line (exit 2: uploaded but still processing, check again with the printed
+command).
 
 ## Upstream rebase
 
