@@ -591,6 +591,7 @@ struct ChatView: View {
             return seat
         }
         model.onHermesDraftKeyChange = onHermesDraftKeyChange
+        model.isReadOnlyForVoice = session.isSessionReadOnly
         // Only a model made here: a kept one already took its request.
         if isMadeHere, hermesSession?.autoStartsVoiceCall == true { model.requestVoiceCall() }
         _viewModel = State(initialValue: model)

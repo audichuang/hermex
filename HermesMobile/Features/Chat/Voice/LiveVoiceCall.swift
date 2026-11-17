@@ -3,8 +3,9 @@ import Observation
 import UIKit
 
 /// The app's one voice call (#1091). The call belongs to the app, not to the screen it started
-/// on: this holds the call and its chat's model from the start until the call ends, so leaving
-/// the chat, opening another or going to Settings keeps it talking. It ends on End, ten quiet
+/// on: this holds the call and its current chat's model until the call ends, so leaving the chat
+/// or going to Settings keeps it talking, and opening another chat of its Profile moves it there
+/// (`follow`), as Hermes Desktop's call talks on its window's open chat. It ends on End, ten quiet
 /// minutes, switching server or signing out, a Bot Chat the host replaced, or a dropped session.
 @MainActor @Observable final class LiveVoiceCall {
     static let shared = LiveVoiceCall()
@@ -76,6 +77,7 @@ import UIKit
     /// for Call again.
     func ended(_ call: HermesVoiceCall) {
         guard call === self.call else { return }
+        model?.voiceCallLeft(call)
         tones.stop()
         isExpanded = false
         if case .ended(let reason) = call.status, let message = ChatViewModel.voiceCallEndMessage(reason),
@@ -85,6 +87,23 @@ import UIKit
         self.call = nil
         model = nil
         host = nil
+    }
+
+    /// `next`'s chat came on screen. As Hermes Desktop's call talks to whichever chat its window
+    /// has open, the call moves there when it can: the same server, saved connection and Profile,
+    /// since the voice was minted with that Profile's key and voice. A chat elsewhere, or a
+    /// read-only one, leaves the call where it is.
+    func follow(_ next: ChatViewModel) {
+        guard let call, !call.isEnded, let current = model, current !== next,
+              let here = current.hermesConversation, let there = next.hermesConversation,
+              here.server == there.server, here.connectionID == there.connectionID,
+              here.target.profile == there.target.profile, !next.hermesConnectionIsRetired,
+              !next.isReadOnlyForVoice else { return }
+        // Let go before taking hold: both chats can share one connection and its retire hook.
+        current.voiceCallLeft(call)
+        model = next
+        next.voiceCallArrived(call)
+        call.move(to: next)
     }
 
     /// Goes back to the call's chat from wherever the app is.
