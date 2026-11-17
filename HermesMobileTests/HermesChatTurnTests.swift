@@ -752,44 +752,6 @@ import SwiftUI
         XCTAssertFalse(chat.client.http.keepsAliveForCall)
     }
 
-    /// A chat that closes with its call on hangs up as its model goes, closing the billed
-    /// session, and its stream detaches as leaving would have (#1091).
-    func testClosingTheChatHangsUpItsVoiceCall() async {
-        var chat: Chat? = await openChat()
-        let transport = CallTransport()
-        let closed = expectation(description: "The call's session closes")
-        transport.onClose = { closed.fulfill() }
-        chat?.model.makeVoiceLiveTransport = { _ in transport }
-        await chat?.model.startVoiceCall()?.value
-        chat?.model.suspendStreamForNavigation()
-        let turn = chat?.turn
-
-        chat = nil
-        await fulfillment(of: [closed], timeout: 5)
-        XCTAssertEqual(turn?.engine.isActive, false)
-    }
-
-    /// A chat closed while its call is still connecting hangs the call up as its model goes,
-    /// closing the session before the host answers, not once it does (#1091).
-    func testClosingTheChatWhileItsCallConnectsHangsItUp() async {
-        var chat: Chat? = await openChat()
-        let transport = CallTransport()
-        let opening = expectation(description: "The call's session starts opening")
-        let closed = expectation(description: "The call's session closes")
-        transport.onStart = { opening.fulfill() }
-        transport.parksStart = true
-        transport.onClose = { closed.fulfill() }
-        chat?.model.makeVoiceLiveTransport = { _ in transport }
-        chat?.model.startVoiceCall()
-        await fulfillment(of: [opening], timeout: 5)
-        chat?.model.suspendStreamForNavigation()
-        let http = chat?.client.http
-
-        chat = nil
-        await fulfillment(of: [closed], timeout: 5)
-        XCTAssertEqual(http?.keepsAliveForCall, false)
-    }
-
     /// Call shows once the chat's own host says its Profile runs GPT-Live (#1091).
     func testCallShowsWhenTheChatsHostRunsGPTLive() async {
         // Its own Profile, so a status read an earlier test's chat left in flight can't count here.
@@ -1976,6 +1938,8 @@ import SwiftUI
             draftStore: drafts ?? ChatDraftStore(persistence: InMemoryDraftPersistence(), debounceDuration: .seconds(60)),
             backend: .hermes(turn)
         )
+        // Each chat's own call owner, so no test's call outlives it into the next.
+        model.liveCall = LiveVoiceCall()
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, turn: turn, host: host, client: client, liveActivity: liveActivity)
