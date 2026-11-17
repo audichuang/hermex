@@ -11,9 +11,13 @@ struct ContentView: View {
     @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
 
     var body: some View {
-        content
-            // The app's voice call, above every screen (#1091).
-            .safeAreaInset(edge: .top, spacing: 0) { LiveVoiceCallBar() }
+        // The app's voice call, above every screen (#1091). Stacked, not a safe-area inset: the
+        // screens under it start below it, so their navigation bars sit under the bar, not
+        // behind it. The bar's background runs up under the status bar.
+        VStack(spacing: 0) {
+            LiveVoiceCallBar()
+            content
+        }
             .moveToHermesNotices(authManager)
             .onOpenURL(perform: handleOpenURL)
             .task {
