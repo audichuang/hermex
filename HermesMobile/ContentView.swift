@@ -696,17 +696,19 @@ struct HermesServerHome: View {
         isPresentingAddServer = false
         if let bot = seat.bot {
             tab = .bots
-            // Picking the bot again re-roots its chat, which pops what it pushed.
-            guard inbox.selection.profile?.id != bot.id || !call.showsCallChat else { return }
-            inbox.selection.profile = bot
+            switch call.reopenStep(isOpen: inbox.selection.profile?.id == bot.id) {
+            case .stay: return
+            case .open: inbox.selection.profile = bot
+            case .reopen:
+                inbox.selection.profile = nil
+                Task { @MainActor in inbox.selection.profile = bot }
+            }
         } else if let navigation = sessions?.navigation {
             tab = .sessions
-            let isOpen = navigation.covers.chat?.id == seat.id
-            guard !isOpen || !call.showsCallChat else { return }
+            let step = call.reopenStep(isOpen: navigation.covers.chat?.id == seat.id)
+            guard step != .stay else { return }
             navigation.covers.bringForward()
-            if isOpen {
-                // The same chat value keeps what its view pushed, so it pops with the rows'
-                // covers and opens again on the next turn, on the call's model.
+            if step == .reopen {
                 Task { @MainActor in navigation.covers.chat = seat }
             } else {
                 navigation.covers.chat = seat

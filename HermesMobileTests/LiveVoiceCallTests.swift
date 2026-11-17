@@ -156,6 +156,25 @@ import XCTest
         owner.call?.end()
     }
 
+    /// Going back to the call's chat opens it where another chat is open, does nothing where
+    /// it shows, and closes and opens it again where a screen covers it: setting the same chat
+    /// or bot again keeps that screen.
+    func testGoingBackToTheCallsChatClosesWhatCoversIt() async throws {
+        let owner = LiveVoiceCall()
+        let chat = await openChat(owner: owner)
+        let continuity = ChatContinuity(), view = UUID()
+        continuity.viewAppeared(view, model: chat.model) { _, _ in }
+        chat.model.makeVoiceLiveTransport = { _ in FakeTransport() }
+        let started = try XCTUnwrap(chat.model.startVoiceCall())
+        await started.value
+
+        XCTAssertEqual(owner.reopenStep(isOpen: false), .open)
+        XCTAssertEqual(owner.reopenStep(isOpen: true), .stay)
+        pushScreen(over: view, continuity, chat.model)
+        XCTAssertEqual(owner.reopenStep(isOpen: true), .reopen)
+        owner.call?.end()
+    }
+
     /// What `ChatView.onDisappear` does when a screen is pushed over the chat.
     private func pushScreen(over view: UUID, _ continuity: ChatContinuity, _ model: ChatViewModel) {
         if continuity.viewDisappeared(view) { model.suspendStreamForNavigation() }
