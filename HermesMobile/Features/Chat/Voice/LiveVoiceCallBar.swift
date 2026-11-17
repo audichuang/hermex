@@ -61,6 +61,15 @@ private struct LiveVoiceCallRow: View {
                         .font(AppFont.footnote(weight: .semibold))
                         .foregroundStyle(.appPrimary)
                         .lineLimit(1)
+                    if let connectedAt = call.connectedAt {
+                        // The system ticks it; the bar doesn't redraw each second.
+                        Text(connectedAt, style: .timer)
+                            .font(AppFont.footnote())
+                            .monospacedDigit()
+                            .foregroundStyle(Color(.appTextSecondary))
+                            .lineLimit(1)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
@@ -116,7 +125,7 @@ private struct LiveVoiceCallRow: View {
 
     private func statusText(_ phase: LiveVoiceCallBar.Phase?) -> String {
         switch phase {
-        case .connecting: String(localized: "Connecting…")
+        case .connecting: String(localized: "Calling…")
         case .listening: String(localized: "Listening")
         case .muted: String(localized: "Muted")
         case .thinking: String(localized: "Hermes is working")

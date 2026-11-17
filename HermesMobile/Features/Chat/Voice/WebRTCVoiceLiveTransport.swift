@@ -406,6 +406,8 @@ private final class WebRTCVoiceLiveRelay: NSObject, RTCPeerConnectionDelegate, R
         defer { session.unlockForConfiguration() }
         do {
             try session.setConfiguration(call, active: true)
+            // The connected tap still plays while the microphone records.
+            try? session.session.setAllowHapticsAndSystemSoundsDuringRecording(true)
         } catch {
             RTCAudioSessionConfiguration.setWebRTC(previous.webRTCDefault)
             throw error
