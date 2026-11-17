@@ -194,6 +194,9 @@ import OSLog
 
     /// Each started call balances with one `callEnded()`.
     func callStarted() { callsKeepingAlive += 1 }
+    /// Hangs up the voice call on this connection once it is retired (#1091): its saved record
+    /// changed or went, so the call's chat can't reach the host any more.
+    var onRetire: (() -> Void)?
     func callEnded() { callsKeepingAlive = max(0, callsKeepingAlive - 1) }
     /// The app went to the background while a call kept the sockets open; returning clears it.
     private(set) var owesBackgroundClose = false
@@ -668,6 +671,9 @@ import OSLog
         signInTask?.cancel()
         signInTask = nil
         liveGateways.forEach { $0.retire() }
+        let retired = onRetire
+        onRetire = nil
+        retired?()
     }
 
     /// The login, identity and token reads, which run before there is a session.

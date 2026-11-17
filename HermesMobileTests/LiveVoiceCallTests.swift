@@ -175,6 +175,24 @@ import XCTest
         owner.call?.end()
     }
 
+    /// A saved connection changed or removed retires the chat's connection: the call on it ends,
+    /// and no chat opens again on its model, whose every request would fail.
+    func testRetiringTheCallsConnectionEndsTheCallAndItsChatIsNotReused() async throws {
+        let owner = LiveVoiceCall()
+        let chat = await openChat(owner: owner)
+        let transport = FakeTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        let started = try XCTUnwrap(chat.model.startVoiceCall())
+        await started.value
+
+        chat.turn.connection?.retire()
+        XCTAssertNil(owner.call, "the call ends with its connection")
+        XCTAssertEqual(transport.closes, 1)
+        let reopened = HermesSessionChat(server: Self.server, connection: Self.connection,
+                                         target: .session(profile: "default", key: "tip"))
+        XCTAssertNil(owner.model(for: reopened))
+    }
+
     /// What `ChatView.onDisappear` does when a screen is pushed over the chat.
     private func pushScreen(over view: UUID, _ continuity: ChatContinuity, _ model: ChatViewModel) {
         if continuity.viewDisappeared(view) { model.suspendStreamForNavigation() }
