@@ -130,9 +130,10 @@ Voice.
   call's model instead of making another (`LiveVoiceCall.model(for:)`, `ChatContinuity.resume`):
   the chat value it opened from, or the same server, connection and target (the
   Profile's Bot Chat, or the session by its current key or lineage root).
-- The call bar (`LiveVoiceCallBar`) sits in `ContentView`'s top safe-area inset, above
-  every screen but sheets: a waveform that moves only while the voice speaks (still
-  under Reduce Motion), the status (Muted over Listening), Mute and End. A tap goes
+- The call bar (`LiveVoiceCallBar`) is stacked above `ContentView`'s content, so every
+  screen and its navigation bar starts below it (a top safe-area inset left the navigation
+  bars under it); sheets still cover it. It shows a waveform that moves only while the
+  voice speaks (still under Reduce Motion), the status (Muted over Listening), Mute and End. A tap goes
   back to the call's chat through the Hermes home, not a session link: Settings and
   Add Server close, then the bot's Bot Chat or the Sessions chat opens.
 - The call ends on End, ten quiet minutes, switching server or signing out (and a
