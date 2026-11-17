@@ -307,6 +307,8 @@ struct ChatView: View {
     let onAPIError: (Error) -> Void
     let loadsInitialMessages: Bool
     let autoStartsVoiceInput: Bool
+    /// Start Voice Call opened it (#1091): the keyboard stays down for the call.
+    private let opensForVoiceCall: Bool
     let draftStore: ChatDraftStore
     let draftAttachmentStore: any ChatDraftAttachmentStoring
     let restoresDraftSettings: Bool
@@ -447,6 +449,7 @@ struct ChatView: View {
         self.onAPIError = onAPIError
         self.loadsInitialMessages = loadsInitialMessages
         self.autoStartsVoiceInput = autoStartsVoiceInput
+        opensForVoiceCall = hermesSession?.autoStartsVoiceCall == true
         self.draftStore = draftStore ?? .shared
         let resolvedDraftAttachmentStore = draftAttachmentStore ?? ChatDraftAttachmentStore.shared
         self.draftAttachmentStore = resolvedDraftAttachmentStore
@@ -3971,7 +3974,7 @@ struct ChatView: View {
         guard !didApplyInitialComposerFocusPolicy else { return }
         guard didCompleteInitialAppearance, isInitialComposerFocusContentReady else { return }
 
-        if !viewModel.messages.isEmpty {
+        if !viewModel.messages.isEmpty || opensForVoiceCall {
             didApplyInitialComposerFocusPolicy = true
             return
         }
