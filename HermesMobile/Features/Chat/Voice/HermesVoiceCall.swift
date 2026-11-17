@@ -79,7 +79,8 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         case inactive
         /// It never started: the host's or the device's reason.
         case failed(String)
-        /// The session closed on its own: `connection_lost` or the vendor's reason.
+        /// The session closed on its own: `connection_lost` or the vendor's reason, and how long
+        /// the call had been up ("connection_lost, 28s"), shown as is to tell drops apart.
         case closed(String)
         /// The host replaced the Bot Chat the call talked on.
         case chatReplaced
@@ -125,6 +126,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     @ObservationIgnored private var delegation: Delegation?
     @ObservationIgnored private var didStart = false
     @ObservationIgnored private var isLive = false
+    @ObservationIgnored private var liveSince: ContinuousClock.Instant?
     @ObservationIgnored private var isSpeaking = false
     /// A Stop went out for the running turn; the next turn end clears it.
     @ObservationIgnored private var interruptSent = false
@@ -176,6 +178,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         // Ended while the session opened: `finish` closed the transport then.
         guard !isEnded else { return }
         isLive = true
+        liveSince = .now
         armInactivity()
         refreshStatus()
     }
@@ -207,7 +210,9 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     }
 
     private func transportDidClose(_ reason: String) {
-        finish(reason == "close_requested" ? .hungUp : .closed(reason), closesTransport: false)
+        guard reason != "close_requested" else { return finish(.hungUp, closesTransport: false) }
+        let seconds = liveSince.map { Int(($0.duration(to: .now)).components.seconds) }
+        finish(.closed(seconds.map { "\(reason), \($0)s" } ?? reason), closesTransport: false)
     }
 
     private func speakingDidChange(_ speaking: Bool) {

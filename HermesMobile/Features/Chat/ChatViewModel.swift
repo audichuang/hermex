@@ -3030,7 +3030,8 @@ final class ChatViewModel {
         switch reason {
         case .hungUp: nil
         case .failed(let detail): detail
-        case .closed: String(localized: "The voice call disconnected.")
+        // The raw reason stays untranslated: it tells a network drop from the vendor's close.
+        case .closed(let detail): String(localized: "The voice call disconnected.") + " (\(detail))"
         case .inactive: String(localized: "The voice call ended after 10 quiet minutes.")
         case .chatReplaced: String(localized: "The host replaced this Bot Chat, so the voice call ended.")
         }

@@ -256,7 +256,7 @@ import XCTest
 
         transports.last?.onClosed?("connection_lost")
         XCTAssertNil(owner.call)
-        XCTAssertEqual(owner.drop?.message, ChatViewModel.voiceCallEndMessage(.closed("connection_lost")))
+        XCTAssertTrue(owner.drop?.message.contains("connection_lost") == true, "the bar says which way the call dropped")
         let reopened = HermesSessionChat(server: Self.server, connection: Self.connection,
                                          target: .session(profile: "default", key: "tip"))
         XCTAssertTrue(owner.model(for: reopened) === chat.model, "reopening the chat finds the one Call again calls on")
