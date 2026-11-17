@@ -935,7 +935,7 @@ import SwiftUI
         let chat = await openChat()
         let transport = CallTransport()
         chat.model.makeVoiceLiveTransport = { _ in transport }
-        await chat.model.startVoiceCall()
+        await chat.model.startVoiceCall()?.value
         XCTAssertTrue(chat.model.isOnVoiceCall)
 
         chat.client.http.closeForBackground()
@@ -955,7 +955,7 @@ import SwiftUI
         let chat = await openChat()
         let transport = CallTransport()
         chat.model.makeVoiceLiveTransport = { _ in transport }
-        await chat.model.startVoiceCall()
+        await chat.model.startVoiceCall()?.value
 
         chat.model.suspendStreamForNavigation()
         XCTAssertTrue(chat.model.isOnVoiceCall)
@@ -975,13 +975,34 @@ import SwiftUI
         let closed = expectation(description: "The call's session closes")
         transport.onClose = { closed.fulfill() }
         chat?.model.makeVoiceLiveTransport = { _ in transport }
-        await chat?.model.startVoiceCall()
+        await chat?.model.startVoiceCall()?.value
         chat?.model.suspendStreamForNavigation()
         let turn = chat?.turn
 
         chat = nil
         await fulfillment(of: [closed], timeout: 5)
         XCTAssertEqual(turn?.engine.isActive, false)
+    }
+
+    /// A chat closed while its call is still connecting hangs the call up as its model goes,
+    /// closing the session before the host answers, not once it does (#1091).
+    func testClosingTheChatWhileItsCallConnectsHangsItUp() async {
+        var chat: Chat? = await openChat()
+        let transport = CallTransport()
+        let opening = expectation(description: "The call's session starts opening")
+        let closed = expectation(description: "The call's session closes")
+        transport.onStart = { opening.fulfill() }
+        transport.parksStart = true
+        transport.onClose = { closed.fulfill() }
+        chat?.model.makeVoiceLiveTransport = { _ in transport }
+        chat?.model.startVoiceCall()
+        await fulfillment(of: [opening], timeout: 5)
+        chat?.model.suspendStreamForNavigation()
+        let http = chat?.client.http
+
+        chat = nil
+        await fulfillment(of: [closed], timeout: 5)
+        XCTAssertEqual(http?.keepsAliveForCall, false)
     }
 
     /// Call shows once the chat's own host says its Profile runs GPT-Live (#1091).
@@ -1008,8 +1029,8 @@ import SwiftUI
         await offered.model.voiceCallOfferRead?.value
         XCTAssertTrue(offered.model.isRequestedVoiceCallReady)
 
-        await offered.model.startRequestedVoiceCall()
-        await offered.model.startRequestedVoiceCall()
+        await offered.model.startRequestedVoiceCall()?.value
+        await offered.model.startRequestedVoiceCall()?.value
         XCTAssertEqual(calls, 1)
         XCTAssertTrue(offered.model.isOnVoiceCall)
         offered.model.endVoiceCall()
@@ -1019,7 +1040,7 @@ import SwiftUI
         chained.model.makeVoiceLiveTransport = { _ in calls += 1; return CallTransport() }
         chained.model.requestVoiceCall()
         await chained.model.voiceCallOfferRead?.value
-        await chained.model.startRequestedVoiceCall()
+        await chained.model.startRequestedVoiceCall()?.value
         XCTAssertEqual(calls, 1)
         XCTAssertFalse(chained.model.isOnVoiceCall)
         XCTAssertNotNil(chained.model.sendErrorMessage)
@@ -1060,7 +1081,7 @@ import SwiftUI
         transport.startError = HermesVoiceLiveRefusal(status: 503, detail: detail)
         chat.model.makeVoiceLiveTransport = { _ in transport }
 
-        await chat.model.startVoiceCall()
+        await chat.model.startVoiceCall()?.value
 
         XCTAssertNil(chat.model.voiceCallInProgress)
         XCTAssertEqual(chat.model.sendErrorMessage, detail)
@@ -1663,7 +1684,7 @@ import SwiftUI
         chat.model.suspendStreamForBackground()
         let transport = CallTransport()
         chat.model.makeVoiceLiveTransport = { _ in transport }
-        await chat.model.startVoiceCall()
+        await chat.model.startVoiceCall()?.value
         chat.host.always("session.list", .init(result: .object(["sessions": .array([
             .object(["id": .string("new-root"), "resolved_id": .string("new-tip")])
         ])])))
@@ -2475,9 +2496,21 @@ private extension BotJSON {
     private(set) var closes = 0
     var onClose: (() -> Void)?
     var startError: Error?
+    /// Holds `start` open, as a session the host hasn't answered yet, until `close`.
+    var parksStart = false
+    var onStart: (() -> Void)?
+    private var parked: CheckedContinuation<Void, Never>?
 
-    func start(history: [BotJSON]) async throws { if let startError { throw startError } }
+    func start(history: [BotJSON]) async throws {
+        onStart?()
+        if parksStart { await withCheckedContinuation { parked = $0 } }
+        if let startError { throw startError }
+    }
     func send(_ event: BotJSON) {}
     func setMuted(_ muted: Bool) {}
-    func close() { closes += 1; onClose?() }
+    func close() {
+        closes += 1
+        parked?.resume(); parked = nil
+        onClose?()
+    }
 }

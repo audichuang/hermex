@@ -3577,15 +3577,16 @@ final class ChatViewModel {
 
     /// Starts the call Start Voice Call asked for through Call's own path, or shows why the host
     /// can't take one where a failed call shows. Once per request.
-    func startRequestedVoiceCall() async {
-        guard isRequestedVoiceCallReady else { return }
+    @discardableResult
+    func startRequestedVoiceCall() -> Task<Void, Never>? {
+        guard isRequestedVoiceCallReady else { return nil }
         isRequestedVoiceCallReady = false
         requestsVoiceCall = false
         guard offersVoiceCall else {
             sendErrorMessage = voiceCallRefusal
-            return
+            return nil
         }
-        await startVoiceCall()
+        return startVoiceCall()
     }
 
     /// What the composer says when a call ends without the user hanging up.
@@ -3602,13 +3603,14 @@ final class ChatViewModel {
     /// kept reaching the call; the stream suspends when the call ends, unless the chat is back.
     @ObservationIgnored private var owesNavigationSuspend = false
 
-    /// Starts a voice call on this Hermes chat and returns once its session is up or the start
-    /// failed. While it is on, the chat's connection keeps its socket through the background and
-    /// its stream under a pushed screen, so the delegated reply keeps streaming into the call.
+    /// Starts a voice call on this Hermes chat; the returned task finishes once its session is up
+    /// or the start failed. While it is on, the chat's connection keeps its socket through the
+    /// background and its stream under a pushed screen, so the delegated reply keeps streaming into the call.
     /// The call ends when the chat is replaced or the model goes; ending in the background or
     /// under a pushed screen suspends the chat then, and in the background closes the socket (#902).
-    func startVoiceCall() async {
-        guard !isOnVoiceCall, let call = makeVoiceCall() else { return }
+    @discardableResult
+    func startVoiceCall() -> Task<Void, Never>? {
+        guard !isOnVoiceCall, let call = makeVoiceCall() else { return nil }
         let connection = hermesTurn?.connection
         // A new call's row replaces the last one's error.
         if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }
@@ -3634,7 +3636,9 @@ final class ChatViewModel {
                 self.sendErrorMessage = message
             }
         }
-        await call.start()
+        // Only the call waits for its session, so a chat closed while it connects lets its model
+        // go, and the model going hangs the call up.
+        return Task { [call] in await call.start() }
     }
 
     func endVoiceCall() {
