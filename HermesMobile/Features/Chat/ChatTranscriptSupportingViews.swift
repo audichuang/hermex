@@ -393,7 +393,7 @@ struct ChatScrollObserver: UIViewRepresentable {
     /// The transcript load finished, so a successor must not load again: that would replace the
     /// older pages the reader loaded with the newest one.
     var didLoadMessages = false
-    private var viewsOnScreen: [(id: UUID, returnsWaitingSend: (String, HermesWaitingSend.Return) -> Void)] = []
+    private var viewsOnScreen: [(id: UUID, model: ChatViewModel, returnsWaitingSend: (String, HermesWaitingSend.Return) -> Void)] = []
     private var transcriptsOnScreen: [ChatScrollPositionController] = []
     /// The transcript that left with none on screen, whose place the next one takes.
     private var lastTranscript: ChatScrollPositionController?
@@ -412,8 +412,12 @@ struct ChatScrollObserver: UIViewRepresentable {
     /// `returnsWaitingSend` puts a waiting send that came back into this view's composer.
     func viewAppeared(_ view: UUID, model: ChatViewModel,
                       returnsWaitingSend: @escaping (String, HermesWaitingSend.Return) -> Void) {
-        viewsOnScreen.removeAll { $0.id == view }
-        viewsOnScreen.append((view, returnsWaitingSend))
+        if let shown = viewsOnScreen.first(where: { $0.id == view }) {
+            shown.model.viewsOnScreen -= 1
+            viewsOnScreen.removeAll { $0.id == view }
+        }
+        viewsOnScreen.append((view, model, returnsWaitingSend))
+        model.viewsOnScreen += 1
         self.model = model
         model.onWaitingSendReturned = returnsWaitingSend
     }
@@ -421,7 +425,10 @@ struct ChatScrollObserver: UIViewRepresentable {
     /// True once no view of this chat is on screen, when the chat really left and its model stops
     /// its work. The next view to appear starts it again, as when a pushed screen pops.
     func viewDisappeared(_ view: UUID) -> Bool {
-        viewsOnScreen.removeAll { $0.id == view }
+        if let leaving = viewsOnScreen.first(where: { $0.id == view }) {
+            leaving.model.viewsOnScreen -= 1
+            viewsOnScreen.removeAll { $0.id == view }
+        }
         // An extra view that appeared last took the composer's place; the one staying takes it back.
         if let staying = viewsOnScreen.last { model?.onWaitingSendReturned = staying.returnsWaitingSend }
         return viewsOnScreen.isEmpty
