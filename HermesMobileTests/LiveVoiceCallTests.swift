@@ -244,6 +244,33 @@ import XCTest
         call.end()
     }
 
+    /// A call opens full screen, minimizes to the pill and back, and Show chat minimizes it over
+    /// its chat. A call that ends closes the full screen.
+    func testACallOpensFullScreenMinimizesAndClosesWhenItEnds() async throws {
+        let owner = LiveVoiceCall()
+        let chat = await openChat(owner: owner)
+        var transports: [FakeTransport] = []
+        chat.model.makeVoiceLiveTransport = { _ in let next = FakeTransport(); transports.append(next); return next }
+        let started = try XCTUnwrap(chat.model.startVoiceCall())
+        await started.value
+        XCTAssertTrue(owner.isExpanded)
+
+        owner.minimize()
+        XCTAssertFalse(owner.isExpanded)
+        owner.expand()
+        XCTAssertTrue(owner.isExpanded)
+        let request = owner.reopenRequest
+        owner.showChat()
+        XCTAssertFalse(owner.isExpanded)
+        XCTAssertNotEqual(owner.reopenRequest, request, "Show chat goes back to the call's chat")
+
+        owner.expand()
+        transports.last?.onClosed?("connection_lost")
+        XCTAssertFalse(owner.isExpanded)
+        owner.expand()
+        XCTAssertFalse(owner.isExpanded, "no call, no full screen")
+    }
+
     /// A dropped session leaves its reason in the bar with Call again, which starts a new call on
     /// the same chat and goes back to it. End leaves no notice.
     func testADroppedCallSaysWhyAndCallsAgainOnTheSameChat() async throws {

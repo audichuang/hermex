@@ -13,11 +13,19 @@ struct ContentView: View {
     var body: some View {
         // The app's voice call, above every screen (#1091). Stacked, not a safe-area inset: the
         // screens under it start below it, so their navigation bars sit under the bar, not
-        // behind it. The bar's background runs up under the status bar.
+        // behind it.
         VStack(spacing: 0) {
-            LiveVoiceCallBar()
+            // Above the screens, so the pill's shadow falls over them.
+            LiveVoiceCallBar().zIndex(1)
             content
         }
+            // The call starts full screen; swiping it down leaves the pill above.
+            .sheet(isPresented: Binding(
+                get: { LiveVoiceCall.shared.call != nil && LiveVoiceCall.shared.isExpanded },
+                set: { if !$0 { LiveVoiceCall.shared.minimize() } }
+            )) {
+                LiveVoiceCallScreen()
+            }
             .moveToHermesNotices(authManager)
             .onOpenURL(perform: handleOpenURL)
             .task {
