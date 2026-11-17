@@ -2457,6 +2457,7 @@ private extension BotJSON {
     var onEvent: ((VoiceLiveServerEvent) -> Void)?
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
+    var onAudioLevel: ((Double) -> Void)?
     private(set) var closes = 0
     var onClose: (() -> Void)?
     var startError: Error?
