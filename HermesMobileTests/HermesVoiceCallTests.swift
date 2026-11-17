@@ -199,6 +199,31 @@ import XCTest
         XCTAssertEqual(transport.closes, 1)
     }
 
+    /// The connected beep plays once the session is up, not for a call ended while it rang.
+    func testTheConnectedCuePlaysOnlyOnceTheSessionIsUp() async {
+        let ended = FakeTransport()
+        ended.holdsStart = true
+        let rung = HermesVoiceCall(transport: ended, chat: FakeChat(), scheduler: ManualScheduler())
+        var rungCues = 0
+        rung.onLive = { rungCues += 1 }
+        let opening = expectation(description: "The session is opening")
+        ended.onStartCalled = { opening.fulfill() }
+        let start = Task { await rung.start() }
+        await fulfillment(of: [opening], timeout: 5)
+        rung.end()
+        ended.finishStart()
+        await start.value
+        XCTAssertEqual(rungCues, 0)
+        XCTAssertNil(rung.connectedAt)
+
+        let call = HermesVoiceCall(transport: FakeTransport(), chat: FakeChat(), scheduler: ManualScheduler())
+        var cues = 0
+        call.onLive = { cues += 1 }
+        await call.start()
+        XCTAssertEqual(cues, 1)
+        XCTAssertNotNil(call.connectedAt, "the bar's timer starts")
+    }
+
     /// The bar's waveform follows the call's sound and goes flat when the call ends, even if a
     /// last reading arrives after.
     func testTheWaveformLevelFollowsTheCallAndGoesFlatWhenItEnds() async {

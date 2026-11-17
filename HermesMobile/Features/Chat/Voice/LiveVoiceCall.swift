@@ -1,5 +1,6 @@
-import Foundation
+import AVFoundation
 import Observation
+import UIKit
 
 /// The app's one voice call (#1091). The call belongs to the app, not to the screen it started
 /// on: this holds the call and its chat's model from the start until the call ends, so leaving
@@ -37,20 +38,26 @@ import Observation
     /// the bar's way back to the call's chat lives in the Hermes home. `ContentView` sets it.
     @ObservationIgnored var webuiServer: URL?
 
+    @ObservationIgnored private let tones = VoiceCallTones()
+
     init() {}
 
-    /// `model` started `call`; held until `ended`.
+    /// `model` started `call`; held until `ended`. Rings until the session is up, then a
+    /// connected beep and tap, like a phone call.
     func begin(_ call: HermesVoiceCall, model: ChatViewModel) {
         drop = nil
         self.call = call
         self.model = model
         host = model.hermesConversation.map { ($0.server, $0.connectionID) }
+        tones.ring()
+        call.onLive = { [tones] in tones.connected() }
     }
 
     /// `call` ended by any path; its chat is let go unless the call dropped, which keeps it
     /// for Call again.
     func ended(_ call: HermesVoiceCall) {
         guard call === self.call else { return }
+        tones.stop()
         if case .ended(let reason) = call.status, let message = ChatViewModel.voiceCallEndMessage(reason),
            let model, let host {
             drop = Drop(message: message, model: model, server: host.server, connectionID: host.connectionID)
@@ -143,5 +150,65 @@ import Observation
         if let drop, drop.server == server, drop.connectionID != connectionID { self.drop = nil }
         guard let call, let host, host.server == server, host.connectionID != connectionID else { return }
         call.end()
+    }
+}
+
+/// A call's ringback while it connects and the beep once it is up, made here as tones so no
+/// sound file ships. They play beside WebRTC's audio and never go into the microphone track.
+@MainActor final class VoiceCallTones {
+    private var player: AVAudioPlayer?
+    private let haptics = UINotificationFeedbackGenerator()
+
+    /// 440 + 480 Hz for a second, then two quiet ones, over and over until `stop` or `connected`.
+    func ring() {
+        play(Self.wave([(1.0, [440, 480]), (2.0, [])]), loops: -1)
+        haptics.prepare()
+    }
+
+    /// Stops the ringback, beeps twice rising and taps.
+    func connected() {
+        play(Self.wave([(0.08, [880]), (0.06, []), (0.12, [1320])]), loops: 0)
+        haptics.notificationOccurred(.success)
+    }
+
+    func stop() {
+        player?.stop()
+        player = nil
+    }
+
+    private func play(_ data: Data, loops: Int) {
+        stop()
+        guard let player = try? AVAudioPlayer(data: data) else { return }
+        player.numberOfLoops = loops
+        player.volume = 0.35
+        player.play()
+        self.player = player
+    }
+
+    /// 16-bit mono WAV of `parts`: each a length in seconds and the frequencies summed in it
+    /// (none: silence), with short fades so no part clicks.
+    static func wave(_ parts: [(seconds: Double, hertz: [Double])]) -> Data {
+        let rate = 16_000.0
+        var samples: [Int16] = []
+        for part in parts {
+            let count = Int(part.seconds * rate)
+            let fade = min(Double(count) / 2, rate * 0.01)
+            for index in 0..<count {
+                guard !part.hertz.isEmpty else { samples.append(0); continue }
+                let time = Double(index) / rate
+                let sum = part.hertz.reduce(0) { $0 + sin(2 * .pi * $1 * time) } / Double(part.hertz.count)
+                let edge = min(1, Double(index) / fade, Double(count - index) / fade)
+                samples.append(Int16(sum * edge * 0.6 * Double(Int16.max)))
+            }
+        }
+        var data = Data()
+        func append<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
+        let bytes = UInt32(samples.count * 2)
+        data.append(contentsOf: Array("RIFF".utf8)); append(36 + bytes)
+        data.append(contentsOf: Array("WAVEfmt ".utf8)); append(UInt32(16)); append(UInt16(1)); append(UInt16(1))
+        append(UInt32(rate)); append(UInt32(rate * 2)); append(UInt16(2)); append(UInt16(16))
+        data.append(contentsOf: Array("data".utf8)); append(bytes)
+        samples.forEach { append($0) }
+        return data
     }
 }
