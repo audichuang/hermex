@@ -70,11 +70,26 @@ this Mac (the fork owner's), so use these instead. The global rule is in `~/.age
 bullet); only the Hermex specifics are here.
 
 - Prefix `HERMEX`. Resident device: `HERMEX iPhone 18 Pro Max` (iOS 27.2). Check
-  `xcrun simctl list devices | grep HERMEX`; if the resident is missing, create it with this command
-  (no further owner confirmation needed). Creation does not boot it:
+  `xcrun simctl list devices | grep HERMEX`. When it is idle the resident is parked on the NAS with
+  `sim-vault` (the `modern-ios-guidance` skill, VER7), so a missing resident is normal. Restore it first,
+  under the build lock; it comes back with the app and its login, under a new UDID:
+
+  ```zsh
+  lockf -k /tmp/hermex-build.lock sim-vault restore "HERMEX iPhone 18 Pro Max"
+  ```
+
+  Only when that exits 3 (no archive), 4 (runtime removed) or 5 (NAS share not mounted), create a blank one
+  (no further owner confirmation needed); any other non-zero exit means stop and report. Creation does not
+  boot it:
 
   ```zsh
   xcrun simctl create "HERMEX iPhone 18 Pro Max" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-2
+  ```
+
+  When a batch of work is done, park it again (it must be shut down first; this frees about 6 GB):
+
+  ```zsh
+  lockf -k /tmp/hermex-build.lock sim-vault park "HERMEX iPhone 18 Pro Max" --shutdown
   ```
 
 - Temporary parallel devices: `HERMEX tmp <task>`.
