@@ -889,6 +889,21 @@ import SwiftUI
         XCTAssertNotNil(chained.model.sendErrorMessage)
     }
 
+    func testACallRequestedOnASavedSessionIsSeededWithItsTurns() async throws {
+        let chat = await openChat(profile: "voice-seed", history: [userRow("Check the build", id: 1), assistantRow("It passed.", id: 2)],
+                                  voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        chat.model.requestVoiceCall()
+        await chat.model.voiceCallOfferRead?.value
+
+        await chat.model.startRequestedVoiceCall()?.value
+
+        let seeded = transport.history.compactMap { $0["content"].list?.first?["text"].text }
+        XCTAssertEqual(seeded, ["Check the build", "It passed."])
+        chat.model.endVoiceCall()
+    }
+
     func testAVoiceCallHearsTheChatLoseAndRegainHermes() async {
         let chat = await openChat()
         var heard: [HermesVoiceTurnEvent] = []
@@ -2145,7 +2160,10 @@ private extension BotJSON {
     var onStart: (() -> Void)?
     private var parked: CheckedContinuation<Void, Never>?
 
+    private(set) var history: [BotJSON] = []
+
     func start(history: [BotJSON]) async throws {
+        self.history = history
         onStart?()
         if parksStart { await withCheckedContinuation { parked = $0 } }
         if let startError { throw startError }
