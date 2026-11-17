@@ -93,7 +93,66 @@ import XCTest
         XCTAssertNil(owner.model(for: session("tip")))
     }
 
-    /// One call per app: Call on a second chat builds no session and goes back to the call on.
+    /// As Desktop's call talks on its window's open chat, opening another chat of the same
+    /// server, connection and Profile moves the call there; the chat left lets it go.
+    func testTheCallFollowsTheChatTheUserOpensInItsProfile() async throws {
+        let owner = LiveVoiceCall()
+        let first = await openChat(owner: owner, key: "tip")
+        first.model.makeVoiceLiveTransport = { _ in FakeTransport() }
+        let started = try XCTUnwrap(first.model.startVoiceCall())
+        await started.value
+        let call = try XCTUnwrap(owner.call)
+
+        let second = await openChat(owner: owner, key: "other")
+        ChatContinuity().viewAppeared(UUID(), model: second.model) { _, _ in }
+
+        XCTAssertTrue(owner.model === second.model)
+        XCTAssertTrue(second.model.voiceCallInProgress === call)
+        XCTAssertTrue(second.model.isOnVoiceCall)
+        XCTAssertNil(first.model.voiceCallInProgress)
+        XCTAssertFalse(first.model.isOnVoiceCall, "the chat left has no call")
+        XCTAssertFalse(call.isEnded)
+        call.end()
+        XCTAssertNil(second.model.voiceCallInProgress)
+    }
+
+    /// The voice was minted with its Profile's key and voice, so a chat in another Profile
+    /// leaves the call where it is.
+    func testAChatInAnotherProfileLeavesTheCallWhereItIs() async throws {
+        let owner = LiveVoiceCall()
+        let first = await openChat(owner: owner, key: "tip")
+        first.model.makeVoiceLiveTransport = { _ in FakeTransport() }
+        let started = try XCTUnwrap(first.model.startVoiceCall())
+        await started.value
+
+        let other = await openChat(owner: owner, key: "elsewhere", profile: "work")
+        ChatContinuity().viewAppeared(UUID(), model: other.model) { _, _ in }
+
+        XCTAssertTrue(owner.model === first.model)
+        XCTAssertTrue(first.model.isOnVoiceCall)
+        XCTAssertFalse(other.model.isOnVoiceCall)
+        owner.call?.end()
+    }
+
+    /// A read-only session (a delegated subagent's) takes no Send, so the call stays where it is.
+    func testAReadOnlyChatLeavesTheCallWhereItIs() async throws {
+        let owner = LiveVoiceCall()
+        let first = await openChat(owner: owner, key: "tip")
+        first.model.makeVoiceLiveTransport = { _ in FakeTransport() }
+        let started = try XCTUnwrap(first.model.startVoiceCall())
+        await started.value
+
+        let child = await openChat(owner: owner, key: "child")
+        child.model.isReadOnlyForVoice = true
+        ChatContinuity().viewAppeared(UUID(), model: child.model) { _, _ in }
+
+        XCTAssertTrue(owner.model === first.model)
+        XCTAssertFalse(child.model.isOnVoiceCall)
+        owner.call?.end()
+    }
+
+    /// One call per app: Call on a chat the call can't follow to (another Profile) builds no
+    /// session and goes back to the call on.
     func testCallOnAnotherChatGoesBackToTheCallThatIsOn() async throws {
         let owner = LiveVoiceCall()
         let first = await openChat(owner: owner, key: "tip")
@@ -103,7 +162,7 @@ import XCTest
         let call = try XCTUnwrap(owner.call)
         XCTAssertNil(owner.reopenRequest)
 
-        let second = await openChat(owner: owner, key: "other")
+        let second = await openChat(owner: owner, key: "other", profile: "work")
         var built = 0
         second.model.makeVoiceLiveTransport = { _ in built += 1; return FakeTransport() }
         XCTAssertNil(second.model.startVoiceCall())
