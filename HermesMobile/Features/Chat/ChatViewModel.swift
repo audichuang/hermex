@@ -3006,15 +3006,16 @@ final class ChatViewModel {
         if didReadVoiceCallOffer { isRequestedVoiceCallReady = true }
     }
 
-    func startRequestedVoiceCall() async {
-        guard isRequestedVoiceCallReady else { return }
+    @discardableResult
+    func startRequestedVoiceCall() -> Task<Void, Never>? {
+        guard isRequestedVoiceCallReady else { return nil }
         isRequestedVoiceCallReady = false
         requestsVoiceCall = false
         guard offersVoiceCall else {
             sendErrorMessage = voiceCallRefusal
-            return
+            return nil
         }
-        await startVoiceCall()
+        return startVoiceCall()
     }
 
     static func voiceCallEndMessage(_ reason: HermesVoiceCall.EndReason) -> String? {
@@ -3028,8 +3029,9 @@ final class ChatViewModel {
 
     @ObservationIgnored private var owesNavigationSuspend = false
 
-    func startVoiceCall() async {
-        guard !isOnVoiceCall, let call = makeVoiceCall() else { return }
+    @discardableResult
+    func startVoiceCall() -> Task<Void, Never>? {
+        guard !isOnVoiceCall, let call = makeVoiceCall() else { return nil }
         let connection = hermesTurn?.connection
         // A new call's row replaces the last one's error.
         if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }
@@ -3055,7 +3057,9 @@ final class ChatViewModel {
                 self.sendErrorMessage = message
             }
         }
-        await call.start()
+        // Only the call waits for its session, so a chat closed while it connects lets its model
+        // go, and the model going hangs the call up.
+        return Task { [call] in await call.start() }
     }
 
     func endVoiceCall() {
