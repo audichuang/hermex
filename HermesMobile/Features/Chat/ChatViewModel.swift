@@ -2957,6 +2957,8 @@ final class ChatViewModel {
         hermesTurn.map { ($0.engine.server, $0.engine.connection.id, $0.engine.target) }
     }
 
+    var hermesConnectionIsRetired: Bool { hermesTurn?.connection?.isRetired == true }
+
     private(set) var voiceCall: HermesVoiceCall?
 
     var isOnVoiceCall: Bool { voiceCall.map { !$0.isEnded } ?? false }
@@ -3051,6 +3053,7 @@ final class ChatViewModel {
         voiceCall = call
         voiceCallInProgress = call
         connection?.callStarted()
+        connection?.onRetire = { [weak call] in call?.end() }
         liveCall.begin(call, model: self)
         call.onEnded = { [weak self, weak call, connection] in
             guard let self else { return }
@@ -3061,6 +3064,7 @@ final class ChatViewModel {
                 self.suspendStreamForBackground()
             }
             connection?.callEnded()
+            connection?.onRetire = nil
             // The call bar says why a call dropped, and offers Call again.
             if let call { self.liveCall.ended(call) }
             if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }

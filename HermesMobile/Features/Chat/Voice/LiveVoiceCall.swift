@@ -89,7 +89,8 @@ import Observation
     func callAgain() {
         guard let drop else { return }
         self.drop = nil
-        guard drop.model.startVoiceCall() != nil else { return }
+        // A chat whose connection was retired can't reach its host any more.
+        guard !drop.model.hermesConnectionIsRetired, drop.model.startVoiceCall() != nil else { return }
         requestReopen()
     }
 
@@ -105,7 +106,7 @@ import Observation
     /// connection and target: the Profile's Bot Chat, or the session by its current key or its
     /// lineage root.
     func model(for chat: HermesSessionChat) -> ChatViewModel? {
-        guard let model = model ?? droppedModel else { return nil }
+        guard let model = model ?? droppedModel, !model.hermesConnectionIsRetired else { return nil }
         if model.hermesSeat?.id == chat.id { return model }
         guard let conversation = model.hermesConversation, conversation.server == chat.server,
               conversation.connectionID == chat.connection.id else { return nil }

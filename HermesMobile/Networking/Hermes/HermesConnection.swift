@@ -92,6 +92,9 @@ import OSLog
     }
 
     func callStarted() { callsKeepingAlive += 1 }
+    /// Hangs up the voice call on this connection once it is retired (#1091): its saved record
+    /// changed or went, so the call's chat can't reach the host any more.
+    var onRetire: (() -> Void)?
     func callEnded() { callsKeepingAlive = max(0, callsKeepingAlive - 1) }
     private(set) var owesBackgroundClose = false
 
@@ -470,6 +473,9 @@ import OSLog
         signInTask?.cancel()
         signInTask = nil
         liveGateways.forEach { $0.retire() }
+        let retired = onRetire
+        onRetire = nil
+        retired?()
     }
 
     private func decoded(_ rest: HermesREST, on session: URLSession) async throws -> BotJSON {
