@@ -55,9 +55,10 @@ Read at the `HERMES_AGENT_TESTED_SHA` pin 3b421578 (`hermes_cli/web_routers/audi
 
 ## Flow
 
-1. Call (beside the composer mic) asks for the microphone, opens the peer
-   connection with no ICE servers, posts the offer, and the composer's toolbar
-   becomes the call row: status, the latest caption, Mute, End.
+1. Call (beside the composer mic, in the collapsed pill and the card) dismisses
+   the keyboard, asks for the microphone, opens the peer connection with no ICE
+   servers, and posts the offer. The call bar appears above every screen (see
+   Ownership and the call bar); the composer stays as it was.
 2. The voice emits `session.delegation.created`. The call builds a prompt from
    the last user utterance and sends it as a Send on the chat with
    `surface: "voice-live"` and `voice_context`. The user row appears as usual; no
@@ -109,12 +110,41 @@ host's OpenAI key. The intent runs in the app and leaves
 `AppIntentRouter.pendingVoiceCall`, which `ContentView` drains on launch and on
 change, as it does the intents' deep links. Once that chat's Call gate has
 answered, and the app is active and unlocked, the chat starts the call through
-Call's own path, once per request; a gate that doesn't offer a call shows why in
+Call's own path, once per request. While a call is on, the Shortcut goes back to
+that call's chat instead of opening a new one; a gate that doesn't offer a call shows why in
 the composer instead (the host's `reason` when the Profile chose GPT-Live, else
 what a call needs). A gate read that fails ends the request with "The voice call
 could not connect. Try again in a moment." in the composer, so a later read never
 starts a call long after the press. On a webui server it opens New Chat with
 Voice.
+
+## Ownership and the call bar
+
+- The call belongs to the app, not to the screen it started on. `LiveVoiceCall.shared`
+  holds the call and its chat's `ChatViewModel` from the start until the call ends, so
+  leaving the chat, opening another, or going to Settings keeps it talking, its stream
+  attached and its approval cards live. There is one call per app: Call on another chat
+  goes back to the call that is on and builds no session.
+- Any view that opens the call's chat (a list row, a Bot Chat, an Archived row, a
+  session link, a push or Live Activity tap, a chat pushed from another) takes the
+  call's model instead of making another (`LiveVoiceCall.model(for:)`, `ChatContinuity.resume`):
+  the chat value it opened from, or the same server, connection and target (the
+  Profile's Bot Chat, or the session by its current key or lineage root).
+- The call bar (`LiveVoiceCallBar`) sits in `ContentView`'s top safe-area inset, above
+  every screen but sheets: a waveform that moves only while the voice speaks (still
+  under Reduce Motion), the status (Muted over Listening), Mute and End. A tap goes
+  back to the call's chat through the Hermes home, not a session link: Settings and
+  Add Server close, then the bot's Bot Chat or the Sessions chat opens.
+- The call ends on End, ten quiet minutes, switching server or signing out (and a
+  replaced saved connection), the host replacing a Bot Chat, an audio interruption
+  (phone call, Siri), or the data channel or peer connection closing. Every end but
+  End and a server change is a drop: the bar keeps its reason with Call again, which
+  starts a new call on the same chat, until dismissed. The ten minutes are counted
+  from the last speech by either side or delegation out; there is no absolute cap. A
+  delegation whose turn waits on an approval or question counts as quiet from when it
+  started waiting. When the chat loses its Hermes connection and it isn't back within
+  2 minutes, the delegation out is dropped with the unreachable line, so the 10
+  minutes run again. A route change does not end it.
 
 ## Lifecycle and background
 
@@ -124,17 +154,8 @@ Voice.
   the call ends in the background, the #902 close happens then. The `audio`
   background mode is already declared. Whether a call survives a locked screen
   has not been verified; it needs a physical device.
-- A screen pushed over the chat (Files, a Profile editor, a fork's origin,
-  another session) keeps the call and the chat's stream, so the reply keeps
-  reaching the call; the stream suspends when the call ends while the chat is
-  covered. Closing the chat releases its model, which ends the call.
-- The call ends on End, the chat closing, the host replacing a Bot Chat, an audio
-  interruption (phone call, Siri), the data channel or peer connection closing,
-  another call starting, and after 10 minutes with no speech and no delegation
-  out. A delegation whose turn waits on an approval or question counts as quiet
-  from when it started waiting. When the chat loses its Hermes connection and
-  it isn't back within 2 minutes, the delegation out is dropped with the
-  unreachable line, so the 10 minutes run again. A route change does not end it.
+- With no view of the chat on screen, the call keeps the chat's stream; it suspends
+  when the call ends.
 - End silences the call at once: the microphone track and the voice's audio are
   disabled while the session waits up to 15 s for `session.closed`. An End
   while the session is still opening tears it down at once and the opening stops
@@ -145,9 +166,9 @@ Voice.
   allowed, and restores the previous session when it ends. It holds the
   microphone and audio session process-wide (`ComposerAudioCaptureState`) from
   opening until its teardown has put the session back: meanwhile every
-  composer's mic, dictation and voice notes are off, and a new call tears the
-  old one down first, so the old one's restore can't land on the new one.
-  `RTCAudioSession.setActive(false)` deactivates with
+  composer's mic, dictation, voice notes and Call are off, and a new call tears
+  down one still ending after End first, so the old one's restore can't land on
+  the new one. `RTCAudioSession.setActive(false)` deactivates with
   `.notifyOthersOnDeactivation`, so audio the call paused can resume.
 
 ## Out of scope (follow-ups)
