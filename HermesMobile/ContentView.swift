@@ -326,6 +326,8 @@ struct ContentView: View {
     private func drainPendingVoiceCall() {
         guard intentRouter.pendingVoiceCall != nil else { return }
         intentRouter.pendingVoiceCall = nil
+        // One call per app: the Shortcut goes back to the call that is on.
+        if LiveVoiceCall.shared.call != nil { return LiveVoiceCall.shared.requestReopen() }
         clearPendingLinks()
         openNewChat(autoStartsVoiceInput: true, autoStartsVoiceCall: true)
     }

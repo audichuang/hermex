@@ -402,6 +402,13 @@ struct ChatScrollObserver: UIViewRepresentable {
 
     nonisolated static func == (lhs: ChatContinuity, rhs: ChatContinuity) -> Bool { lhs === rhs }
 
+    /// Takes a model whose chat lives on without a view, such as the voice call's (#1091), with
+    /// its loaded history.
+    func resume(_ model: ChatViewModel) {
+        self.model = model
+        didLoadMessages = true
+    }
+
     /// `returnsWaitingSend` puts a waiting send that came back into this view's composer.
     func viewAppeared(_ view: UUID, model: ChatViewModel,
                       returnsWaitingSend: @escaping (String, HermesWaitingSend.Return) -> Void) {
