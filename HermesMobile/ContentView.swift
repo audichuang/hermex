@@ -34,13 +34,8 @@ struct ContentView: View {
             .onChange(of: intentRouter.pendingVoiceCall) {
                 drainPendingVoiceCall()
             }
-            .onChange(of: authManager.state, initial: true) {
-                if case .loggedIn(let server) = authManager.state, authManager.kind(of: server) == .webui {
-                    LiveVoiceCall.shared.webuiServer = server
-                } else {
-                    LiveVoiceCall.shared.webuiServer = nil
-                }
-            }
+            // Derived, so a webui server replaced by a Hermes one at the same URL flips it too.
+            .onChange(of: activeWebuiServer, initial: true) { LiveVoiceCall.shared.webuiServer = activeWebuiServer }
             .onChange(of: authManager.state) {
                 if case .loggedIn(let server) = authManager.state {
                     LiveVoiceCall.shared.endUnless(server: server)
@@ -104,6 +99,12 @@ struct ContentView: View {
                   let items = (try? await wire.call(.sessionActiveList))?["sessions"].list else { return nil }
             return LeftoverLiveActivitySettlement.runningKeys(items)
         }
+    }
+
+    /// The signed-in server when it is a legacy webui server: its Bots chats offer no call (#1091).
+    private var activeWebuiServer: URL? {
+        guard case .loggedIn(let server) = authManager.state, authManager.kind(of: server) == .webui else { return nil }
+        return server
     }
 
     @ViewBuilder
