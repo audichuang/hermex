@@ -484,6 +484,9 @@ final class ChatViewModel {
     /// inside one.
     var expandedTurnKeys: Set<String> = []
     @ObservationIgnored var hermesBotChatRoot: String?
+    /// The Hermes chat value its latest view opened (#1091), which the app's call reopens from
+    /// anywhere; its one-shot requests already cleared.
+    @ObservationIgnored var hermesSeat: HermesSessionChat?
     /// A session's lineage root as its row or link named it (`HermesSessionChat.lineageRoot`);
     /// nil asks the cache.
     @ObservationIgnored var hermesLineageRoot: String?
@@ -3618,7 +3621,13 @@ final class ChatViewModel {
     /// background closes the socket (#902).
     @discardableResult
     func startVoiceCall() -> Task<Void, Never>? {
-        guard !isOnVoiceCall, let call = makeVoiceCall() else { return nil }
+        guard !isOnVoiceCall else { return nil }
+        // One call per app: Call on another chat goes back to the call that is on.
+        if liveCall.call != nil {
+            liveCall.requestReopen()
+            return nil
+        }
+        guard let call = makeVoiceCall() else { return nil }
         let connection = hermesTurn?.connection
         // A new call's row replaces the last one's error.
         if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }

@@ -561,7 +561,12 @@ struct ChatView: View {
         _initialAttachments = State(initialValue: initialAttachments)
         self.shareNotice = shareNotice
         let continuity = continuity ?? ChatContinuity()
+        // The chat the voice call talks on reopens on the call's own model (#1091).
+        if continuity.model == nil, let hermesSession, let live = LiveVoiceCall.shared.model(for: hermesSession) {
+            continuity.resume(live)
+        }
         _continuity = State(initialValue: continuity)
+        let isMadeHere = continuity.model == nil
         let model = continuity.model ?? ChatViewModel(
             session: session,
             server: server,
@@ -572,11 +577,20 @@ struct ChatView: View {
             draftStore: self.draftStore,
             backend: hermesSession.map { .hermes(HermesChatTurnCoordinator($0)) } ?? .webui
         )
-        model.hermesBotChatRoot = hermesSession?.botChatRoot
-        model.hermesLineageRoot = hermesSession?.lineageRoot
+        // A kept model keeps the roots it caches under, whichever chat value reopened it.
+        if isMadeHere {
+            model.hermesBotChatRoot = hermesSession?.botChatRoot
+            model.hermesLineageRoot = hermesSession?.lineageRoot
+        }
+        model.hermesSeat = hermesSession.map {
+            var seat = $0
+            seat.autoStartsVoiceInput = false
+            seat.autoStartsVoiceCall = false
+            return seat
+        }
         model.onHermesDraftKeyChange = onHermesDraftKeyChange
         // Only a model made here: a kept one already took its request.
-        if continuity.model == nil, hermesSession?.autoStartsVoiceCall == true { model.requestVoiceCall() }
+        if isMadeHere, hermesSession?.autoStartsVoiceCall == true { model.requestVoiceCall() }
         _viewModel = State(initialValue: model)
         // Until its first report, a reader who wasn't following reads as away from the live edge,
         // so the bottom a rebuilt transcript opens at doesn't re-arm follow.
