@@ -178,6 +178,9 @@ struct SessionListRowActions {
     /// A Hermes home's Add Server, which replaces Retry when the address is a gateway's own
     /// listener (#1598): its address can't change, and retrying reaches the same listener.
     var addServer: (() -> Void)?
+    /// A Hermes row's Voice Call (#1091): opens its chat and starts a call there, as Hermes
+    /// Desktop's call talks on the chat that is open. Nil where calls don't exist.
+    var call: ((SessionSummary) -> Void)?
 }
 
 /// Which row actions a session offers. A Hermes server's row (#1046, #1048) offers pin,
@@ -1386,6 +1389,18 @@ struct SessionRowContextMenu: View {
             Label(isUnread ? "Mark as Read" : "Mark as Unread", systemImage: isUnread ? "envelope.open" : "envelope.badge")
         }
         .disabled(!canToggleUnread)
+
+        // A Bot Chat's call starts on the Bots side, and a read-only or archived session takes no
+        // Send; one call at a time, ended from its bar.
+        if let call = actions.call, session.hermes != nil, session.hermes?.isBotChat != true,
+           !session.isSessionReadOnly, session.archived != true, LiveVoiceCall.shared.call == nil {
+            Button {
+                call(session)
+            } label: {
+                Label("Voice Call", systemImage: "phone")
+            }
+            .disabled(isViewingCachedData)
+        }
 
         if SessionRowActionPolicy.offersMutationActions(for: session) {
             Button {

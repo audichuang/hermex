@@ -580,7 +580,7 @@ struct HermesSessionListView: View {
             } actions: {
                 // Waits for the live list, like a Shortcut's new chat (#1180), so it can't open
                 // a chat while the list is offline or reconnecting.
-                Button("New Chat", action: openNewSession)
+                Button("New Chat") { openNewSession() }
                     .buttonStyle(.appProminent)
                     .disabled(!canOpenNewSession || !viewModel.isHermesLive)
             }
@@ -655,9 +655,18 @@ struct HermesSessionListView: View {
         withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) { isSearchExpanded = false }
     }
 
+    /// A tap opens a new session; a long press also offers a voice call in one (#1091), as Hermes
+    /// Desktop's wake word opens a fresh session and starts its call there.
     private var newSessionButton: some View {
-        Button("New Session", systemImage: "square.and.pencil", action: openNewSession)
-            .disabled(!canOpenNewSession)
+        Menu {
+            Button("New Voice Call", systemImage: "phone") { openNewSession(startsVoiceCall: true) }
+                .disabled(LiveVoiceCall.shared.call != nil)
+        } label: {
+            Label("New Session", systemImage: "square.and.pencil")
+        } primaryAction: {
+            openNewSession()
+        }
+        .disabled(!canOpenNewSession)
     }
 
     /// New Session needs the live list and a Profile to open in.
@@ -666,11 +675,14 @@ struct HermesSessionListView: View {
     /// New Session and ⌘N, started in the selected project lane's folder (#1671). Guarded again
     /// here, so a stale menu can't pass the disabled button. Shortcuts, shares and App Intents open
     /// their own chats and never inherit the lane, as on webui.
-    private func openNewSession() {
+    /// `startsVoiceCall`: the chat starts a call once its host says the Profile takes one, or says why not.
+    private func openNewSession(startsVoiceCall: Bool = false) {
         guard canOpenNewSession, let profile else { return }
         let cwd = viewModel.hermesNewSessionFolder(lane: showsProjects ? selectedProjectID : nil)
         prepareRootSelection()
-        covers.chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile, cwd: cwd))
+        var chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile, cwd: cwd))
+        chat.autoStartsVoiceCall = startsVoiceCall
+        covers.chat = chat
     }
 
     /// The hardware-keyboard commands (`HermexCommands`) for this list, the home's Sessions side or
@@ -678,7 +690,7 @@ struct HermesSessionListView: View {
     private var sceneActions: HermexSceneActions {
         HermexSceneActions(
             canCreateNewChat: canOpenNewSession,
-            createNewChat: openNewSession,
+            createNewChat: { openNewSession() },
             searchSessions: openSearchFromKeyboard,
             openChat: { position in
                 if let session = ChatShortcutNavigation.chat(atPosition: position, in: keyboardShortcutSessions) { actions.open(session) }
@@ -909,18 +921,7 @@ struct HermesSessionListView: View {
     private var actions: SessionListRowActions {
         SessionListRowActions(
             retryLoad: { Task { await viewModel.openHermes(modelContext: modelContext) } },
-            open: { session in
-                if let bot = session.hermesBot(on: entry.server, connectionID: entry.connection.id) {
-                    AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
-                    return
-                }
-                // A row of every Profile's cache, before the host settled one, opens in its own.
-                guard let listed = profile ?? session.profile,
-                      let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: listed) else { return }
-                viewModel.beginViewing(session)
-                prepareRootSelection()
-                covers.chat = opened
-            },
+            open: { openRow($0) },
             toggleUnread: { viewModel.toggleUnread($0) },
             togglePinned: { session in Task { await togglePinned(session) } },
             archive: { session in Task { await archive(session) } },
@@ -946,8 +947,27 @@ struct HermesSessionListView: View {
                     }
                 }
             },
-            addServer: home?.avatar.addServer
+            addServer: home?.avatar.addServer,
+            call: { openRow($0, startsVoiceCall: true) }
         )
+    }
+
+    /// Opens a row's chat; `startsVoiceCall` also starts a call there once its host says the
+    /// Profile takes one (#1091). A bot's Bot Chat opens through the app's bot route.
+    private func openRow(_ session: SessionSummary, startsVoiceCall: Bool = false) {
+        if let bot = session.hermesBot(on: entry.server, connectionID: entry.connection.id) {
+            AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
+            return
+        }
+        // A row of every Profile's cache, before the host settled one, opens in its own.
+        guard let listed = profile ?? session.profile,
+              var opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: listed) else { return }
+        opened.autoStartsVoiceCall = startsVoiceCall
+        // A dropped call's chat would reopen on its kept model, which takes no new request.
+        if startsVoiceCall { LiveVoiceCall.shared.dismissDrop() }
+        viewModel.beginViewing(session)
+        prepareRootSelection()
+        covers.chat = opened
     }
 
     /// Opens the session the held link names on this list's server (#1176), the way its row
