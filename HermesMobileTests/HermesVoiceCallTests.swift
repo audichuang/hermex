@@ -199,6 +199,19 @@ import XCTest
         XCTAssertEqual(transport.closes, 1)
     }
 
+    /// The bar's waveform follows the call's sound and goes flat when the call ends, even if a
+    /// last reading arrives after.
+    func testTheWaveformLevelFollowsTheCallAndGoesFlatWhenItEnds() async {
+        let (call, transport, _, _) = await startedCall()
+
+        transport.onAudioLevel?(0.2)
+        XCTAssertEqual(call.audioLevel, 0.2)
+
+        call.end()
+        transport.onAudioLevel?(0.3)
+        XCTAssertEqual(call.audioLevel, 0)
+    }
+
     /// An approval nobody answers doesn't keep a billed call on: ten quiet minutes after the turn
     /// started waiting, it hangs up.
     func testAnUnansweredApprovalStillHangsUpAfterTenQuietMinutes() async {
@@ -290,6 +303,7 @@ import XCTest
     var onEvent: ((VoiceLiveServerEvent) -> Void)?
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
+    var onAudioLevel: ((Double) -> Void)?
     private(set) var sent: [BotJSON] = []
     private(set) var closes = 0
     var onSend: ((BotJSON) -> Void)?
