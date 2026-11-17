@@ -852,8 +852,8 @@ struct ChatView: View {
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
             hermesTranscriber: hermesTranscriber,
             voiceCall: viewModel.voiceCallInProgress,
-            onStartVoiceCall: viewModel.offersVoiceCall ? { Task { await viewModel.startVoiceCall() } } : nil,
-            onStartRequestedVoiceCall: viewModel.isRequestedVoiceCallReady ? { Task { await viewModel.startRequestedVoiceCall() } } : nil
+            onStartVoiceCall: viewModel.offersVoiceCall ? { viewModel.startVoiceCall() } : nil,
+            onStartRequestedVoiceCall: viewModel.isRequestedVoiceCallReady ? { viewModel.startRequestedVoiceCall() } : nil
         )
         // The composer flips wholesale with the transcript under the RTL
         // toggle (#259): input, placeholder, and chrome mirror together.
