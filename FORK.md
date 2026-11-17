@@ -80,7 +80,8 @@ bullet); only the Hermex specifics are here.
 
   Only when that exits 3 (no archive) or 4 (runtime removed), create a blank one (no further owner
   confirmation needed). After a 4, replace `iOS-27-2` below with the newest iOS runtime
-  `xcrun simctl list runtimes` shows. Creation does not boot it:
+  `xcrun simctl list runtimes` shows; the old archive can no longer be restored, so the first park of the
+  new device needs `--replace` (without it `sim-vault` exits 7). Creation does not boot it:
 
   ```zsh
   xcrun simctl create "HERMEX iPhone 18 Pro Max" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-2
