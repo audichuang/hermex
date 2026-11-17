@@ -3612,7 +3612,8 @@ final class ChatViewModel {
 
     /// A screen pushed over the chat during a voice call left its stream attached, so the reply
     /// kept reaching the call; the stream suspends when the call ends, unless the chat is back.
-    @ObservationIgnored private var owesNavigationSuspend = false
+    /// True while no view of the chat is on screen during a call (`LiveVoiceCall.showsCallChat`).
+    @ObservationIgnored private(set) var owesNavigationSuspend = false
 
     /// Starts a voice call on this Hermes chat; the returned task finishes once its session is up
     /// or the start failed. While it is on, the chat's connection keeps its socket through the

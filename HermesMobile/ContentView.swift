@@ -892,19 +892,30 @@ struct HermesServerHome: View {
     }
 
     /// Closes what covers the home and shows the voice call's chat: its bot's Bot Chat, or the
-    /// chat on the Sessions side. A chat already showing stays as it is.
+    /// chat on the Sessions side. A chat already on screen stays as it is; one open under a
+    /// pushed screen (Files, a Profile editor, another chat) comes back to the top.
     private func reopenVoiceCallChat() {
-        guard let seat = LiveVoiceCall.shared.reopensTo, seat.server == server else { return }
+        let call = LiveVoiceCall.shared
+        guard let seat = call.reopensTo, seat.server == server else { return }
         settings = nil
         isPresentingAddServer = false
         if let bot = seat.bot {
             tab = .bots
-            if inbox.selection.profile?.id != bot.id { inbox.selection.profile = bot }
+            // Picking the bot again re-roots its chat, which pops what it pushed.
+            guard inbox.selection.profile?.id != bot.id || !call.showsCallChat else { return }
+            inbox.selection.profile = bot
         } else if let navigation = sessions?.navigation {
             tab = .sessions
-            guard navigation.covers.chat?.id != seat.id else { return }
+            let isOpen = navigation.covers.chat?.id == seat.id
+            guard !isOpen || !call.showsCallChat else { return }
             navigation.covers.bringForward()
-            navigation.covers.chat = seat
+            if isOpen {
+                // The same chat value keeps what its view pushed, so it pops with the rows'
+                // covers and opens again on the next turn, on the call's model.
+                Task { @MainActor in navigation.covers.chat = seat }
+            } else {
+                navigation.covers.chat = seat
+            }
         }
     }
 
