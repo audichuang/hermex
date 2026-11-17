@@ -193,6 +193,16 @@ import XCTest
         XCTAssertNil(owner.model(for: reopened))
     }
 
+    /// A legacy webui server's Bots chats offer no call: calls are a Hermes server's.
+    func testAChatOnAWebuiServerOffersNoCall() async {
+        let owner = LiveVoiceCall()
+        owner.webuiServer = Self.server
+        let chat = await openChat(owner: owner, profile: "voice-webui",
+                                  voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        await chat.model.voiceCallOfferRead?.value
+        XCTAssertFalse(chat.model.offersVoiceCall)
+    }
+
     /// What `ChatView.onDisappear` does when a screen is pushed over the chat.
     private func pushScreen(over view: UUID, _ continuity: ChatContinuity, _ model: ChatViewModel) {
         if continuity.viewDisappeared(view) { model.suspendStreamForNavigation() }
@@ -255,7 +265,8 @@ import XCTest
 
     /// A Hermes chat attached to idle session `key`, whose call `owner` holds.
     private func openChat(owner: LiveVoiceCall, key: String = "tip", profile: String = "default",
-                          target: ConversationTarget? = nil, lineageRoot: String? = nil) async -> Chat {
+                          target: ConversationTarget? = nil, lineageRoot: String? = nil,
+                          voiceLive: BotJSON? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array([]), "delegations": .array([])])))
@@ -270,6 +281,7 @@ import XCTest
         ])))
         let client = BotClient(http: host.connection(Self.connection))
         _ = HermesHostFixture.configuration { request in
+            if let voiceLive, request.url?.path == "/api/audio/voice-live/status" { return .json(200, voiceLive) }
             guard request.url?.path == "/api/sessions/\(key)/messages" else { return nil }
             return .json(200, .object(["session_id": .string(key), "messages": .array([])]))
         }
