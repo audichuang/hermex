@@ -41,7 +41,7 @@ private struct LiveVoiceCallStage: View {
             .padding(.top, 12)
 
             Spacer(minLength: 24)
-            LiveVoiceCallOrb(call: call, tint: phase?.tint ?? .secondary)
+            LiveVoiceCallOrb(call: call, mood: LiveVoiceOrb.Mood(phase))
                 .accessibilityHidden(true)
             Spacer(minLength: 24)
 
@@ -195,35 +195,105 @@ private struct LiveVoiceCallRoundButton: View {
 /// Reads the call's level here, so its ten readings a second redraw only the orb.
 private struct LiveVoiceCallOrb: View {
     let call: HermesVoiceCall
-    let tint: Color
+    let mood: LiveVoiceOrb.Mood
 
-    var body: some View { LiveVoiceOrb(level: call.audioLevel, tint: tint) }
+    var body: some View { LiveVoiceOrb(level: call.audioLevel, mood: mood) }
 }
 
-/// A glowing orb that swells with the call's sound and settles in silence. It moves only when a
-/// reading changes; under Reduce Motion it keeps its size.
+/// A glowing orb of flowing colour: a mesh gradient in a circle, a soft halo of the same colours
+/// and a glassy highlight. Each mood has its own colours. The colours flow and the orb swells
+/// only with the call's sound, and drift slowly while Hermes works; in silence they hold still.
+/// Under Reduce Motion the orb keeps its shape and only its colours change.
 struct LiveVoiceOrb: View {
     let level: Double
-    let tint: Color
+    let mood: Mood
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// How far the colours have flowed. It advances with each reading, more for louder ones.
+    @State private var flow = 0.0
+
+    enum Mood: Equatable {
+        case idle, listening, speaking, thinking, muted
+
+        init(_ phase: LiveVoiceCallBar.Phase?) {
+            switch phase {
+            case .listening: self = .listening
+            case .speaking: self = .speaking
+            case .thinking: self = .thinking
+            case .muted: self = .muted
+            case .connecting, nil: self = .idle
+            }
+        }
+
+        /// Nine colours for the 3 × 3 mesh, edges darker than the middle.
+        var colors: [Color] {
+            func rgb(_ hex: UInt32) -> Color {
+                Color(red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255,
+                      blue: Double(hex & 0xFF) / 255)
+            }
+            let hexes: [UInt32] = switch self {
+            // Ocean: you talk, it listens.
+            case .listening: [0x3A2BD9, 0x2F7BFF, 0x00C2FF, 0x6A3DF0, 0x5EC8FF, 0x2EE6D6, 0x1E40AF, 0x7C5CFF, 0x22D3EE]
+            // Aurora: Hermes talks.
+            case .speaking: [0x0EA5A4, 0x22C55E, 0xA3E635, 0x06B6D4, 0x6EE7B7, 0xFDE047, 0x0F766E, 0x10B981, 0x84CC16]
+            // Dusk: Hermes works on it.
+            case .thinking: [0x7C3AED, 0xDB2777, 0xF97316, 0xA855F7, 0xF472B6, 0xFBBF24, 0x4C1D95, 0xC026D3, 0xFB7185]
+            case .muted: [0x4B5563, 0x6B7280, 0x9CA3AF, 0x6B7280, 0xD1D5DB, 0x9CA3AF, 0x374151, 0x6B7280, 0x9CA3AF]
+            case .idle: [0x334155, 0x475569, 0x64748B, 0x475569, 0x94A3B8, 0x64748B, 0x1E293B, 0x475569, 0x64748B]
+            }
+            return hexes.map(rgb)
+        }
+    }
 
     var body: some View {
         let loudness = reduceMotion ? 0 : LiveVoiceWaveform.loudness(level)
         ZStack {
-            Circle()
-                .fill(tint.opacity(0.16))
-                .scaleEffect(1 + 0.28 * loudness)
-            Circle()
-                .fill(tint.opacity(0.22))
-                .scaleEffect(0.86 + 0.16 * loudness)
-            Circle()
-                .fill(RadialGradient(colors: [tint.opacity(0.65), tint],
-                                     center: UnitPoint(x: 0.35, y: 0.3), startRadius: 4, endRadius: 120))
-                .scaleEffect(0.7 + 0.1 * loudness)
-                .shadow(color: tint.opacity(0.45), radius: 24)
+            mesh
+                .clipShape(Circle())
+                .blur(radius: 36)
+                .opacity(0.55 + 0.3 * loudness)
+                .scaleEffect(1.0 + 0.3 * loudness)
+            mesh
+                .clipShape(Circle())
+                .overlay {
+                    // Glassy light from the top left, and a thin rim.
+                    Circle().fill(RadialGradient(colors: [.white.opacity(0.55), .white.opacity(0)],
+                                                 center: UnitPoint(x: 0.32, y: 0.25), startRadius: 2, endRadius: 90))
+                    Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
+                .scaleEffect(0.8 + 0.12 * loudness)
         }
-        .frame(width: 220, height: 220)
+        .frame(width: 240, height: 240)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: level)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: tint)
+        .animation(.easeInOut(duration: 0.6), value: mood)
+        .onChange(of: level) {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 0.12)) { flow += 0.06 + 0.5 * loudness }
+        }
+        // While Hermes works the call is quiet, so the colours drift on their own, slowly.
+        .task(id: mood == .thinking && !reduceMotion) {
+            guard mood == .thinking, !reduceMotion else { return }
+            while !Task.isCancelled {
+                withAnimation(.linear(duration: 0.25)) { flow += 0.05 }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+    }
+
+    private var mesh: some View {
+        let f = flow
+        func wobble(_ speed: Double, _ offset: Double) -> Float { Float(0.16 * sin(f * speed + offset)) }
+        return MeshGradient(
+            width: 3, height: 3,
+            points: [
+                [0, 0], [0.5 + wobble(1.3, 0), 0], [1, 0],
+                [0, 0.5 + wobble(0.9, 1)], [0.5 + wobble(1.1, 2), 0.5 + wobble(1.7, 3)], [1, 0.5 + wobble(1.2, 4)],
+                [0, 1], [0.5 + wobble(1.5, 5), 1], [1, 1],
+            ],
+            colors: mood.colors
+        )
+        // The colours turn as they flow, so the orb never looks like a still picture.
+        .rotationEffect(.radians(f * 0.4))
+        .scaleEffect(1.42)
     }
 }

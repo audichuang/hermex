@@ -45,11 +45,13 @@ struct LiveVoiceCallBar: View {
             }
         }
 
-        /// Green for the voice, the accent for the user, grey while nothing can be heard.
+        /// The full-screen orb's main colour for this phase: green while the voice speaks, blue
+        /// while it listens, violet while Hermes works, grey while nothing can be heard.
         var tint: Color {
             switch self {
-            case .speaking: .green
-            case .listening, .thinking: .accentColor
+            case .speaking: Color(red: 0.13, green: 0.77, blue: 0.37)
+            case .listening: Color(red: 0.18, green: 0.48, blue: 1)
+            case .thinking: Color(red: 0.66, green: 0.33, blue: 0.97)
             case .muted, .connecting: Color(.appTextSecondary)
             }
         }
