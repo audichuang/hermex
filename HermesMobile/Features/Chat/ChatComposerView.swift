@@ -346,8 +346,8 @@ struct MessageComposerView: View {
     /// A Hermes session's dictation transcriber: the host's speech-to-text for the chat's
     /// Profile (#1071). Nil sends dictation to the webui's `/api/transcribe` through `apiClient`.
     var hermesTranscriber: ComposerTranscriber?
-    /// The chat's voice call while it is on (#1091): its row replaces the toolbar, and the mic
-    /// stays off so dictation can't take the audio session from it.
+    /// The chat's voice call while it is on (#1091): the mic and Call stay off so dictation can't
+    /// take the audio session from it. Its controls are in the call bar.
     var voiceCall: HermesVoiceCall?
     /// Starts a voice call; nil hides Call (a webui chat, or a host whose Profile didn't choose GPT-Live).
     var onStartVoiceCall: (() -> Void)?
@@ -687,8 +687,6 @@ struct MessageComposerView: View {
                 Group {
                     if isDictating {
                         dictationRow.transition(.opacity)
-                    } else if let voiceCall {
-                        ComposerVoiceCallRow(call: voiceCall, circleSize: circleSize).transition(.opacity)
                     } else {
                         // Waits for the card to rise past where the row lands.
                         toolbarRow.transition(.asymmetric(
@@ -698,7 +696,6 @@ struct MessageComposerView: View {
                     }
                 }
                     .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isDictating)
-                    .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isOnVoiceCall)
                     .padding(.horizontal)
                     .padding(.top, 8)
                     .frame(maxWidth: .infinity)
@@ -1017,7 +1014,6 @@ struct MessageComposerView: View {
     private var isExpanded: Bool {
         isCardOpen
             || isDictating
-            || isOnVoiceCall
             || !quotes.isEmpty
             || shouldRestoreFocusAfterPresentation
     }
@@ -1026,7 +1022,6 @@ struct MessageComposerView: View {
         onStartRequestedVoiceCall != nil && scenePhase == .active && !AppLock.shared.isLocked
     }
 
-    /// The call row holds the card open, so status and End stay on screen with the keyboard down.
     private var isOnVoiceCall: Bool {
         voiceCall != nil
     }
@@ -1105,6 +1100,8 @@ struct MessageComposerView: View {
                         modelEffortControl(showsTitle: false)
                     }
 
+                    voiceCallButton
+
                     voiceControlButton
 
                     actionButton
@@ -1116,6 +1113,19 @@ struct MessageComposerView: View {
         .padding(.top, isExpanded ? 2 : 0)
         .padding(.bottom, isExpanded ? 4 : 0)
         .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
+    }
+
+    /// Call (#1091), in the pill and the card's toolbar. Hidden while any call holds the audio:
+    /// the call bar above every screen has its controls. Dictation hides both places, so the mic
+    /// is free whenever Call shows.
+    @ViewBuilder private var voiceCallButton: some View {
+        if let onStartVoiceCall, !isAudioHeldByCall {
+            ComposerVoiceCallButton(isDisabled: holdsHostControls, color: metaControlColor) {
+                // The keyboard would cover the chat the call talks about.
+                isFocused = false
+                onStartVoiceCall()
+            }
+        }
     }
 
     /// Card-state row under the surface. It never scrolls: the model label takes the
@@ -1131,14 +1141,7 @@ struct MessageComposerView: View {
 
             Spacer(minLength: 0)
 
-            if let onStartVoiceCall {
-                // Dictation hides this row, so the mic is free whenever Call shows.
-                ComposerVoiceCallButton(isDisabled: holdsHostControls, color: metaControlColor) {
-                    // The keyboard would cover the chat the call talks about.
-                    isFocused = false
-                    onStartVoiceCall()
-                }
-            }
+            voiceCallButton
 
             voiceControlButton
 
