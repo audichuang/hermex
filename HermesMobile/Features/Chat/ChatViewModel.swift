@@ -961,8 +961,6 @@ final class ChatViewModel {
         listenPreparationTask?.cancel()
         listenPlaybackTicker?.invalidate()
         initialSessionPrefetch?.task.cancel()
-        // A voice call is billed until its session closes, so the model going hangs it up (#1091).
-        if let call = _voiceCall { Task { @MainActor in call.end() } }
     }
 
     func setShowsLiveActivityResponseExcerpts(_ shows: Bool) {
@@ -3507,6 +3505,15 @@ final class ChatViewModel {
         WebRTCVoiceLiveTransport(openSession: $0)
     }
 
+    /// The app's one call, which holds this chat while its call is on; tests hand in their own.
+    @ObservationIgnored var liveCall = LiveVoiceCall.shared
+
+    /// The Hermes conversation this chat runs: its server, saved connection and current target.
+    /// Nil on a webui chat.
+    var hermesConversation: (server: URL, connectionID: UUID, target: ConversationTarget)? {
+        hermesTurn.map { ($0.engine.server, $0.engine.connection.id, $0.engine.target) }
+    }
+
     /// This chat's voice call: on, or ended with its reason until the next one starts.
     private(set) var voiceCall: HermesVoiceCall?
 
@@ -3606,8 +3613,9 @@ final class ChatViewModel {
     /// Starts a voice call on this Hermes chat; the returned task finishes once its session is up
     /// or the start failed. While it is on, the chat's connection keeps its socket through the
     /// background and its stream under a pushed screen, so the delegated reply keeps streaming into the call.
-    /// The call ends when the chat is replaced or the model goes; ending in the background or
-    /// under a pushed screen suspends the chat then, and in the background closes the socket (#902).
+    /// The app's call owner holds this model until the call ends, so leaving the chat keeps it;
+    /// ending in the background or with no view of the chat suspends the chat then, and in the
+    /// background closes the socket (#902).
     @discardableResult
     func startVoiceCall() -> Task<Void, Never>? {
         guard !isOnVoiceCall, let call = makeVoiceCall() else { return nil }
@@ -3617,27 +3625,22 @@ final class ChatViewModel {
         voiceCall = call
         voiceCallInProgress = call
         connection?.callStarted()
-        call.onEnded = { [weak self, weak call, connection, hermesTurn] in
-            if let self {
-                if self.owesNavigationSuspend {
-                    self.owesNavigationSuspend = false
-                    self.suspendActiveStreamConnection()
-                } else if connection?.owesBackgroundClose == true {
-                    self.suspendStreamForBackground()
-                }
-            } else {
-                // The chat went with the call on: its stream detaches now, as leaving would have.
-                hermesTurn?.suspendActiveStreamConnection()
+        liveCall.begin(call, model: self)
+        call.onEnded = { [weak self, weak call, connection] in
+            guard let self else { return }
+            if self.owesNavigationSuspend {
+                self.owesNavigationSuspend = false
+                self.suspendActiveStreamConnection()
+            } else if connection?.owesBackgroundClose == true {
+                self.suspendStreamForBackground()
             }
             connection?.callEnded()
-            guard let self else { return }
+            if let call { self.liveCall.ended(call) }
             if self.voiceCallInProgress === call { self.voiceCallInProgress = nil }
             if case .ended(let reason)? = call?.status, let message = Self.voiceCallEndMessage(reason) {
                 self.sendErrorMessage = message
             }
         }
-        // Only the call waits for its session, so a chat closed while it connects lets its model
-        // go, and the model going hangs the call up.
         return Task { [call] in await call.start() }
     }
 
@@ -7121,8 +7124,7 @@ final class ChatViewModel {
     }
 
     /// The chat's last view left: a screen pushed over it, or the chat closing. During a voice
-    /// call both keep the stream (#1091): a push must not hang up, and a closing chat's model goes,
-    /// which ends the call and suspends then.
+    /// call both keep the stream (#1091), which the call hears; it suspends when the call ends.
     func suspendStreamForNavigation() {
         guard !isOnVoiceCall else {
             owesNavigationSuspend = true

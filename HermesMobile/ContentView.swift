@@ -32,6 +32,12 @@ struct ContentView: View {
                 drainPendingVoiceCall()
             }
             .onChange(of: authManager.state) {
+                // A voice call belongs to its server: switching or signing out ends it (#1091).
+                if case .loggedIn(let server) = authManager.state {
+                    LiveVoiceCall.shared.endUnless(server: server)
+                } else {
+                    LiveVoiceCall.shared.endUnless(server: nil)
+                }
                 // A held conversation link resolves again once sign-in or a server switch
                 // changes what it can reach.
                 switchServer(pendingLinks.reroute(state: authManager.state, servers: authManager.servers,
@@ -879,6 +885,7 @@ struct HermesServerHome: View {
     private func readConnection() {
         let saved = loadConnection(server)
         guard saved != sessions?.entry.connection else { return }
+        LiveVoiceCall.shared.endUnless(connectionID: saved?.id, on: server)
         if let reviewing = shortcutReview.chat { shortcutReview.end(reviewing) }
         sessions = saved.map { HermesSessionsSide(server: server, connection: $0) }
     }
