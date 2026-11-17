@@ -24,7 +24,7 @@ limit, so read the value there.
 | Signposts carry static names and integer metadata only | `PerformanceSignposts.swift` header | Review only |
 | Launch paints cached rows first, then the host's first page | `LaunchSignpost` | `scripts/benchmark-sim-launch` (`Launch` and `live` medians) |
 | Debug instruments compile out of Release | `HitchMeter` (`#if DEBUG`), `RenderProbe` (Release `hit` is an empty inlined stub) | `HitchMeterTests` covers the hitch math only; the Release compile-out is review only |
-| No continuously repainting animation; every animation respects Reduce Motion | `AGENTS.md` § Taste | Review only. `repeatForever` has zero uses in `HermesMobile/` today. One owner-approved exception: the Thinking slider in Model settings and its Settings picker (`ThinkingSliderTrack`, #1550) repaint at up to 60 fps while on screen, and only there. Reduce Motion stills them. |
+| No continuously repainting animation; every animation respects Reduce Motion | `AGENTS.md` § Taste | Review only. `repeatForever` has zero uses in `HermesMobile/` today. One owner-approved exception: the Thinking slider in Model settings and its Settings picker (`ThinkingSliderTrack`, #1550) repaint at up to 60 fps while on screen, and only there. Reduce Motion stills them. A second: the voice call bar's waveform (`LiveVoiceCallBar`, #1091) runs `symbolEffect(.variableColor.iterative, options: .repeating)` only while the call's voice speaks, as its 250 ms inbound level probe reports; it is still in every other state and under Reduce Motion, and only the bar's row reads the call's status. |
 
 ## Guards
 
