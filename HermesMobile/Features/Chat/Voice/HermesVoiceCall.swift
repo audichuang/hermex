@@ -112,6 +112,10 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     private(set) var caption: Caption?
     /// The transport's `onAudioLevel`, for the call bar's waveform. Only the bar reads it.
     private(set) var audioLevel = 0.0
+    /// When the session came up, for the call bar's timer.
+    private(set) var connectedAt: Date?
+    /// Called once, when the session is up: the connected cue.
+    @ObservationIgnored var onLive: (@MainActor () -> Void)?
 
     var isEnded: Bool { if case .ended = status { return true }; return false }
 
@@ -179,8 +183,12 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         guard !isEnded else { return }
         isLive = true
         liveSince = .now
+        connectedAt = Date()
         armInactivity()
         refreshStatus()
+        let live = onLive
+        onLive = nil
+        live?()
     }
 
     /// Hangs up; `reason` says why when it isn't the user.
@@ -197,6 +205,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         guard !isEnded else { return }
         status = .ended(reason)
         audioLevel = 0
+        onLive = nil
         isLive = false
         cancelInactivity?(); cancelInactivity = nil
         cancelHermesLostGrace?(); cancelHermesLostGrace = nil
