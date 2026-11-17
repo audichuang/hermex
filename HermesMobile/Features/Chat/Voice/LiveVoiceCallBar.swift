@@ -55,7 +55,7 @@ private struct LiveVoiceCallRow: View {
         HStack(spacing: 8) {
             Button(action: owner.requestReopen) {
                 HStack(spacing: 8) {
-                    LiveVoiceWaveform(level: call.audioLevel, tint: waveformTint(phase))
+                    LiveVoiceCallWaveform(call: call, tint: waveformTint(phase))
                         .accessibilityHidden(true)
                     Text(statusText(phase))
                         .font(AppFont.footnote(weight: .semibold))
@@ -125,6 +125,14 @@ private struct LiveVoiceCallRow: View {
         case nil: ""
         }
     }
+}
+
+/// Reads the call's level here, so its ten readings a second redraw only the bars.
+private struct LiveVoiceCallWaveform: View {
+    let call: HermesVoiceCall
+    let tint: Color
+
+    var body: some View { LiveVoiceWaveform(level: call.audioLevel, tint: tint) }
 }
 
 /// The call's sound as bars that rise and fall with it: the voice's while it speaks, the user's
