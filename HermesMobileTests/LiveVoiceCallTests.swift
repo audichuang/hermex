@@ -60,6 +60,61 @@ import XCTest
         XCTAssertNil(owner.call, "a replaced saved connection ends it")
     }
 
+    /// Every opening of a chat is a new value, so the call's chat is found by what it opens: the
+    /// chat value it opened from, or the same server, connection and session (by key or lineage
+    /// root). Another session, connection or server, or any chat once the call ended, finds nothing.
+    func testTheCallsChatIsFoundAgainByWhatAChatOpens() async throws {
+        let owner = LiveVoiceCall()
+        let chat = await openChat(owner: owner, key: "tip", lineageRoot: "root")
+        let opened = HermesSessionChat(server: Self.server, connection: Self.connection, target: .new(profile: "default"))
+        chat.model.hermesSeat = opened
+        chat.model.makeVoiceLiveTransport = { _ in FakeTransport() }
+        let started = try XCTUnwrap(chat.model.startVoiceCall())
+        await started.value
+
+        func session(_ key: String, lineageRoot: String? = nil, server: URL? = nil,
+                     connection: BotConnection? = nil) -> HermesSessionChat {
+            HermesSessionChat(server: server ?? Self.server, connection: connection ?? Self.connection,
+                              target: .session(profile: "default", key: key), lineageRoot: lineageRoot)
+        }
+        XCTAssertTrue(owner.model(for: opened) === chat.model, "the value it opened from")
+        XCTAssertTrue(owner.model(for: session("tip")) === chat.model, "a list row or link of the same session")
+        XCTAssertTrue(owner.model(for: session("older-tip", lineageRoot: "root")) === chat.model, "the same lineage")
+        XCTAssertNil(owner.model(for: HermesSessionChat(server: Self.server, connection: Self.connection,
+                                                        target: .new(profile: "default"))), "another new session")
+        XCTAssertNil(owner.model(for: session("other")))
+        let otherConnection = BotConnection(id: UUID(), name: "Mac", address: Self.connection.address,
+                                            username: "user", password: "fixture")
+        XCTAssertNil(owner.model(for: session("tip", connection: otherConnection)))
+        XCTAssertNil(owner.model(for: session("tip", server: URL(string: "https://other.example")!)))
+
+        owner.call?.end()
+        XCTAssertNil(owner.model(for: opened))
+        XCTAssertNil(owner.model(for: session("tip")))
+    }
+
+    /// One call per app: Call on a second chat builds no session and goes back to the call on.
+    func testCallOnAnotherChatGoesBackToTheCallThatIsOn() async throws {
+        let owner = LiveVoiceCall()
+        let first = await openChat(owner: owner, key: "tip")
+        first.model.makeVoiceLiveTransport = { _ in FakeTransport() }
+        let started = try XCTUnwrap(first.model.startVoiceCall())
+        await started.value
+        let call = try XCTUnwrap(owner.call)
+        XCTAssertNil(owner.reopenRequest)
+
+        let second = await openChat(owner: owner, key: "other")
+        var built = 0
+        second.model.makeVoiceLiveTransport = { _ in built += 1; return FakeTransport() }
+        XCTAssertNil(second.model.startVoiceCall())
+
+        XCTAssertEqual(built, 0, "no second session")
+        XCTAssertNotNil(owner.reopenRequest, "the call's chat comes forward")
+        XCTAssertTrue(owner.call === call)
+        XCTAssertFalse(call.isEnded)
+        call.end()
+    }
+
     // MARK: Fixture
 
     private static let server = URL(string: "https://hermes.example")!
