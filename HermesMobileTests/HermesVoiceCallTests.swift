@@ -373,28 +373,57 @@ import XCTest
         XCTAssertEqual(call.status, .thinking)
     }
 
-    /// Redials are bounded, each being a new billed session: when none connects, the call ends
-    /// as dropped.
-    func testRedialsThatNeverConnectEndTheCall() async {
+    /// With no signal every try fails; the call keeps dialing for the reconnect window, then
+    /// ends as dropped.
+    func testRedialsThatNeverConnectEndTheCallAfterTheWindow() async {
         let (call, transport, _, scheduler) = await startedCall()
-        var redialed = expectation(description: "Redial 1")
+        let redialed = expectation(description: "The call dials")
         transport.onReconnect = { redialed.fulfill() }
 
         transport.onConnection?(.lost)
-        for wait in HermesVoiceCall.redialBackoff {
-            await fulfillment(of: [redialed], timeout: 5)
-            redialed = expectation(description: "The next redial")
-            scheduler.advance(by: HermesVoiceCall.redialTimeout)
-            XCTAssertEqual(call.status, .reconnecting)
-            scheduler.advance(by: wait)
-        }
         await fulfillment(of: [redialed], timeout: 5)
         scheduler.advance(by: HermesVoiceCall.redialTimeout)
+        XCTAssertEqual(call.status, .reconnecting, "a failed try waits and dials again")
 
-        XCTAssertEqual(transport.reconnects.count, HermesVoiceCall.redialBackoff.count + 1)
+        scheduler.advance(by: HermesVoiceCall.reconnectWindow)
         guard case .ended(.closed(let detail)) = call.status else { return XCTFail("\(call.status)") }
         XCTAssertTrue(detail.hasPrefix("connection_lost"))
         XCTAssertEqual(transport.closes, 1)
+    }
+
+    /// A session that keeps dropping right after it reconnects can't be minted again and again:
+    /// past the limit the call ends instead of dialing.
+    func testASessionThatKeepsDroppingStopsBeingRedialed() async {
+        let (call, transport, chat, _) = await startedCall()
+        transport.mint = { [weak call] in _ = try await call?.openSession(sdp: "offer", history: $0) }
+
+        for _ in 0..<HermesVoiceCall.redialSessionLimit {
+            let redialed = expectation(description: "The call dials")
+            transport.onReconnect = { redialed.fulfill() }
+            transport.onConnection?(.lost)
+            await fulfillment(of: [redialed], timeout: 5)
+            let back = expectation(description: "The call is back")
+            call.onReconnecting = { if !$0 { back.fulfill() } }
+            transport.finishReconnect()
+            await fulfillment(of: [back], timeout: 5)
+        }
+        transport.onReconnect = { XCTFail("no session past the limit") }
+        transport.onConnection?(.lost)
+
+        XCTAssertEqual(chat.sessionsMinted, HermesVoiceCall.redialSessionLimit)
+        guard case .ended(.closed) = call.status else { return XCTFail("\(call.status)") }
+    }
+
+    /// After the call moves to another chat, a redial's session is minted on that chat.
+    func testARedialAfterAMoveMintsOnTheChatTheCallMovedTo() async {
+        let (call, _, first, _) = await startedCall()
+        let second = FakeChat()
+        call.move(to: second)
+
+        _ = try? await call.openSession(sdp: "offer", history: [])
+
+        XCTAssertEqual(first.sessionsMinted, 0)
+        XCTAssertEqual(second.sessionsMinted, 1)
     }
 
     private func startedCall() async -> (HermesVoiceCall, FakeTransport, FakeChat, ManualScheduler) {
@@ -430,8 +459,12 @@ import XCTest
     private var redialing: CheckedContinuation<Void, Error>?
 
     /// Holds the redial open until `finishReconnect` or `cancelReconnect`.
+    /// Mints the redial's session through the call, as the real opener does.
+    var mint: (([BotJSON]) async throws -> Void)?
+
     func reconnect(history: [BotJSON]) async throws {
         reconnects.append(history)
+        try await mint?(history)
         try await withCheckedThrowingContinuation { redialing = $0; onReconnect?() }
     }
 
@@ -491,6 +524,13 @@ import XCTest
         submits.append((prompt, context))
         onSubmit?()
         return submitResult
+    }
+
+    private(set) var sessionsMinted = 0
+
+    func voiceLiveSession(sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
+        sessionsMinted += 1
+        return HermesVoiceLiveSession(sessionID: "s\(sessionsMinted)", answerSDP: "answer")
     }
 
     func emit(_ event: HermesVoiceTurnEvent) { voiceTurnEvents?(event) }

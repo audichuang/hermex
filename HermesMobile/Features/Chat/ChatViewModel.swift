@@ -3105,12 +3105,17 @@ final class ChatViewModel {
     }
 
     func makeVoiceCall() -> HermesVoiceCall? {
-        guard let hermesTurn else { return nil }
-        let transport = makeVoiceLiveTransport { [weak hermesTurn] sdp, history in
-            guard let hermesTurn else { throw BotFailure.stale }
-            return try await hermesTurn.voiceLiveSession(sdp: sdp, history: history)
+        guard hermesTurn != nil else { return nil }
+        // Minted on whichever chat the call talks on by then: a redial after the call moved goes
+        // to the chat it moved to, not to this one, which may be gone.
+        weak var opened: HermesVoiceCall?
+        let transport = makeVoiceLiveTransport { sdp, history in
+            guard let opened else { throw BotFailure.stale }
+            return try await opened.openSession(sdp: sdp, history: history)
         }
-        return HermesVoiceCall(transport: transport, chat: self)
+        let call = HermesVoiceCall(transport: transport, chat: self)
+        opened = call
+        return call
     }
 
     func submitVoicePrompt(_ prompt: String, context: String) async -> Bool {
@@ -8920,6 +8925,11 @@ extension ChatViewModel: VoiceCallChatPort {
 
     func submitVoice(prompt: String, context: String) async -> Bool {
         await submitVoicePrompt(prompt, context: context)
+    }
+
+    func voiceLiveSession(sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
+        guard let hermesTurn else { throw BotFailure.stale }
+        return try await hermesTurn.voiceLiveSession(sdp: sdp, history: history)
     }
 
     /// The latest turn's reply as the chat shows it: none when the latest turn has no reply row.

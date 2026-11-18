@@ -315,6 +315,7 @@ enum VoiceLiveTransportError: LocalizedError {
     /// WebRTC's `disconnected` is often a few seconds of bad signal that heals on its own, so it
     /// only reports `.unstable`; `failed` or the data channel closing drops the peer.
     fileprivate func connectionDidChange(_ state: RTCPeerConnectionState) {
+        VoiceCallLog.logger.notice("Peer connection state \(state.rawValue, privacy: .public)\(self.isOpening ? " while opening" : "", privacy: .public)")
         switch state {
         case .connected:
             if let connecting {
