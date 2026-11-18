@@ -421,9 +421,12 @@ import XCTest
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
     var onAudioLevel: ((Double) -> Void)?
+    var onConnection: ((VoiceLiveConnectionChange) -> Void)?
     private(set) var closes = 0
 
     func start(history: [BotJSON]) async throws {}
+    func reconnect(history: [BotJSON]) async throws {}
+    func cancelReconnect() {}
     func send(_ event: BotJSON) {}
     func setMuted(_ muted: Bool) {}
     func close() { closes += 1 }

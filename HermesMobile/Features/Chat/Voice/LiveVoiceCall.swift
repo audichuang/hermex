@@ -47,7 +47,8 @@ import UIKit
     init() {}
 
     /// `model` started `call`; held until `ended`. Rings until the session is up, then a
-    /// connected beep and tap, like a phone call.
+    /// connected beep and tap, like a phone call. While it reconnects a soft beep repeats, and the
+    /// connected cue says it is back.
     func begin(_ call: HermesVoiceCall, model: ChatViewModel) {
         drop = nil
         self.call = call
@@ -56,6 +57,9 @@ import UIKit
         isExpanded = true
         tones.ring()
         call.onLive = { [tones] in tones.connected() }
+        call.onReconnecting = { [tones] reconnecting in
+            if reconnecting { tones.reconnecting() } else { tones.connected() }
+        }
     }
 
     /// The pill goes back to the full-screen call.
@@ -201,6 +205,13 @@ import UIKit
     /// 440 + 480 Hz for a second, then two quiet ones, over and over until `stop` or `connected`.
     func ring() {
         play(Self.wave([(1.0, [440, 480]), (2.0, [])]), loops: -1)
+        haptics.prepare()
+    }
+
+    /// A low double beep every two seconds until `stop` or `connected`, like a phone call
+    /// finding its signal again. It also keeps the app's audio going in the background meanwhile.
+    func reconnecting() {
+        play(Self.wave([(0.12, [520]), (0.1, []), (0.12, [520]), (1.66, [])]), loops: -1)
         haptics.prepare()
     }
 

@@ -217,6 +217,38 @@ Voice.
   the new one. `RTCAudioSession.setActive(false)` deactivates with
   `.notifyOthersOnDeactivation`, so audio the call paused can resume.
 
+## Weak signal and reconnecting
+
+Unlike Desktop, which ends a call on WebRTC's first `disconnected`, a phone call
+rides out bad signal the way a phone call does (`HermesVoiceCall`, Reconnecting):
+
+- `disconnected` is reported as `unstable`: the call shows Reconnecting… and gets
+  6 s (`unstableGrace`) to come back on its own, which most short losses do.
+- `failed`, the data channel closing, or the grace running out dials a fresh
+  session (`redial`): the same host route, seeded with the chat's turns and then
+  what was said on the call, which the chat doesn't hold. Each try gets 15 s;
+  five tries at most, 2/4/8/12 s apart, before the call ends as
+  `connection_lost`. A Wi-Fi to cellular switch lands here too: with no ICE
+  restart on the host route, a new path needs a new session.
+- Every redial mints a billed session, so the tries only come back once a
+  reconnected call has stayed up for 60 s (`stableAfter`).
+- The transport keeps the microphone claim, the audio session and the factory
+  across a redial, and leaves the dropped peer open, unheard, until the new one
+  connects, so WebRTC's audio unit keeps recording and a locked phone's app stays
+  alive. A soft double beep repeats while it reconnects (`VoiceCallTones`), and
+  the connected beep says it is back.
+- Delegations and their turns carry on meanwhile. What the voice should say waits
+  in `heldSpeech` and goes out once it can hear it; on a redialed session it goes
+  without the old session's `delegation_id` (`null`, as Desktop's
+  `session.instructions.append` sends), which that session never issued. A mute
+  is sent again to the new session.
+- A phone call or Siri (`interrupted`) and the vendor's own closes still end the
+  call at once.
+
+Not verified on a device yet: whether the dropped peer really keeps the audio
+unit recording on a locked phone, and how the vendor treats a commentary with a
+`null` id mid-call.
+
 ## Out of scope (follow-ups)
 
 - Chained mode (speech-to-text → turn → text-to-speech) and streaming read-aloud (#1740).
@@ -228,9 +260,9 @@ Voice.
 
 - A drop's notice ends with the raw reason and how long the call was up, e.g.
   `(expired, 29s)`. `expired` near 30 s means OpenAI heard no microphone audio
-  (always on the simulator, which has none); `connection_lost` is the peer
-  connection or data channel closing (the app treats WebRTC's transient
-  `disconnected` as lost, as Desktop does); `interrupted` is a phone call or Siri.
+  (always on the simulator, which has none); `connection_lost` means every redial
+  failed after the peer connection dropped (see Weak signal and reconnecting);
+  `interrupted` is a phone call or Siri.
 - A delegated request that reached Hermes is an ordinary turn in the host's
   `agent.log` for that Profile; none during a call means the voice never
   delegated or the app never sent it. The session route itself logs nothing.
