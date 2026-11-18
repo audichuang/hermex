@@ -24,12 +24,18 @@ enum VoiceLiveTransportError: LocalizedError {
 }
 
 /// The WebRTC transport for a GPT-Live voice call (#1091), Hermes Desktop's `voice-live.ts`:
-/// one audio-only peer connection to OpenAI and its `oai-events` data channel. The host only
+/// an audio-only peer connection to OpenAI and its `oai-events` data channel. The host only
 /// mints the session; call audio goes from the phone straight to the vendor. It holds the
 /// microphone and the shared audio session (`ComposerAudioCaptureState.claimCall`) from opening
 /// until it tears down and puts the session back; a newer call tears it down first. The host
 /// has no route that ends a session, so closing the peer connection is the only way to stop
 /// billing: every path ends in `finalize`.
+///
+/// A peer connection that drops (`onConnection(.lost)`) leaves the microphone claim, the audio
+/// session and the factory up, so the call can `reconnect` on a fresh session without the music
+/// it paused coming back in the gap. The dropped peer stays open, unheard, until the new one
+/// connects: WebRTC keeps the audio unit, and with it the recording a backgrounded app needs to
+/// stay alive, running while any peer sends.
 @MainActor final class WebRTCVoiceLiveTransport: VoiceLiveTransport {
     static let dataChannelLabel = "oai-events"
     static let iceGatheringTimeout: Duration = .seconds(10)
@@ -43,13 +49,28 @@ enum VoiceLiveTransportError: LocalizedError {
 
     var onEvent: ((VoiceLiveServerEvent) -> Void)?
     var onClosed: ((String) -> Void)?
+    var onConnection: ((VoiceLiveConnectionChange) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
     var onAudioLevel: ((Double) -> Void)?
 
     private let openSession: VoiceLiveSessionOpener
-    private let relay = WebRTCVoiceLiveRelay()
+    /// The current peer's: a dropped peer's relay is cut, so nothing it reports reaches the call.
+    private var relay: WebRTCVoiceLiveRelay?
     private var factory: RTCPeerConnectionFactory?
     private var peer: RTCPeerConnection?
+    /// The dropped peer, closed once a reconnect's peer connects or the call ends.
+    private var retiringPeer: RTCPeerConnection?
+    /// Bumped by every opening and `cancelReconnect`; an opening that is no longer the latest stops.
+    private var generation = 0
+    /// The session request of the opening in flight, cancelled with it.
+    private var sessionRequest: Task<HermesVoiceLiveSession, Error>?
+    /// A reconnect waiting for its peer to reach `.connected`.
+    private var connecting: CheckedContinuation<Void, Error>?
+    /// WebRTC reported `.disconnected` and the peer has not come back yet.
+    private var isUnstable = false
+    /// The `start` or `reconnect` opening a peer: its drop fails that opening instead of being reported.
+    private var openingGeneration: Int?
+    private var isOpening: Bool { openingGeneration != nil }
     private var channel: RTCDataChannel?
     private var microphone: RTCAudioTrack?
     private var audioSession: VoiceCallAudioSession?
@@ -67,7 +88,6 @@ enum VoiceLiveTransportError: LocalizedError {
 
     init(openSession: @escaping VoiceLiveSessionOpener) {
         self.openSession = openSession
-        relay.owner = self
     }
 
     // MARK: VoiceLiveTransport
@@ -75,8 +95,14 @@ enum VoiceLiveTransportError: LocalizedError {
     func start(history: [BotJSON]) async throws {
         guard !didStart, !finalized else { throw VoiceLiveTransportError.endedWhileStarting }
         didStart = true
+        generation += 1
+        let opening = generation
+        openingGeneration = opening
+        defer { if openingGeneration == opening { openingGeneration = nil } }
         do {
-            try await open(history: history)
+            try await claimAudio()
+            try await openPeer(history: history, generation: opening)
+            armSpeakingProbe()
         } catch {
             // Torn down silently: the call reports the start failure itself, and its `close()` is a no-op.
             finalize(reason: nil)
@@ -86,6 +112,34 @@ enum VoiceLiveTransportError: LocalizedError {
 
     func send(_ event: BotJSON) {
         _ = sendNow(event)
+    }
+
+    /// Drops the current peer connection and opens a fresh session seeded with `history`,
+    /// returning once its peer connects. The microphone claim and audio session stay. Throws
+    /// when it fails or `cancelReconnect` gives up on it; the call decides whether to try again.
+    func reconnect(history: [BotJSON]) async throws {
+        guard didStart, !finalized, !closeRequested else { throw VoiceLiveTransportError.endedWhileStarting }
+        generation += 1
+        let opening = generation
+        openingGeneration = opening
+        defer { if openingGeneration == opening { openingGeneration = nil } }
+        dropPeer(retiring: true)
+        do {
+            try await openPeer(history: history, generation: opening)
+            try await peerConnected(generation: opening)
+        } catch {
+            if opening == generation { dropPeer(retiring: false) }
+            throw error
+        }
+        retiringPeer?.close(); retiringPeer = nil
+        armSpeakingProbe()
+    }
+
+    /// Gives up on the reconnect in flight: it throws, and its peer and session request go.
+    func cancelReconnect() {
+        guard !finalized else { return }
+        generation += 1
+        dropPeer(retiring: false)
     }
 
     func setMuted(_ muted: Bool) {
@@ -112,11 +166,12 @@ enum VoiceLiveTransportError: LocalizedError {
 
     // MARK: Opening
 
-    private func open(history: [BotJSON]) async throws {
+    /// The call's whole-call hold: the microphone, the audio session and the peer factory.
+    private func claimAudio() async throws {
         guard await ComposerVoiceMicrophonePermissionRequester.request() else {
             throw VoiceLiveTransportError.microphoneDenied
         }
-        try checkStillOpening()
+        try checkStillOpening(generation)
         // Before the session is read, so a call still tearing down puts it back first.
         ComposerAudioCaptureState.shared.claimCall(self) { [self] in
             _ = sendNow(VoiceLiveClientEvents.close)
@@ -124,10 +179,16 @@ enum VoiceLiveTransportError: LocalizedError {
         }
         audioSession = try VoiceCallAudioSession.begin()
         observeInterruptions()
-
         _ = Self.sslReady
-        let factory = RTCPeerConnectionFactory()
-        self.factory = factory
+        factory = RTCPeerConnectionFactory()
+    }
+
+    /// One peer connection and its session, through the vendor's answer.
+    private func openPeer(history: [BotJSON], generation opening: Int) async throws {
+        guard let factory else { throw VoiceLiveTransportError.peerConnectionFailed }
+        let relay = WebRTCVoiceLiveRelay()
+        relay.owner = self
+        self.relay = relay
         let configuration = RTCConfiguration()
         // No STUN or TURN, like Desktop's `new RTCPeerConnection()`: host candidates reach the vendor.
         configuration.iceServers = []
@@ -148,6 +209,7 @@ enum VoiceLiveTransportError: LocalizedError {
             "googHighpassFilter": kRTCMediaConstraintsValueTrue,
         ]))
         let track = factory.audioTrack(with: source, trackId: "hermex-microphone")
+        track.isEnabled = !isMuted
         guard peer.add(track, streamIds: ["hermex-call"]) != nil else { throw VoiceLiveTransportError.peerConnectionFailed }
         microphone = track
 
@@ -161,23 +223,34 @@ enum VoiceLiveTransportError: LocalizedError {
         self.channel = channel
 
         let offer = try await Self.offer(peer)
-        try checkStillOpening()
+        try checkStillOpening(opening)
         try await Self.setLocal(offer, on: peer)
-        try checkStillOpening()
+        try checkStillOpening(opening)
         await iceGatheringComplete(peer)
-        try checkStillOpening()
+        try checkStillOpening(opening)
         // Byte-exact: the host forwards it to the vendor, which refuses a stripped offer.
         guard let sdp = peer.localDescription?.sdp, !sdp.isEmpty else { throw VoiceLiveTransportError.peerConnectionFailed }
 
-        let session = try await openSession(sdp, history)
-        try checkStillOpening()
+        let openSession = self.openSession
+        let request = Task { try await openSession(sdp, history) }
+        sessionRequest = request
+        let session = try await request.value
+        try checkStillOpening(opening)
+        sessionRequest = nil
         try await Self.setRemote(session.answerSDP, on: peer)
-        try checkStillOpening()
-        armSpeakingProbe()
+        try checkStillOpening(opening)
     }
 
-    private func checkStillOpening() throws {
-        if finalized { throw VoiceLiveTransportError.endedWhileStarting }
+    private func checkStillOpening(_ opening: Int) throws {
+        if finalized || opening != generation { throw VoiceLiveTransportError.endedWhileStarting }
+    }
+
+    /// Waits for a reconnect's peer to connect; `dropPeer` ends the wait with an error.
+    private func peerConnected(generation opening: Int) async throws {
+        try checkStillOpening(opening)
+        guard peer?.connectionState != .connected else { return }
+        try await withCheckedThrowingContinuation { connecting = $0 }
+        try checkStillOpening(opening)
     }
 
     /// Non-trickle: the offer goes out with its candidates, so wait for gathering to finish, at
@@ -239,12 +312,42 @@ enum VoiceLiveTransportError: LocalizedError {
         if state == .complete { resumeGathering() }
     }
 
+    /// WebRTC's `disconnected` is often a few seconds of bad signal that heals on its own, so it
+    /// only reports `.unstable`; `failed` or the data channel closing drops the peer.
     fileprivate func connectionDidChange(_ state: RTCPeerConnectionState) {
-        if state == .failed || state == .disconnected { finalize(reason: "connection_lost") }
+        switch state {
+        case .connected:
+            if let connecting {
+                self.connecting = nil
+                connecting.resume()
+            } else if isUnstable {
+                isUnstable = false
+                onConnection?(.restored)
+            }
+        case .disconnected:
+            guard !isOpening, !isUnstable else { return }
+            isUnstable = true
+            onConnection?(.unstable)
+        case .failed:
+            peerDidFail()
+        default:
+            break
+        }
     }
 
     fileprivate func channelDidChange(_ state: RTCDataChannelState) {
-        if state == .closed { finalize(reason: "connection_lost") }
+        if state == .closed { peerDidFail() }
+    }
+
+    /// A peer failing while it opens fails that opening; a live one's drop is reported.
+    private func peerDidFail() {
+        guard !finalized, peer != nil else { return }
+        // After End, a drop is the end: no reconnect follows.
+        if closeRequested { return finalize(reason: "close_requested") }
+        generation += 1
+        if isOpening { return dropPeer(retiring: false) }
+        dropPeer(retiring: true)
+        onConnection?(.lost)
     }
 
     fileprivate func channelDidReceive(_ data: Data) {
@@ -273,6 +376,7 @@ enum VoiceLiveTransportError: LocalizedError {
     /// up, and the microphone's for the waveform. Without a reading the call simply never shows
     /// Speaking.
     private func armSpeakingProbe() {
+        speakingProbe?.cancel()
         speakingProbe = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.speakingProbeInterval)
@@ -314,26 +418,49 @@ enum VoiceLiveTransportError: LocalizedError {
         return channel.sendData(RTCDataBuffer(data: data, isBinary: false))
     }
 
-    /// Ends the session once: releases the microphone, the peer connection and the audio
+    /// Lets the current peer connection go: its relay is cut, its opening and any wait on it end.
+    /// `retiring` keeps a peer that was up open, unheard, until a reconnect's peer connects;
+    /// otherwise it closes now.
+    private func dropPeer(retiring: Bool) {
+        speakingProbe?.cancel(); speakingProbe = nil
+        relay?.owner = nil; relay = nil
+        channel?.delegate = nil
+        channel?.close(); channel = nil
+        microphone?.isEnabled = false; microphone = nil
+        if let peer {
+            if retiring, retiringPeer == nil {
+                peer.receivers.forEach { $0.track?.isEnabled = false }
+                retiringPeer = peer
+            } else {
+                peer.close()
+            }
+        }
+        peer = nil
+        isUnstable = false
+        resumeGathering()
+        sessionRequest?.cancel(); sessionRequest = nil
+        if let connecting {
+            self.connecting = nil
+            connecting.resume(throwing: VoiceLiveTransportError.peerConnectionFailed)
+        }
+        quietProbes = Self.quietProbesToStop
+        if isSpeaking { isSpeaking = false; onSpeakingChange?(false) }
+        onAudioLevel?(0)
+    }
+
+    /// Ends the session once: releases the microphone, the peer connections and the audio
     /// session, then reports `reason` (none when `start` throws instead).
     private func finalize(reason: String?) {
         guard !finalized else { return }
         finalized = true
         closeTimer?.cancel(); closeTimer = nil
-        speakingProbe?.cancel(); speakingProbe = nil
-        resumeGathering()
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
         interruptionObserver = nil
-        relay.owner = nil
-        channel?.delegate = nil
-        channel?.close()
-        microphone?.isEnabled = false
-        peer?.close()
-        channel = nil; microphone = nil; peer = nil; factory = nil
+        dropPeer(retiring: false)
+        retiringPeer?.close(); retiringPeer = nil
+        factory = nil
         audioSession?.end(); audioSession = nil
         ComposerAudioCaptureState.shared.releaseCall(self)
-        if isSpeaking { isSpeaking = false; onSpeakingChange?(false) }
-        onAudioLevel?(0)
         if let reason { onClosed?(closeRequested ? "close_requested" : reason) }
     }
 }

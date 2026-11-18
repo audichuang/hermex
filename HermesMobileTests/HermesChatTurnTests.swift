@@ -2218,8 +2218,11 @@ private extension BotJSON {
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
     var onAudioLevel: ((Double) -> Void)?
+    var onConnection: ((VoiceLiveConnectionChange) -> Void)?
     private(set) var closes = 0
     var onClose: (() -> Void)?
+    func reconnect(history: [BotJSON]) async throws {}
+    func cancelReconnect() {}
     var startError: Error?
     /// Holds `start` open, as a session the host hasn't answered yet, until `close`.
     var parksStart = false

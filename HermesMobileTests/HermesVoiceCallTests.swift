@@ -330,6 +330,73 @@ import XCTest
         XCTAssertEqual(second.submits.count, 1)
     }
 
+    /// A few seconds of bad signal: the call waits, holds what the voice should say, and says it
+    /// once the connection is back, without dialing a new session.
+    func testAWaveringConnectionThatComesBackSpeaksWhatWaitedWithoutRedialing() async {
+        let (call, transport, chat, scheduler) = await startedCall()
+        await delegate(transport, chat)
+
+        transport.onConnection?(.unstable)
+        XCTAssertEqual(call.status, .reconnecting)
+        chat.emit(.reply("Two errors found. Then"))
+        XCTAssertTrue(transport.commentary.isEmpty, "nothing is sent the voice can't hear")
+
+        transport.onConnection?(.restored)
+        XCTAssertEqual(transport.commentary, ["Two errors found."])
+        XCTAssertEqual(transport.sent.last?["delegation_id"].text, "d1")
+        XCTAssertEqual(call.status, .thinking)
+        scheduler.advance(by: HermesVoiceCall.unstableGrace)
+        XCTAssertTrue(transport.reconnects.isEmpty)
+    }
+
+    /// A dropped connection dials a fresh session seeded with what was said on the call; the
+    /// running request's reply reaches the new session, which never heard of the old one's id.
+    func testADroppedConnectionRedialsAndTheReplyReachesTheNewSession() async {
+        let (call, transport, chat, _) = await startedCall()
+        await delegate(transport, chat)
+        let redialed = expectation(description: "The call dials again")
+        transport.onReconnect = { redialed.fulfill() }
+
+        transport.onConnection?(.lost)
+        await fulfillment(of: [redialed], timeout: 5)
+        XCTAssertEqual(call.status, .reconnecting)
+        let seed = transport.reconnects.first?.compactMap { $0["content"].list?.first?["text"].text }
+        XCTAssertEqual(seed, ["How can I help?", "Check the build."])
+        chat.emit(.reply("Two errors found. Then"))
+
+        let spoken = expectation(description: "The held sentence goes out")
+        transport.onSend = { _ in spoken.fulfill() }
+        transport.finishReconnect()
+        await fulfillment(of: [spoken], timeout: 5)
+        XCTAssertEqual(transport.commentary, ["Two errors found."])
+        XCTAssertEqual(transport.sent.last?["delegation_id"], .null)
+        XCTAssertEqual(call.status, .thinking)
+    }
+
+    /// Redials are bounded, each being a new billed session: when none connects, the call ends
+    /// as dropped.
+    func testRedialsThatNeverConnectEndTheCall() async {
+        let (call, transport, _, scheduler) = await startedCall()
+        var redialed = expectation(description: "Redial 1")
+        transport.onReconnect = { redialed.fulfill() }
+
+        transport.onConnection?(.lost)
+        for wait in HermesVoiceCall.redialBackoff {
+            await fulfillment(of: [redialed], timeout: 5)
+            redialed = expectation(description: "The next redial")
+            scheduler.advance(by: HermesVoiceCall.redialTimeout)
+            XCTAssertEqual(call.status, .reconnecting)
+            scheduler.advance(by: wait)
+        }
+        await fulfillment(of: [redialed], timeout: 5)
+        scheduler.advance(by: HermesVoiceCall.redialTimeout)
+
+        XCTAssertEqual(transport.reconnects.count, HermesVoiceCall.redialBackoff.count + 1)
+        guard case .ended(.closed(let detail)) = call.status else { return XCTFail("\(call.status)") }
+        XCTAssertTrue(detail.hasPrefix("connection_lost"))
+        XCTAssertEqual(transport.closes, 1)
+    }
+
     private func startedCall() async -> (HermesVoiceCall, FakeTransport, FakeChat, ManualScheduler) {
         let transport = FakeTransport(), chat = FakeChat(), scheduler = ManualScheduler()
         let call = HermesVoiceCall(transport: transport, chat: chat, scheduler: scheduler)
@@ -354,8 +421,22 @@ import XCTest
     var onClosed: ((String) -> Void)?
     var onSpeakingChange: ((Bool) -> Void)?
     var onAudioLevel: ((Double) -> Void)?
+    var onConnection: ((VoiceLiveConnectionChange) -> Void)?
     private(set) var sent: [BotJSON] = []
     private(set) var closes = 0
+    /// Each redial's seed, in order.
+    private(set) var reconnects: [[BotJSON]] = []
+    var onReconnect: (() -> Void)?
+    private var redialing: CheckedContinuation<Void, Error>?
+
+    /// Holds the redial open until `finishReconnect` or `cancelReconnect`.
+    func reconnect(history: [BotJSON]) async throws {
+        reconnects.append(history)
+        try await withCheckedThrowingContinuation { redialing = $0; onReconnect?() }
+    }
+
+    func finishReconnect() { redialing?.resume(); redialing = nil }
+    func cancelReconnect() { redialing?.resume(throwing: CancellationError()); redialing = nil }
     var onSend: ((BotJSON) -> Void)?
     var holdsStart = false
     var onStartCalled: (() -> Void)?

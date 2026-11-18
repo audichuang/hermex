@@ -23,11 +23,12 @@ struct LiveVoiceCallBar: View {
     /// What the call is doing. Muted wins over Listening, so the user sees the voice can't hear
     /// them.
     enum Phase: Equatable {
-        case connecting, listening, muted, thinking, speaking
+        case connecting, reconnecting, listening, muted, thinking, speaking
 
         @MainActor init?(_ call: HermesVoiceCall) {
             switch call.status {
             case .connecting: self = .connecting
+            case .reconnecting: self = .reconnecting
             case .listening: self = call.isMuted ? .muted : .listening
             case .thinking: self = .thinking
             case .speaking: self = .speaking
@@ -38,6 +39,7 @@ struct LiveVoiceCallBar: View {
         var text: String {
             switch self {
             case .connecting: String(localized: "Calling…")
+            case .reconnecting: String(localized: "Reconnecting…")
             case .listening: String(localized: "Listening")
             case .muted: String(localized: "Muted")
             case .thinking: String(localized: "Hermes is working")
@@ -52,7 +54,7 @@ struct LiveVoiceCallBar: View {
             case .speaking: Color(red: 0.13, green: 0.77, blue: 0.37)
             case .listening: Color(red: 0.18, green: 0.48, blue: 1)
             case .thinking: Color(red: 0.66, green: 0.33, blue: 0.97)
-            case .muted, .connecting: Color(.appTextSecondary)
+            case .muted, .connecting, .reconnecting: Color(.appTextSecondary)
             }
         }
 
