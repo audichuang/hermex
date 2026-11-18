@@ -225,13 +225,17 @@ rides out bad signal the way a phone call does (`HermesVoiceCall`, Reconnecting)
 - `disconnected` is reported as `unstable`: the call shows Reconnecting… and gets
   6 s (`unstableGrace`) to come back on its own, which most short losses do.
 - `failed`, the data channel closing, or the grace running out dials a fresh
-  session (`redial`): the same host route, seeded with the chat's turns and then
-  what was said on the call, which the chat doesn't hold. Each try gets 15 s;
-  five tries at most, 2/4/8/12 s apart, before the call ends as
-  `connection_lost`. A Wi-Fi to cellular switch lands here too: with no ICE
-  restart on the host route, a new path needs a new session.
-- Every redial mints a billed session, so the tries only come back once a
-  reconnected call has stayed up for 60 s (`stableAfter`).
+  session (`redial`): the same host route on the chat the call talks on now,
+  seeded with the chat's turns and then what was said on the call, which the
+  chat doesn't hold. Each try gets 15 s, and they go 1/2/4/8 s apart (8 s
+  repeating) until 60 s after the connection went down (`reconnectWindow`), then
+  the call ends as `connection_lost`. A Wi-Fi to cellular switch lands here too:
+  with no ICE restart on the host route, a new path needs a new session.
+- A try that never reached the host (no signal) costs nothing, but every session
+  the host mints is billed: at most 4 (`redialSessionLimit`) until a reconnected
+  call has stayed up for 60 s (`stableAfter`), past which a drop ends the call.
+- `VoiceCall` log lines record each peer connection state, connection change and
+  redial outcome, for timing a drop on a device.
 - The transport keeps the microphone claim, the audio session and the factory
   across a redial, and leaves the dropped peer open, unheard, until the new one
   connects, so WebRTC's audio unit keeps recording and a locked phone's app stays

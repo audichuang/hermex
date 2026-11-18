@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 
 /// How a live session's peer connection is doing, between `start` and the end.
 enum VoiceLiveConnectionChange: Equatable {
@@ -55,12 +56,20 @@ enum VoiceLiveConnectionChange: Equatable {
     func interruptForVoice() async -> Bool
     /// Sends a delegation as a Send; true only when the host started its turn.
     func submitVoice(prompt: String, context: String) async -> Bool
+    /// Mints a GPT-Live session in the chat's Profile on its connection.
+    func voiceLiveSession(sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession
     /// The just-ended turn's reply as the chat shows it.
     var voiceTurnReply: String? { get }
     /// The chat's text turns, oldest first, to seed the voice with.
     var voiceHistory: [(speaker: VoiceLiveSpeaker, text: String)] { get }
     /// Hears the claimed turn and every turn's end (`HermesChatTurnCoordinator.voiceTurnObserver`).
     var voiceTurnEvents: ((HermesVoiceTurnEvent) -> Void)? { get set }
+}
+
+/// Call lifecycle lines for diagnosing drops on a device: connection changes and redial
+/// outcomes, by count only.
+enum VoiceCallLog {
+    static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile", category: "VoiceCall")
 }
 
 /// Runs the call's timeouts; tests fire them by hand. Returns the cancel.
@@ -131,9 +140,14 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     static let unstableGrace: Duration = .seconds(6)
     /// How long one redial gets to connect.
     static let redialTimeout: Duration = .seconds(15)
-    /// The waits before each redial after the first, which goes at once. Their count bounds the
-    /// redials, each a new billed session, until the call has stayed up for `stableAfter`.
-    static let redialBackoff: [Duration] = [.seconds(2), .seconds(4), .seconds(8), .seconds(12)]
+    /// The waits before each redial after the first, which goes at once; the last repeats.
+    static let redialBackoff: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8)]
+    /// How long the call keeps dialing before it gives up. A phone with no signal fails each
+    /// try fast, so the window, not a count, bounds those.
+    static let reconnectWindow: Duration = .seconds(60)
+    /// Sessions the host may mint for redials, each one billed, until the call has stayed up
+    /// for `stableAfter`.
+    static let redialSessionLimit = 4
     /// How long a reconnected call stays up before a later drop gets every redial again.
     static let stableAfter: Duration = .seconds(60)
 
@@ -174,9 +188,16 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     @ObservationIgnored private var cancelUnstableGrace: (@MainActor () -> Void)?
     /// The redial in flight, by number; a late answer to an older one is ignored.
     @ObservationIgnored private var redialAttempt: Int?
-    @ObservationIgnored private var redialCount = 0
+    @ObservationIgnored private var redialSerial = 0
+    /// Tries since the connection last went down, for the backoff.
+    @ObservationIgnored private var redialsThisDrop = 0
+    /// Sessions minted for redials since the call was last stable.
+    @ObservationIgnored private var redialSessions = 0
     @ObservationIgnored private var cancelRedialTimer: (@MainActor () -> Void)?
+    @ObservationIgnored private var cancelReconnectWindow: (@MainActor () -> Void)?
     @ObservationIgnored private var cancelStableTimer: (@MainActor () -> Void)?
+    /// Whether the session the voice talks on was last told the microphone is muted.
+    @ObservationIgnored private var sessionMuted = false
     /// What the voice should say or note, kept while the connection is down and sent once it is back.
     @ObservationIgnored private var heldSpeech: [(utterance: Utterance, delegationID: String)] = []
     /// The delegations the current session started. A redial's session never heard of the
@@ -268,8 +289,22 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         guard isLive, !isEnded, muted != isMuted else { return }
         isMuted = muted
         transport.setMuted(muted)
-        // A redial's session hears the mute once it is up.
-        if !isReconnecting { transport.send(events.inputAudio(muted: muted)) }
+        // A wavering or redialed session hears it once it is back.
+        if !isReconnecting { syncMute() }
+    }
+
+    private func syncMute() {
+        guard isMuted != sessionMuted else { return }
+        sessionMuted = isMuted
+        transport.send(events.inputAudio(muted: isMuted))
+    }
+
+    /// A redial's session, minted on the chat the call talks on now (`makeVoiceCall`).
+    func openSession(sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
+        guard !isEnded, let chat else { throw BotFailure.stale }
+        let session = try await chat.voiceLiveSession(sdp: sdp, history: history)
+        if isReconnecting { redialSessions += 1 }
+        return session
     }
 
     private func finish(_ reason: EndReason, closesTransport: Bool) {
@@ -282,10 +317,12 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         cancelHermesLostGrace?(); cancelHermesLostGrace = nil
         cancelUnstableGrace?(); cancelUnstableGrace = nil
         cancelRedialTimer?(); cancelRedialTimer = nil
+        cancelReconnectWindow?(); cancelReconnectWindow = nil
         cancelStableTimer?(); cancelStableTimer = nil
         redialAttempt = nil
         heldSpeech = []
-        if isReconnecting { isReconnecting = false; onReconnecting?(false) }
+        // No connected cue for a call that ends while it reconnects: `onEnded` stops the tones.
+        isReconnecting = false
         onReconnecting = nil
         delegation?.cancelIdleWait?(); delegation = nil
         chat?.voiceTurnEvents = nil
@@ -335,6 +372,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     /// on meanwhile; what the voice should say waits until it can hear it.
     private func connectionDidChange(_ change: VoiceLiveConnectionChange) {
         guard isLive, !isEnded, redialAttempt == nil else { return }
+        VoiceCallLog.logger.notice("Connection \(String(describing: change), privacy: .public)")
         switch change {
         case .unstable:
             guard cancelUnstableGrace == nil else { return }
@@ -357,21 +395,47 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     private func setReconnecting(_ reconnecting: Bool) {
         guard reconnecting != isReconnecting else { return }
         isReconnecting = reconnecting
+        cancelStableTimer?(); cancelStableTimer = nil
         if reconnecting {
-            cancelStableTimer?(); cancelStableTimer = nil
+            redialsThisDrop = 0
+            cancelReconnectWindow = scheduler.schedule(after: Self.reconnectWindow) { [weak self] in
+                self?.cancelReconnectWindow = nil
+                self?.giveUpReconnecting()
+            }
         } else {
+            cancelReconnectWindow?(); cancelReconnectWindow = nil
+            syncMute()
             let held = heldSpeech
             heldSpeech = []
             for (utterance, id) in held { send(utterance, delegationID: id) }
+            // Only a call that stays up earns its redial sessions back, so a session that keeps
+            // dropping seconds after it connects can't be minted again and again.
+            if redialSessions > 0 {
+                cancelStableTimer = scheduler.schedule(after: Self.stableAfter) { [weak self] in
+                    self?.cancelStableTimer = nil
+                    self?.redialSessions = 0
+                }
+            }
         }
         refreshStatus()
         onReconnecting?(reconnecting)
     }
 
+    private func giveUpReconnecting() {
+        guard !isEnded, isReconnecting else { return }
+        if redialAttempt != nil { transport.cancelReconnect() }
+        redialAttempt = nil
+        let seconds = liveSince.map { Int(($0.duration(to: .now)).components.seconds) }
+        VoiceCallLog.logger.notice("Reconnecting gave up after \(self.redialsThisDrop, privacy: .public) tries, \(self.redialSessions, privacy: .public) sessions minted")
+        finish(.closed(seconds.map { "connection_lost, \($0)s" } ?? "connection_lost"), closesTransport: true)
+    }
+
     private func redial() {
         guard !isEnded, redialAttempt == nil else { return }
-        redialCount += 1
-        let attempt = redialCount
+        guard redialSessions < Self.redialSessionLimit else { return giveUpReconnecting() }
+        redialSerial += 1
+        redialsThisDrop += 1
+        let attempt = redialSerial
         redialAttempt = attempt
         cancelRedialTimer = scheduler.schedule(after: Self.redialTimeout) { [weak self] in
             guard let self, self.redialAttempt == attempt else { return }
@@ -393,27 +457,20 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         guard !isEnded, redialAttempt == attempt else { return }
         redialAttempt = nil
         cancelRedialTimer?(); cancelRedialTimer = nil
+        VoiceCallLog.logger.notice("Redial \(self.redialsThisDrop, privacy: .public) connected")
         sessionDelegations = []
+        sessionMuted = false
         isSpeaking = false
-        if isMuted { transport.send(events.inputAudio(muted: true)) }
         setReconnecting(false)
-        // Only a call that stays up earns its redials back, so a session that keeps dropping
-        // seconds after it connects can't be minted again and again.
-        cancelStableTimer = scheduler.schedule(after: Self.stableAfter) { [weak self] in
-            self?.cancelStableTimer = nil
-            self?.redialCount = 0
-        }
     }
 
     private func redialDidFail(_ attempt: Int) {
         guard !isEnded, redialAttempt == attempt else { return }
         redialAttempt = nil
         cancelRedialTimer?(); cancelRedialTimer = nil
-        guard redialCount <= Self.redialBackoff.count else {
-            let seconds = liveSince.map { Int(($0.duration(to: .now)).components.seconds) }
-            return finish(.closed(seconds.map { "connection_lost, \($0)s" } ?? "connection_lost"), closesTransport: true)
-        }
-        cancelRedialTimer = scheduler.schedule(after: Self.redialBackoff[redialCount - 1]) { [weak self] in
+        VoiceCallLog.logger.notice("Redial \(self.redialsThisDrop, privacy: .public) failed")
+        let wait = Self.redialBackoff[min(redialsThisDrop, Self.redialBackoff.count) - 1]
+        cancelRedialTimer = scheduler.schedule(after: wait) { [weak self] in
             self?.cancelRedialTimer = nil
             self?.redial()
         }
