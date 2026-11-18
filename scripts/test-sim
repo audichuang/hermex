@@ -333,6 +333,15 @@ def main():
             device = select_device(devices(run_dir, (work_fd,)), args.device)
             sim_fd = stack.enter_context(lock(locks_dir / (device["udid"] + ".lock"), owner))
             lock_fds = (work_fd, sim_fd)
+            # The device may have been deleted or recreated under the same name between the
+            # lookup and the lock. Resolve it again under the lock, and stop instead of switching
+            # to a new UDID whose lock this run does not hold.
+            current = select_device(devices(run_dir, lock_fds), args.device)
+            if current["udid"] != device["udid"]:
+                raise RunnerError(
+                    "{} changed from {} to {} before its lock was taken; check who replaced it, "
+                    "then rerun".format(args.device, device["udid"], current["udid"]))
+            device = current
             small = host_memory() <= SMALL_HOST_BYTES
             if small:
                 # Same lock as hermex-flow's run-sim.sh builds.
