@@ -220,7 +220,7 @@ struct LiveVoiceOrb: View {
             case .speaking: self = .speaking
             case .thinking: self = .thinking
             case .muted: self = .muted
-            case .connecting, nil: self = .idle
+            case .connecting, .reconnecting, nil: self = .idle
             }
         }
 
