@@ -164,6 +164,18 @@ enum VoiceLiveProtocol {
     /// Turns the transcript window into a Hermes turn: `prompt` is what the user said last
     /// (the persisted user row), `context` the recent spoken exchange (`voice_context`).
     static func delegationPrompt(_ fragments: [VoiceLiveTranscriptFragment]) -> (prompt: String, context: String) {
+        let turns = turns(fragments)
+        let prompt = collapsedWhitespace(turns.last { $0.speaker == .user }?.text ?? "")
+        let context = turns.compactMap { turn -> String? in
+            let text = collapsedWhitespace(turn.text)
+            guard !text.isEmpty else { return nil }
+            return "\(turn.speaker == .user ? "User" : "Voice assistant"): \(text)"
+        }.joined(separator: "\n")
+        return (prompt.isEmpty ? String(context.suffix(400)) : prompt, context)
+    }
+
+    /// Consecutive fragments of one speaker joined into a turn, oldest first.
+    static func turns(_ fragments: [VoiceLiveTranscriptFragment]) -> [(speaker: VoiceLiveSpeaker, text: String)] {
         var turns: [(speaker: VoiceLiveSpeaker, text: String)] = []
         for fragment in fragments {
             if let last = turns.last, last.speaker == fragment.speaker {
@@ -172,13 +184,7 @@ enum VoiceLiveProtocol {
                 turns.append((fragment.speaker, fragment.text))
             }
         }
-        let prompt = collapsedWhitespace(turns.last { $0.speaker == .user }?.text ?? "")
-        let context = turns.compactMap { turn -> String? in
-            let text = collapsedWhitespace(turn.text)
-            guard !text.isEmpty else { return nil }
-            return "\(turn.speaker == .user ? "User" : "Voice assistant"): \(text)"
-        }.joined(separator: "\n")
-        return (prompt.isEmpty ? String(context.suffix(400)) : prompt, context)
+        return turns
     }
 
     /// Seeds a new session with the chat's latest text turns: at most `maxMessages`
