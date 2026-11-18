@@ -71,41 +71,47 @@ bullet); only the Hermex specifics are here.
 
 - Prefix `HERMEX`. Resident device: `HERMEX iPhone 18 Pro Max` (iOS 27.2). Check
   `xcrun simctl list devices | grep HERMEX`. When it is idle the resident is parked on the NAS with
-  `sim-vault` (the `modern-ios-guidance` skill, VER7), so a missing resident is normal. Restore it first,
-  under the build lock; it comes back with the app and its login, under a new UDID:
+  `sim-vault` (the `modern-ios-guidance` skill, `references/simulator-lifecycle.md` SIM3), so a missing
+  resident is normal. `scripts/fork/sim` wraps it for the resident; it prints `<command> rc=N` on stderr
+  last and exits with sim-vault's code, whose meaning and next step are in `sim-vault --help`:
 
   ```zsh
-  lockf -k /tmp/hermex-build.lock sim-vault restore "HERMEX iPhone 18 Pro Max"
+  scripts/fork/sim ensure   # restore if parked, boot, lease it; prints the UDID (a new one after a restore)
+  scripts/fork/sim down     # hand the lease back; shuts it down only if no lease and no test-sim run is left
+  scripts/fork/sim park     # after a batch of work: shut down and archive, unless leased, building or testing
   ```
 
-  A non-zero exit is handled as `~/.aghub/modern-ios-guidance/references/verification.md` VER7 says
-  (which exits recreate the device, which wait or stop, when `--replace` applies); this file only adds the
-  Hermex names. When VER7 says to recreate, this is the command (it does not boot the device):
+  The lease owner is `hermex:up:<checkout>`; two sessions in one checkout set different
+  `HERMEX_SIM_OWNER` values (the same value for their own `ensure` and `down`). `park` refuses (8) while
+  `/tmp/hermex-build.lock` or the device's `scripts/test-sim` lock is held or a lease is left; it takes those
+  locks itself, so do not wrap it in `lockf` on the same files. `ensure` does not create a missing device:
+  when SIM3 says to recreate, this is the command (it does not boot the device):
 
   ```zsh
   xcrun simctl create "HERMEX iPhone 18 Pro Max" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-2
-  ```
-
-  When a batch of work is done, park it again under the same lock (VER7 says when it is safe to):
-
-  ```zsh
-  lockf -k /tmp/hermex-build.lock sim-vault park "HERMEX iPhone 18 Pro Max" --shutdown
   ```
 
 - Temporary parallel devices: `HERMEX tmp <task>`.
 - Agents working in parallel on the resident device take turns through one lock: wrap every
   `scripts/test-sim` and `xcodebuild` call in `lockf -k /tmp/hermex-build.lock …`. Writing code can overlap;
   builds and simulator runs wait in line.
-- `scripts/test-sim` has no default device: run `scripts/test-sim <udid>` with the assigned device's UDID,
-  never its name or `booted`. Look up the resident's UDID by name each time; do not hard-code it:
+- `scripts/test-sim` has no default device: pass the assigned device's UDID or its unique name, never
+  `booted`. It resolves the device again once it holds that device's lock and stops if the name now
+  points to another UDID (for example after a restore), so rerun it rather than reuse an old UDID. Look the
+  resident's UDID up by name each time; do not hard-code it:
 
   ```zsh
   xcrun simctl list devices available | grep -F 'HERMEX iPhone 18 Pro Max'
   ```
 
+  Known gap: `scripts/test-sim` does not honor a manual lease. Its runner terminates the app, may reboot
+  the device and may shut it down afterwards, so do not run it on the resident during someone's manual
+  check (tracked separately).
 - XcodeBuildMCP (`build_run_sim`) is not installed on this Mac. For UI verification, use the raw build
-  fallback from `DEVELOPMENT.md` with the assigned UDID and serial execution. Set `udid` to the UDID
-  looked up above (or the temporary device assigned to the task):
+  fallback from `DEVELOPMENT.md` with the assigned UDID and serial execution. A manual install, launch
+  or UI check on the resident counts as using it: start with `udid=$(scripts/fork/sim ensure)` so a
+  `park` cannot take the device meanwhile, and run `scripts/fork/sim down` when the check is done. On a
+  temporary device, set `udid` to its UDID:
 
   ```zsh
   xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Debug \

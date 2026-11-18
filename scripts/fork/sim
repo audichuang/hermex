@@ -1,0 +1,68 @@
+#!/bin/bash
+# Takes, hands back and parks the resident simulator through sim-vault (the modern-ios-guidance
+# skill; workflow in references/simulator-lifecycle.md SIM3, exit codes in `sim-vault --help`).
+#
+#   scripts/fork/sim ensure  boot it (restored from the NAS when parked) and lease it for manual
+#                            install/launch/checks; prints its UDID on stdout
+#   scripts/fork/sim down    hand that lease back; shut it down only when no lease is left and no
+#                            scripts/test-sim run holds the device
+#   scripts/fork/sim park    shut it down and archive it to the NAS, unless it is leased, a build
+#                            holds /tmp/hermex-build.lock, or a scripts/test-sim run holds the device
+#
+# The lease owner is $HERMEX_SIM_OWNER, else hermex:up:<checkout>. Two sessions in one checkout set
+# different owners, or one session's `down` hands back the other's lease.
+# Prints "<command> rc=N" on stderr last and exits with that code (sim-vault's, unchanged).
+set -uo pipefail
+
+NAME="HERMEX iPhone 18 Pro Max"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+OWNER="${HERMEX_SIM_OWNER:-hermex:up:${ROOT}}"
+LOCKS="${HOME}/Library/Caches/HermexSimulatorLocks"
+# Literal {udid}: sim-vault substitutes the device's UDID, giving the per-device lock scripts/test-sim
+# holds for a whole run. Do not wrap these commands in lockf on the same files: sim-vault opens them
+# itself and would find them held.
+DEVICE_LOCK="${LOCKS}/{udid}.lock"
+BUILD_LOCK="/tmp/hermex-build.lock"
+SYNC="aghub-cli source sync audichuang/audi-skill -g --update --yes"
+
+finish() {
+  echo "${CMD} rc=$1" >&2
+  exit "$1"
+}
+
+if [[ $# -ne 1 ]] || [[ "$1" != ensure && "$1" != down && "$1" != park ]]; then
+  echo "usage: scripts/fork/sim <ensure|down|park>" >&2
+  exit 2
+fi
+CMD=$1
+
+if ! command -v sim-vault >/dev/null; then
+  echo "sim-vault not found: ln -s ~/.aghub/modern-ios-guidance/scripts/sim-vault ~/.local/bin/sim-vault" >&2
+  finish 127
+fi
+
+rc=0
+case "$CMD" in
+  ensure)
+    sim-vault ensure "$NAME" --boot --lease "$OWNER" || rc=$?
+    ;;
+  down)
+    # Check before handing the lease back, so an old sim-vault leaves it in place.
+    # Capture first: grep -q exiting early under pipefail could fail the pipeline on SIGPIPE.
+    help="$(sim-vault shutdown --help 2>/dev/null)" || help=""
+    if [[ "$help" != *--busy-lock* ]]; then
+      echo "sim-vault 版本過舊，先同步 audi-skill：${SYNC}" >&2
+      finish 2
+    fi
+    mkdir -p "$LOCKS" || finish 1
+    sim-vault release "$NAME" --lease "$OWNER" || rc=$?
+    if (( rc == 0 )); then
+      sim-vault shutdown "$NAME" --busy-lock "$DEVICE_LOCK" || rc=$?
+    fi
+    ;;
+  park)
+    mkdir -p "$LOCKS" || finish 1
+    sim-vault park "$NAME" --shutdown --busy-lock "$BUILD_LOCK" --busy-lock "$DEVICE_LOCK" || rc=$?
+    ;;
+esac
+finish "$rc"
