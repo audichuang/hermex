@@ -86,7 +86,32 @@ then claims the turn its own submit started (the coordinator's turn count, and
 on a canonical host the reply's `admission_id`), speaks only that turn's frames,
 and settles when the coordinator finishes the turn, whichever way it ends. A
 newer delegation replaces the one in flight: the old turn is no longer spoken,
-and if it is still running it is stopped first. After lost frames the call keeps
+and if it is still running it is stopped first, unless the call's turn has
+already started a tool. That turn may have acted, so stopping it loses work the
+user then has to ask for again (twring ADR-026, from real Hermes calls): the new
+request waits behind it instead (`queued`), the voice gets the quiet line "Hermes
+is still working on the previous request. This one goes next, once it
+finishes.", and further requests join it (newest 2000 characters kept). When the
+turn settles its answer is spoken as usual and the queue goes out as one
+delegation once the chat is idle, never by a Stop. Moving to another chat takes
+the queue along as an unsent request; a Hermes connection that doesn't come back
+drops it with the running one.
+
+### Spoken stop
+
+A user utterance that is wholly a stop order cancels the request out and the one
+queued behind it (twring ADR-028). The voice model answers a bare "stop" itself
+and doesn't delegate it (Desktop's `use-voice-live-conversation.ts`), so the call
+judges the user's transcript 1.5 s after their last words
+(`utteranceSettle`), and a delegation whose prompt is a stop order is never sent
+to Hermes. `VoiceLiveProtocol.isStopCommand` matches the whole utterance without
+spaces or punctuation: stop, stop it, cancel, cancel that, 停, 停止, 停下來, 取消,
+with an address or particle around it ("Hermes, stop", "請停止"). "Never mind" and
+算了 are left out: they also answer the voice's own questions. A running turn is
+stopped and the voice says "Okay, Hermes stopped that request." (or that the host
+refused the stop); one whose Send is still on the way is stopped once the host
+starts it. With nothing out, a stop does nothing here. Unlike Desktop, where the
+stop phrase ends the conversation, the call stays on. After lost frames the call keeps
 its claim only when the snapshot's running turn is provably the same (same start,
 or on a canonical host the same started admission); otherwise it says "Hermes
 finished; the result is in the chat." A kept turn's reply is rebuilt from the
@@ -246,6 +271,13 @@ rides out bad signal the way a phone call does (`HermesVoiceCall`, Reconnecting)
   without the old session's `delegation_id` (`null`, as Desktop's
   `session.instructions.append` sends), which that session never issued. A mute
   is sent again to the new session.
+- A redialed session never heard what the dropped one may not have said yet
+  (twring ADR-038). Each sentence sent counts as unheard until its estimated
+  speaking time (about 14 Latin or 4.5 CJK characters a second, after what is
+  ahead of it) plus 3 s (`heardSlack`, for the delay before a drop is noticed) has
+  passed; what is unheard at the drop is said again first on a redialed session,
+  at most twice per request (`maxReplays`). A short repeat beats a gap. A wavering
+  connection that comes back is the same session and repeats nothing.
 - A phone call or Siri (`interrupted`) and the vendor's own closes still end the
   call at once.
 
@@ -256,7 +288,6 @@ unit recording on a locked phone, and how the vendor treats a commentary with a
 ## Out of scope (follow-ups)
 
 - Chained mode (speech-to-text → turn → text-to-speech) and streaming read-aloud (#1740).
-- A spoken stop word.
 - CallKit and VoIP push (the ringback is the app's own tone, not an incoming call).
 - A Live Activity for a call.
 
@@ -267,6 +298,10 @@ unit recording on a locked phone, and how the vendor treats a commentary with a
   (always on the simulator, which has none); `connection_lost` means every redial
   failed after the peer connection dropped (see Weak signal and reconnecting);
   `interrupted` is a phone call or Siri.
+- `VoiceCall` lines `Delegation <step> after <n> ms` time each request from the
+  voice's delegation: `submitting`, `started` or `refused`, `first reply`, `first
+  speech` (the first sentence sent to the voice), `settled`. Only steps and
+  milliseconds are logged, never text or tool names.
 - A delegated request that reached Hermes is an ordinary turn in the host's
   `agent.log` for that Profile; none during a call means the voice never
   delegated or the app never sent it. The session route itself logs nothing.

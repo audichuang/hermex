@@ -130,6 +130,9 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         static let stillWaiting = "That request is still waiting for your approval on the phone screen."
         static let movedChat = "The user opened another chat. That request goes on in the previous chat, and its result will be there."
         static func working(_ tool: String) -> String { "Hermes is working: \(tool). Not done yet." }
+        static let queued = "Hermes is still working on the previous request. This one goes next, once it finishes."
+        static let stopped = "Okay, Hermes stopped that request."
+        static let stopRefused = "Hermes did not take the stop; that request may still be running."
     }
 
     static let idleWait: Duration = .seconds(10)
@@ -150,6 +153,15 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     static let redialSessionLimit = 4
     /// How long a reconnected call stays up before a later drop gets every redial again.
     static let stableAfter: Duration = .seconds(60)
+    /// How long after the user's last words their utterance counts as finished, for a spoken stop.
+    static let utteranceSettle: Duration = .milliseconds(1_500)
+    /// Added to a sentence's estimated speaking time before it counts as heard: a drop is noticed
+    /// seconds after the audio stopped, so a sentence near the drop is said again rather than lost.
+    static let heardSlack: Duration = .seconds(3)
+    /// How often one request's unheard speech is said again after drops.
+    static let maxReplays = 2
+    /// The most a queued request's merged words hold, newest kept.
+    static let maxQueuedPrompt = 2_000
 
     private(set) var status: Status = .connecting
     private(set) var isMuted = false
@@ -203,16 +215,41 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     /// The delegations the current session started. A redial's session never heard of the
     /// earlier ones, so speech about them goes out without their id.
     @ObservationIgnored private var sessionDelegations: Set<String> = []
+    /// A request that waits for the call's running turn to finish instead of stopping its work.
+    @ObservationIgnored private var queued: Delegation?
+    /// A delegation the user stopped while its Send was on the way: its turn is stopped once it starts.
+    @ObservationIgnored private var stoppedWhileSubmitting: String?
+    /// The user's words since their utterance last settled, for a spoken stop.
+    @ObservationIgnored private var userUtterance = ""
+    @ObservationIgnored private var cancelUtteranceSettle: (@MainActor () -> Void)?
+    /// Speech sent to the session that may not have been heard yet, oldest first.
+    @ObservationIgnored private var unheard: [Spoken] = []
+    /// What was still unheard when the connection went down: said again on a redialed session.
+    @ObservationIgnored private var unheardAtDrop: [Spoken] = []
+    @ObservationIgnored private var spokenSerial = 0
+    @ObservationIgnored private var replays: [String: Int] = [:]
 
     private enum Utterance { case say(String), think(String) }
+
+    private struct Spoken {
+        let serial: Int
+        let text: String
+        let delegationID: String
+        let duration: Duration
+    }
 
     /// One delegation, from the voice's request to its turn's end.
     private struct Delegation {
         enum Phase { case waiting, submitting, running }
         let id: String
-        let prompt: String
+        var prompt: String
         let context: String
+        /// A queued request goes out after the running turn instead of stopping it.
+        var mayStopTurn = true
         var phase = Phase.waiting
+        let createdAt = ContinuousClock.now
+        var heardFirstReply = false
+        var spokeFirst = false
         var cancelIdleWait: (@MainActor () -> Void)?
         /// The claimed turn's reply as the chat builds it.
         var reply = ""
@@ -273,9 +310,12 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
             think(Line.movedChat, delegationID: current.id)
         }
         interruptSent = false
+        stoppedWhileSubmitting = nil
         cancelHermesLostGrace?(); cancelHermesLostGrace = nil
         chat = next
         if didStart { next.voiceTurnEvents = { [weak self] in self?.receiveTurn($0) } }
+        // A queued request was never sent: it goes to the chat the user opened, like any other.
+        if delegation == nil { promoteQueued(mayStopTurn: true) }
         guard isLive else { return }
         refreshStatus()
         armInactivity()
@@ -321,6 +361,10 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         cancelStableTimer?(); cancelStableTimer = nil
         redialAttempt = nil
         heldSpeech = []
+        unheard = []
+        unheardAtDrop = []
+        queued = nil
+        cancelUtteranceSettle?(); cancelUtteranceSettle = nil
         // No connected cue for a call that ends while it reconnects: `onEnded` stops the tones.
         isReconnecting = false
         onReconnecting = nil
@@ -398,12 +442,17 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         cancelStableTimer?(); cancelStableTimer = nil
         if reconnecting {
             redialsThisDrop = 0
+            // Frozen at the drop: what the voice may not have said yet is said again on a redial.
+            unheardAtDrop = unheard
+            unheard = []
             cancelReconnectWindow = scheduler.schedule(after: Self.reconnectWindow) { [weak self] in
                 self?.cancelReconnectWindow = nil
                 self?.giveUpReconnecting()
             }
         } else {
             cancelReconnectWindow?(); cancelReconnectWindow = nil
+            // The same session came back and still has what it was sent.
+            unheardAtDrop = []
             syncMute()
             let held = heldSpeech
             heldSpeech = []
@@ -461,6 +510,13 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         sessionDelegations = []
         sessionMuted = false
         isSpeaking = false
+        // The new session never heard what the old one may not have said: from the earliest
+        // unheard sentence on, a short repeat rather than a gap.
+        let replay = unheardAtDrop.filter { replays[$0.delegationID, default: 0] < Self.maxReplays }
+        for id in Set(replay.map(\.delegationID)) { replays[id, default: 0] += 1 }
+        if !replay.isEmpty { VoiceCallLog.logger.notice("Redial says again \(replay.count, privacy: .public) unheard pieces") }
+        heldSpeech = replay.map { (.say($0.text), $0.delegationID) } + heldSpeech
+        unheardAtDrop = []
         setReconnecting(false)
     }
 
@@ -491,6 +547,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
             transcript.append(fragment)
             showCaption(fragment)
             armInactivity()
+            if fragment.speaker == .user { noteUserWords(fragment.text) }
         case .delegation(let id):
             sessionDelegations.insert(id)
             armInactivity()
@@ -514,11 +571,21 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     /// approval only points back at the phone.
     private func delegate(_ id: String) {
         guard let chat else { return }
+        let (prompt, context) = VoiceLiveProtocol.delegationPrompt(transcript.contextWindow)
+        // "Stop" is not work: handed to Hermes as a prompt it would start a new run.
+        if VoiceLiveProtocol.isStopCommand(prompt) {
+            if delegation != nil || queued != nil { stopRequests(answering: id) }
+            return
+        }
         if chat.turnAwaitsAnswer {
             speak(Line.stillWaiting, delegationID: id)
             return
         }
-        let (prompt, context) = VoiceLiveProtocol.delegationPrompt(transcript.contextWindow)
+        // A turn that already started a tool may have acted: more talk waits for it rather than
+        // stopping its work. Only a spoken stop cancels it.
+        if let current = delegation, current.phase == .running, current.lastTool != nil {
+            return queue(id, prompt: prompt, context: context)
+        }
         delegation?.cancelIdleWait?()
         var next = Delegation(id: id, prompt: prompt, context: context)
         next.cancelIdleWait = scheduler.schedule(after: Self.idleWait) { [weak self] in self?.idleWaitDidExpire(id) }
@@ -538,6 +605,9 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     private func drop(_ id: String, saying line: String) {
         delegation?.cancelIdleWait?()
         delegation = nil
+        // Only the Hermes connection running out drops a running turn, and a request queued
+        // behind it can't go out either.
+        queued = nil
         speak(line, delegationID: id)
         refreshStatus()
         armInactivity()
@@ -554,7 +624,7 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     private func step() async {
         guard !isEnded, let chat, let waiting = delegation, waiting.phase == .waiting else { return }
         if chat.isIdleForVoice { return await submit(waiting) }
-        guard chat.isRunningTurn, !interruptSent else { return }
+        guard waiting.mayStopTurn, chat.isRunningTurn, !interruptSent else { return }
         if chat.turnAwaitsAnswer { return drop(waiting.id, saying: Line.stillWaiting) }
         interruptSent = true
         guard await chat.interruptForVoice() else {
@@ -567,7 +637,14 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     private func submit(_ sending: Delegation) async {
         delegation?.phase = .submitting
         delegation?.cancelIdleWait?(); delegation?.cancelIdleWait = nil
+        logTiming("submitting", sending)
         let started = await chat?.submitVoice(prompt: sending.prompt, context: sending.context) ?? false
+        logTiming(started ? "started" : "refused", sending)
+        if stoppedWhileSubmitting == sending.id {
+            stoppedWhileSubmitting = nil
+            guard !isEnded else { return }
+            return finishStop(answering: sending.id, stopsTurn: started)
+        }
         // Superseded, ended or already settled meanwhile.
         guard !isEnded, delegation?.id == sending.id else { return advance() }
         if started {
@@ -598,12 +675,14 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         guard var current = delegation, current.phase != .waiting else { return }
         switch event {
         case .reply(let text):
+            noteFirstReply(&current)
             current.reply += text
             delegation = current
             speakFinishedSentences()
         case .interim(let text):
             let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return }
+            noteFirstReply(&current)
             let separator = current.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "\n\n"
             current.reply += separator + text
             delegation = current
@@ -644,6 +723,10 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
     private func speakFinishedSentences() {
         guard var current = delegation else { return }
         let piece = current.cursor.advance(reply: current.reply, finished: false)
+        if piece != nil, !current.spokeFirst {
+            current.spokeFirst = true
+            logTiming("first speech", current)
+        }
         delegation = current
         if let piece { speak(piece, delegationID: current.id) }
     }
@@ -661,9 +744,99 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
                 think(Line.noSpokenResult, delegationID: current.id)
             }
         }
+        logTiming("settled", current)
         delegation = nil
+        // The turn is over, so the queued request goes out once the chat is idle, never by a Stop.
+        promoteQueued(mayStopTurn: false)
         refreshStatus()
         armInactivity()
+        if delegation != nil { advance() }
+    }
+
+    // MARK: Queue and spoken stop
+
+    /// Waits behind the running turn; requests made meanwhile join it, newest words kept.
+    private func queue(_ id: String, prompt: String, context: String) {
+        var next = Delegation(id: id, prompt: prompt, context: context)
+        if let earlier = queued {
+            next.prompt = String((earlier.prompt + "\n" + prompt).suffix(Self.maxQueuedPrompt))
+        }
+        next.mayStopTurn = false
+        queued = next
+        VoiceCallLog.logger.notice("Delegation queued behind a working turn")
+        think(Line.queued, delegationID: id)
+    }
+
+    private func promoteQueued(mayStopTurn: Bool) {
+        guard var next = queued else { return }
+        queued = nil
+        let id = next.id
+        next.mayStopTurn = mayStopTurn
+        next.cancelIdleWait = scheduler.schedule(after: Self.idleWait) { [weak self] in self?.idleWaitDidExpire(id) }
+        delegation = next
+    }
+
+    /// The user's words so far; once they settle, a whole utterance that is a stop command
+    /// cancels the request out. The voice model answers a bare "stop" itself and never delegates it.
+    private func noteUserWords(_ text: String) {
+        userUtterance += text
+        cancelUtteranceSettle?()
+        cancelUtteranceSettle = scheduler.schedule(after: Self.utteranceSettle) { [weak self] in
+            guard let self, !self.isEnded else { return }
+            self.cancelUtteranceSettle = nil
+            let utterance = self.userUtterance
+            self.userUtterance = ""
+            guard VoiceLiveProtocol.isStopCommand(utterance), self.delegation != nil || self.queued != nil else { return }
+            self.stopRequests(answering: nil)
+        }
+    }
+
+    /// Cancels the request out and the one queued behind it, and stops the turn it started.
+    private func stopRequests(answering spokenID: String?) {
+        guard let id = delegation?.id ?? queued?.id else { return }
+        let current = delegation
+        delegation?.cancelIdleWait?()
+        delegation = nil
+        queued = nil
+        refreshStatus()
+        armInactivity()
+        VoiceCallLog.logger.notice("Spoken stop cancels the request out")
+        switch current?.phase {
+        case .running?:
+            finishStop(answering: spokenID ?? id, stopsTurn: true)
+        case .submitting?:
+            // Its turn may start any moment: `submit` stops it once the host answers.
+            stoppedWhileSubmitting = current?.id
+        case .waiting?, nil:
+            speak(Line.stopped, delegationID: spokenID ?? id)
+        }
+    }
+
+    /// Stops the turn the request started, and tells the voice how it went.
+    private func finishStop(answering id: String, stopsTurn: Bool) {
+        guard stopsTurn else { return speak(Line.stopped, delegationID: id) }
+        Task { [weak self] in
+            guard let self, let chat = self.chat else { return }
+            self.interruptSent = true
+            let stopped = await chat.interruptForVoice()
+            if !stopped { self.interruptSent = false }
+            self.speak(stopped ? Line.stopped : Line.stopRefused, delegationID: id)
+        }
+    }
+
+    // MARK: Timing
+
+    private func noteFirstReply(_ current: inout Delegation) {
+        guard !current.heardFirstReply else { return }
+        current.heardFirstReply = true
+        logTiming("first reply", current)
+    }
+
+    /// How long after the voice's request each step came, in milliseconds only.
+    private func logTiming(_ step: String, _ delegation: Delegation) {
+        let elapsed = delegation.createdAt.duration(to: .now).components
+        let ms = elapsed.seconds * 1_000 + elapsed.attoseconds / 1_000_000_000_000_000
+        VoiceCallLog.logger.notice("Delegation \(step, privacy: .public) after \(ms, privacy: .public) ms")
     }
 
     private func speak(_ text: String, delegationID: String) {
@@ -682,8 +855,22 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
         switch utterance {
         case .say(let text):
             for event in events.commentary(text, delegationID: id) { transport.send(event) }
+            trackUnheard(text, delegationID: delegationID)
         case .think(let text):
             if let event = events.thinking(text, delegationID: id) { transport.send(event) }
+        }
+    }
+
+    /// Keeps a sentence until the voice has had time to say it: its turn in line after what is
+    /// still unheard, its estimated length, and `heardSlack`.
+    private func trackUnheard(_ text: String, delegationID: String) {
+        spokenSerial += 1
+        let serial = spokenSerial
+        let duration = VoiceLiveProtocol.estimatedSpeech(text)
+        let ahead = unheard.reduce(Duration.zero) { $0 + $1.duration }
+        unheard.append(Spoken(serial: serial, text: text, delegationID: delegationID, duration: duration))
+        _ = scheduler.schedule(after: ahead + duration + Self.heardSlack) { [weak self] in
+            self?.unheard.removeAll { $0.serial == serial }
         }
     }
 }
