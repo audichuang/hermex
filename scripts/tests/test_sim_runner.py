@@ -99,14 +99,31 @@ class SimulatorRunnerTests(unittest.TestCase):
     def is_hung_run(self):
         return self.xcodebuild_runs <= self.hung_runs
 
-    def invoke(self, checkout="one/hermex", extra=(), output=None):
+    def invoke(self, checkout="one/hermex", extra=(), device="SIM-A", output=None):
         with patch.object(runner, "__file__", str(self.home / checkout / "scripts/test-sim")), \
                 patch.object(runner.Path, "home", return_value=self.home), \
                 patch.object(runner, "run", side_effect=self.fake_run), \
                 patch.object(runner, "host_memory", return_value=self.host_bytes), \
-                patch.object(sys, "argv", ["test-sim", "SIM-A", *extra]), \
+                patch.object(sys, "argv", ["test-sim", device, *extra]), \
                 redirect_stdout(output or io.StringIO()):
             return runner.main()
+
+    def replace_device_after_first_lookup(self, udid):
+        """The second device listing (under the simulator lock) sees `udid`; None removes it."""
+        lookups = []
+        fake_run = self.fake_run
+
+        def run(command, output, timeout, lock_fds=(), stalled=None):
+            if command[:4] == ["xcrun", "simctl", "list", "devices"]:
+                lookups.append(len(lock_fds))
+                if len(lookups) == 2:
+                    if udid is None:
+                        self.device = dict(self.device, isAvailable=False)
+                    else:
+                        self.device = dict(self.device, udid=udid)
+            return fake_run(command, output, timeout, lock_fds, stalled)
+        self.fake_run = run
+        return lookups
 
     def test_serial_signed_build_and_focused_selection(self):
         self.assertEqual(self.invoke(extra=("--only", "HermesMobileTests/BotLiveActivityTests")), 0)
@@ -237,6 +254,28 @@ class SimulatorRunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(runner.RunnerError, "Ambiguous"):
             runner.select_device([self.device, second], "iPhone 17")
         self.assertEqual(runner.select_device([self.device, second], "SIM-B"), second)
+
+    def test_device_recreated_under_the_same_name_stops_before_testing(self):
+        lookups = self.replace_device_after_first_lookup("SIM-B")
+        output = io.StringIO()
+        self.assertEqual(self.invoke(device="iPhone 17", output=output), 2)
+        self.assertEqual(lookups[:2], [1, 2], "The second lookup runs under the simulator lock")
+        self.assertEqual(self.xcodebuild_runs, 0)
+        self.assertFalse(any(c[:3] == ["xcrun", "simctl", "boot"] for c in self.commands))
+        self.assertIn("iPhone 17 changed from SIM-A to SIM-B", output.getvalue())
+
+    def test_device_deleted_before_its_lock_stops_before_testing(self):
+        self.replace_device_after_first_lookup(None)
+        output = io.StringIO()
+        self.assertEqual(self.invoke(output=output), 2)
+        self.assertEqual(self.xcodebuild_runs, 0)
+        self.assertIn("No available iOS simulator matches SIM-A", output.getvalue())
+
+    def test_unchanged_device_by_name_is_tested(self):
+        lookups = self.replace_device_after_first_lookup("SIM-A")
+        self.assertEqual(self.invoke(device="iPhone 17"), 0)
+        self.assertEqual(lookups[:2], [1, 2])
+        self.assertEqual(self.xcodebuild_runs, 1)
 
     def test_boot_failure_does_not_start_tests_or_retry(self):
         self.boot_failed = True
