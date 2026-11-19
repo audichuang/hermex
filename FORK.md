@@ -77,14 +77,18 @@ bullet); only the Hermex specifics are here.
 
   ```zsh
   scripts/fork/sim ensure   # restore if parked, boot, lease it; prints the UDID (a new one after a restore)
-  scripts/fork/sim down     # hand the lease back; shuts it down only if no lease and no test-sim run is left
+  scripts/fork/sim down     # hand the lease back; shuts it down only if no lease, build or test-sim run is left
   scripts/fork/sim park     # after a batch of work: shut down and archive, unless leased, building or testing
   ```
 
-  The lease owner is `hermex:up:<checkout>`; two sessions in one checkout set different
-  `HERMEX_SIM_OWNER` values (the same value for their own `ensure` and `down`). `park` refuses (8) while
-  `/tmp/hermex-build.lock` or the device's `scripts/test-sim` lock is held or a lease is left; it takes those
-  locks itself, so do not wrap it in `lockf` on the same files. `ensure` does not create a missing device:
+  It needs sim-vault v3 and exits 2 with the sync command before touching a lease or an archive on an
+  older one. Each `ensure` gets its own owner, `hermex:up:<checkout>:<random>`, recorded under
+  `~/Library/Developer/CoreSimulator/sim-vault/owners/`; while that lease lives, a second `ensure` from the
+  same checkout exits 8: the first session runs `down` (which hands back the recorded owner and deletes
+  the record) first, or each session sets its own `HERMEX_SIM_OWNER` for both `ensure` and `down`.
+  `ensure` exits 8 while a `scripts/test-sim` run holds the device. `down` and `park` refuse (8) while
+  `/tmp/hermex-build.lock` or the device's `scripts/test-sim` lock is held or a lease is left; they take
+  those locks themselves, so do not wrap them in `lockf` on the same files. `ensure` does not create a missing device:
   when SIM3 says to recreate, this is the command (it does not boot the device):
 
   ```zsh
@@ -104,9 +108,8 @@ bullet); only the Hermex specifics are here.
   xcrun simctl list devices available | grep -F 'HERMEX iPhone 18 Pro Max'
   ```
 
-  Known gap: `scripts/test-sim` does not honor a manual lease. Its runner terminates the app, may reboot
-  the device and may shut it down afterwards, so do not run it on the resident during someone's manual
-  check (tracked separately).
+  `scripts/test-sim` stops before touching the device while it holds a sim-vault lease (someone's
+  `scripts/fork/sim ensure`), because the run terminates the app and may reboot or shut the device down.
 - XcodeBuildMCP (`build_run_sim`) is not installed on this Mac. For UI verification, use the raw build
   fallback from `DEVELOPMENT.md` with the assigned UDID and serial execution. A manual install, launch
   or UI check on the resident counts as using it: start with `udid=$(scripts/fork/sim ensure)` so a

@@ -3,26 +3,29 @@
 # skill; workflow in references/simulator-lifecycle.md SIM3, exit codes in `sim-vault --help`).
 #
 #   scripts/fork/sim ensure  boot it (restored from the NAS when parked) and lease it for manual
-#                            install/launch/checks; prints its UDID on stdout
-#   scripts/fork/sim down    hand that lease back; shut it down only when no lease is left and no
+#                            install/launch/checks; prints its UDID on stdout. Refused (8) while a
 #                            scripts/test-sim run holds the device
-#   scripts/fork/sim park    shut it down and archive it to the NAS, unless it is leased, a build
-#                            holds /tmp/hermex-build.lock, or a scripts/test-sim run holds the device
+#   scripts/fork/sim down    hand that lease back; shut it down only when no lease is left and neither
+#                            a build (/tmp/hermex-build.lock) nor a scripts/test-sim run holds it
+#   scripts/fork/sim park    shut it down and archive it to the NAS, unless it is leased, building or
+#                            under scripts/test-sim
 #
-# The lease owner is $HERMEX_SIM_OWNER, else hermex:up:<checkout>. Two sessions in one checkout set
-# different owners, or one session's `down` hands back the other's lease.
+# Lease owner: $HERMEX_SIM_OWNER when set. Otherwise `ensure` makes hermex:up:<checkout>:<8 random
+# hex> and records it in sim-vault's owners/ directory; while that lease lives, another `ensure` from
+# the same checkout exits 8 (the other session runs `down` first, or each sets HERMEX_SIM_OWNER).
+# `down` without HERMEX_SIM_OWNER reads the record and deletes it once the lease is handed back.
 # Prints "<command> rc=N" on stderr last and exits with that code (sim-vault's, unchanged).
 set -uo pipefail
 
 NAME="HERMEX iPhone 18 Pro Max"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-OWNER="${HERMEX_SIM_OWNER:-hermex:up:${ROOT}}"
 LOCKS="${HOME}/Library/Caches/HermexSimulatorLocks"
 # Literal {udid}: sim-vault substitutes the device's UDID, giving the per-device lock scripts/test-sim
 # holds for a whole run. Do not wrap these commands in lockf on the same files: sim-vault opens them
 # itself and would find them held.
 DEVICE_LOCK="${LOCKS}/{udid}.lock"
 BUILD_LOCK="/tmp/hermex-build.lock"
+OWNERS="${HOME}/Library/Developer/CoreSimulator/sim-vault/owners"
 SYNC="aghub-cli source sync audichuang/audi-skill -g --update --yes"
 
 finish() {
@@ -41,23 +44,96 @@ if ! command -v sim-vault >/dev/null; then
   finish 127
 fi
 
+# Needs sim-vault v3 (shutdown with --busy-lock, ensure --deny-other-leases). Checked before any lease
+# or archive work, so an old sim-vault neither leaves a lease `down` cannot hand back nor parks.
+# Help output is captured first: grep -q exiting early under pipefail could fail on SIGPIPE.
+shutdown_help="$(sim-vault shutdown --help 2>/dev/null)" || shutdown_help=""
+ensure_help="$(sim-vault ensure --help 2>/dev/null)" || ensure_help=""
+if [[ "$shutdown_help" != *--busy-lock* || "$ensure_help" != *--deny-other-leases* ]]; then
+  echo "sim-vault 版本過舊，先同步 audi-skill：${SYNC}" >&2
+  finish 2
+fi
+
+OWNER_FILE="${OWNERS}/hermex-$(python3 -c 'import hashlib, sys; print(hashlib.sha1(sys.argv[1].encode()).hexdigest())' "$ROOT")-${NAME// /-}"
+
+# Reads `sim-vault status --json` on stdin. `udid` prints the resident's UDID (empty when it is
+# missing or not unique); `alive <owner>` succeeds when that owner's lease is live.
+status_query() {
+  python3 -c '
+import json, sys
+s = json.load(sys.stdin)
+if sys.argv[1] == "udid":
+    print(s.get("udid") or "")
+else:
+    raise SystemExit(0 if any(l.get("owner") == sys.argv[2] and not l.get("stale")
+                              for l in s.get("leases") or []) else 1)
+' "$@"
+}
+
 rc=0
 case "$CMD" in
   ensure)
-    sim-vault ensure "$NAME" --boot --lease "$OWNER" || rc=$?
+    status="$(sim-vault status "$NAME" --json)" || finish $?
+    if [[ -n "${HERMEX_SIM_OWNER:-}" ]]; then
+      owner="$HERMEX_SIM_OWNER"
+    else
+      mkdir -p "$OWNERS" || finish 1
+      if [[ -f "$OWNER_FILE" ]]; then
+        previous="$(cat "$OWNER_FILE")"
+        if [[ -n "$previous" ]] && status_query alive "$previous" <<< "$status"; then
+          echo "Another session in this checkout holds ${previous}: it runs scripts/fork/sim down first, or each session sets HERMEX_SIM_OWNER." >&2
+          finish 8
+        fi
+        rm -f "$OWNER_FILE"
+      fi
+      owner="hermex:up:${ROOT}:$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+      # noclobber: of two ensures racing here, only one creates the record.
+      if ! (set -o noclobber; echo "$owner" > "$OWNER_FILE") 2>/dev/null; then
+        echo "Another session in this checkout just ran ensure: it runs scripts/fork/sim down first, or each session sets HERMEX_SIM_OWNER." >&2
+        finish 8
+      fi
+    fi
+    udid="$(status_query udid <<< "$status")"
+    if [[ -z "$udid" ]]; then
+      # Missing (parked) or not unique: no scripts/test-sim run can hold it; sim-vault sorts it out.
+      sim-vault ensure "$NAME" --boot --lease "$owner" || rc=$?
+    else
+      # Hold the device's scripts/test-sim lock while the lease is taken: a run already holding it
+      # makes this exit 8, and a run starting meanwhile cannot take it before the lease exists
+      # (test-sim then stops on the lease).
+      mkdir -p "$LOCKS" || finish 1
+      python3 - "${LOCKS}/${udid}.lock" sim-vault ensure "$NAME" --boot --lease "$owner" <<'PY' || rc=$?
+import fcntl, subprocess, sys
+handle = open(sys.argv[1], "a+")
+try:
+    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    handle.seek(0)
+    holder = handle.read().strip() or sys.argv[1]
+    print("The device is under test (" + holder + "); wait for that scripts/test-sim run to finish.",
+          file=sys.stderr)
+    raise SystemExit(8)
+raise SystemExit(subprocess.call(sys.argv[2:]))
+PY
+    fi
     ;;
   down)
-    # Check before handing the lease back, so an old sim-vault leaves it in place.
-    # Capture first: grep -q exiting early under pipefail could fail the pipeline on SIGPIPE.
-    help="$(sim-vault shutdown --help 2>/dev/null)" || help=""
-    if [[ "$help" != *--busy-lock* ]]; then
-      echo "sim-vault 版本過舊，先同步 audi-skill：${SYNC}" >&2
-      finish 2
+    owner_file=""
+    if [[ -n "${HERMEX_SIM_OWNER:-}" ]]; then
+      owner="$HERMEX_SIM_OWNER"
+    elif [[ -f "$OWNER_FILE" ]]; then
+      owner="$(cat "$OWNER_FILE")"
+      owner_file="$OWNER_FILE"
+    else
+      owner=""
     fi
     mkdir -p "$LOCKS" || finish 1
-    sim-vault release "$NAME" --lease "$OWNER" || rc=$?
+    if [[ -n "$owner" ]]; then
+      sim-vault release "$NAME" --lease "$owner" || rc=$?
+      if (( rc == 0 )) && [[ -n "$owner_file" ]]; then rm -f "$owner_file"; fi
+    fi
     if (( rc == 0 )); then
-      sim-vault shutdown "$NAME" --busy-lock "$DEVICE_LOCK" || rc=$?
+      sim-vault shutdown "$NAME" --busy-lock "$BUILD_LOCK" --busy-lock "$DEVICE_LOCK" || rc=$?
     fi
     ;;
   park)
