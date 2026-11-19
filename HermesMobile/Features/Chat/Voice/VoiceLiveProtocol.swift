@@ -165,10 +165,10 @@ enum VoiceLiveProtocol {
     /// "never mind" or 算了 also answer the voice's own questions, and would cancel real work.
     private static let stopPhrases: Set<String> = [
         "stop", "stopit", "stopstop", "stopthat", "cancel", "cancelit", "cancelthat",
-        "停", "停止", "停下", "停下來", "停停", "取消",
+        "停", "停止", "停下", "停下來", "停下来", "停停", "取消",
     ]
     /// Words around a stop command that leave it one: an address, "please", a sentence particle.
-    private static let stopPrefixes = ["heyhermes", "hermes", "okay", "ok", "hey", "please", "好", "那", "請", "先", "欸"]
+    private static let stopPrefixes = ["heyhermes", "hermes", "okay", "ok", "hey", "please", "好", "那", "請", "请", "先", "欸"]
     private static let stopSuffixes = ["please", "hermes", "啦", "吧", "喔", "了"]
 
     /// The whole utterance orders the running request stopped ("Hermes, stop", "請停止"); a

@@ -547,7 +547,11 @@ struct VoiceCallTaskScheduler: VoiceCallScheduling {
             transcript.append(fragment)
             showCaption(fragment)
             armInactivity()
-            if fragment.speaker == .user { noteUserWords(fragment.text) }
+            if fragment.speaker == .user {
+                // The user took the floor: what the voice was saying is not said again after a drop.
+                unheard = []
+                noteUserWords(fragment.text)
+            }
         case .delegation(let id):
             sessionDelegations.insert(id)
             armInactivity()
