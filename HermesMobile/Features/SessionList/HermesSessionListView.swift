@@ -52,6 +52,10 @@ struct HermesSessionListView: View {
     @State private var failedShare: HermesShareFailure?
     @State private var viewModel: SessionListViewModel
     @State private var navigation: HermesSessionListNavigation
+    @State private var deliveredOutput: CronRunOutput?
+    @State private var deliveredError: String?
+    @State private var loadingDelivery = false
+    @State private var deliveredProfile: String?
     @State private var actionToast = ActionToastState()
     @FocusState private var isSearchFieldFocused: Bool
     @State private var searchRequests = 0
@@ -294,6 +298,11 @@ struct HermesSessionListView: View {
         }
         .onChange(of: pendingLink, initial: true) { if pendingLink != nil { covers.accept(pendingLink, on: entry.server) } }
         .task(id: pendingLink) { await openPendingLink() }
+        .sheet(item: $navigation.covers.deliveredRun) { run in
+            TaskRunOutputSheet(run: run, output: deliveredOutput, isLoading: loadingDelivery,
+                               errorMessage: deliveredError, retry: { Task { await loadDelivery(run) } })
+                .task(id: run.id) { await loadDelivery(run) }
+        }
         .onChange(of: pendingUsage, initial: true) { if pendingUsage != nil { covers.bringForward() } }
         .task(id: UsageReadiness(link: pendingUsage, isLive: viewModel.isHermesLive)) { await openPendingUsage() }
         .onChange(of: NewChatReadiness(request: pendingNewChat, share: pendingShare?.reservationID, profile: profile,
@@ -810,6 +819,7 @@ struct HermesSessionListView: View {
 
     private func openPendingLink() async {
         guard let link = pendingLink, link.server == entry.server else { return }
+        covers.deliveredRun = nil
         let wire = BotClient(saved: entry.connection, server: entry.server)
         defer { wire.close() }
         let outcome: HermesSessionLookup.Outcome
@@ -825,7 +835,13 @@ struct HermesSessionListView: View {
         pendingLink = nil
         switch outcome {
         case .found(let session):
-            if let bot = session.hermesBot(on: entry.server, connectionID: entry.connection.id) {
+            if link.opensTaskOutput {
+                deliveredProfile = session.profile
+                deliveredOutput = nil
+                deliveredError = nil
+                loadingDelivery = true
+                covers.deliveredRun = CronRunHistoryItem(filename: session.id)
+            } else if let bot = session.hermesBot(on: entry.server, connectionID: entry.connection.id) {
                 AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
             } else if let profile = session.profile,
                       let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) {
@@ -845,6 +861,21 @@ struct HermesSessionListView: View {
         case .room:
             break
         }
+    }
+
+    private func loadDelivery(_ run: CronRunHistoryItem) async {
+        loadingDelivery = true
+        deliveredError = nil
+        let client = HermesCronClient(saved: entry.connection, server: entry.server)
+        do {
+            let response = try await client.cronRunDetail(jobID: "", profile: deliveredProfile, run: run)
+            guard !Task.isCancelled, covers.deliveredRun?.id == run.id else { return }
+            deliveredOutput = CronRunOutput(filename: run.filename, text: response.content ?? "")
+        } catch {
+            guard !Task.isCancelled, covers.deliveredRun?.id == run.id else { return }
+            deliveredError = error.localizedDescription
+        }
+        loadingDelivery = false
     }
 
     private func openPendingUsage() async {
@@ -1251,6 +1282,7 @@ struct HermesSessionListCovers {
     }
     private var chatDraftKey: ChatDraftKey?
     private(set) var chatContinuity = ChatContinuity()
+    var deliveredRun: CronRunHistoryItem?
     var renaming: SessionSummary?
     var deleting: SessionSummary?
     var exported: SessionExportShareItem?

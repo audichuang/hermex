@@ -106,6 +106,7 @@ enum HermesDeepLink {
         }
         items.append(URLQueryItem(name: "id", value: key))
         if destination.opensParent { items.append(URLQueryItem(name: subagentQueryItem, value: "1")) }
+        if destination.opensTaskOutput { items.append(URLQueryItem(name: "taskOutput", value: "1")) }
         components.queryItems = items
         return components.url
     }
@@ -156,6 +157,7 @@ struct HermesSessionDestination: Hashable {
     let profile: String?
     let key: String
     var opensParent = false
+    var opensTaskOutput = false
     var movedFrom: URL?
 }
 

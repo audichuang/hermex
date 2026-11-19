@@ -864,6 +864,84 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
         XCTAssertNil(covers.chat, "Search rows do not have to be in the loaded pages")
     }
 
+    func testDeliverySheetClosesForUsageLink() async throws {
+        try await assertDeliverySheetCloses()
+    }
+
+    func testDeliverySheetClosesForNewSessionShortcut() async throws {
+        try await assertDeliverySheetCloses { navigation, entry in
+            XCTAssertTrue(navigation.covers.open(HermesNewChatDestination(server: entry.server, profile: "default"),
+                on: entry, listed: "default", isLive: true))
+            XCTAssertNotNil(navigation.covers.chat)
+        }
+    }
+
+    func testDeliverySheetClosesForSharedDraft() async throws {
+        try await assertDeliverySheetCloses { navigation, entry in
+            let share = SharedImportReservation(itemID: "delivery-share", reservationID: "delivery-reservation", createdAt: Date(),
+                sharedImport: SharedImport(draft: "Shared draft", attachments: []))
+            XCTAssertNotNil(navigation.covers.open(share, on: entry, listed: "default", isLive: true))
+        }
+    }
+
+    private func assertDeliverySheetCloses(
+        navigate: ((HermesSessionListNavigation, HermesSessionListEntry) -> Void)? = nil
+    ) async throws {
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server,
+                                       username: "fixture", password: "fixture-only")
+        let wire = HermesSessionListWire()
+        let model = SessionListViewModel(server: server, hermes: HermesSessionListSource(
+            connection: connection, profile: "default", makeWire: { _ in wire }))
+        var covers = HermesSessionListCovers()
+        covers.deliveredRun = CronRunHistoryItem(filename: "delivery-fixture")
+        let navigation = HermesSessionListNavigation(covers)
+        let container = try Self.selectionCache.get()
+        let auth = AuthManager(keychain: InMemoryKeychainStore(), serverRegistry: .inMemory(),
+                               hermesConnections: HermesConnections(keychain: InMemoryKeychainStore()))
+        let shown = expectation(description: "The delivery output sheet is presented")
+        let dismissed = expectation(description: "Navigation dismisses the delivery output sheet")
+        let entry = HermesSessionListEntry(server: server, connection: connection, profile: "default")
+        let usage = DeliveryUsageRequest()
+        let host = SettingsPresentationHost(rootView: NavigationStack {
+            HermesSessionListView(entry: entry, model: model, home: home(.sessions), navigation: navigation,
+                pendingUsage: Binding(get: { usage.value }, set: { usage.value = $0 }))
+        }.modelContainer(container).environment(auth))
+        host.didPresent = { [weak host] in
+            host?.didPresent = {}
+            shown.fulfill()
+        }
+        host.didDismiss = { [weak host] in
+            host?.didDismiss = {}
+            dismissed.fulfill()
+        }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { model.closeHermes(); window.isHidden = true; window.rootViewController = nil }
+        await fulfillment(of: [shown], timeout: 5)
+        XCTAssertNotNil(host.presentedViewController)
+        let before = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        })
+        before.name = "delivery-before-navigation"
+        before.lifetime = .keepAlways
+        add(before)
+        if let navigate { navigate(navigation, entry) }
+        else {
+            usage.value = HermesUsageDestination(serverKey: BotHistoryCache.Scope.key(server),
+                connectionID: connection.id, profile: "default")
+        }
+        await fulfillment(of: [dismissed], timeout: 5)
+        XCTAssertNil(host.presentedViewController, "The previous delivery must not cover the next destination")
+        let after = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        })
+        after.name = "delivery-after-navigation"
+        after.lifetime = .keepAlways
+        add(after)
+    }
+
     func testProfileSwitchKeepsTheOpenChat() async throws {
         try await assertListReplacementKeepsChat(cached: false, replacement: [])
     }
@@ -1063,6 +1141,27 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
     }
 }
 
+@MainActor
+private final class SettingsPresentationHost<Content: View>: UIHostingController<Content> {
+    var didPresent: () -> Void = {}
+    var didDismiss: () -> Void = {}
+
+    override func dismiss(animated flag: Bool, completion: (() -> Void)? = nil) {
+        super.dismiss(animated: false) {
+            completion?()
+            self.didDismiss()
+        }
+    }
+
+    override func present(_ viewControllerToPresent: UIViewController, animated flag: Bool,
+                          completion: (() -> Void)? = nil) {
+        super.present(viewControllerToPresent, animated: false) {
+            completion?()
+            self.didPresent()
+        }
+    }
+}
+
 private typealias ProbeSplitView = SessionSplitView<SplitColumnProbe, SplitColumnProbe>
 private typealias PushingSplitView = SessionSplitView<SplitColumnProbe, PushingDetailProbe>
 
@@ -1129,4 +1228,8 @@ private final class WindowReportingView: UIView {
         super.didMoveToWindow()
         onWindowChange(window != nil)
     }
+}
+
+@MainActor @Observable private final class DeliveryUsageRequest {
+    var value: HermesUsageDestination?
 }
