@@ -26,6 +26,9 @@ Hermex Audi (this repo, TestFlight) ──HTTPS + Cloudflare Access──► Her
 - **`main`** = the commit of the build on TestFlight now. Every upload is also tagged `testflight/<build>`.
 - Every fork commit carries a trailer, `Fork: upstreamable` or `Fork: fork-only` (signing, bundle ids, relay).
   The trailer survives rebases; PR labels do not.
+- **`archive/<branch>`** tags keep the tip of a branch deleted before it merged anywhere (old work, superseded
+  branches, old `backup/*`). Look there before concluding old work is lost:
+  `git ls-remote fork 'refs/tags/archive/*'`. Tag such a branch the same way before deleting it.
 
 ## Red lines
 
