@@ -177,8 +177,10 @@ git rebase --onto origin/master $(git merge-base "$base" origin/master)
 git push --force-with-lease=develop:${base} fork HEAD:refs/heads/develop
 ```
 
-Rebase open PR branches afterwards with `git rebase --onto fork/develop <their old base>`. Released commits
-stay reachable through their `testflight/*` tags.
+Rebase open PR branches afterwards with `git rebase --onto fork/develop <their old base>`. Their old base is
+`git merge-base <branch> <backup>`, not the backup's tip: a branch released with `ALLOW_UNMERGED=1` can sit
+on an older `develop` commit. A plain `git rebase fork/develop` replays the `develop` commits whose conflicts
+you just resolved. Released commits stay reachable through their `testflight/*` tags.
 
 The first release after a rebase always stops at the `main` check: the old `main` is on the old history.
 Run `git range-diff <old base>..<backup> origin/master..HEAD`; use `ALLOW_DROP=1` only when the missing
