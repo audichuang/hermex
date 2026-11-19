@@ -88,7 +88,9 @@ bullet); only the Hermex specifics are here.
   the record) first, or each session sets its own `HERMEX_SIM_OWNER` for both `ensure` and `down`.
   `ensure` exits 8 while a `scripts/test-sim` run holds the device. `down` and `park` refuse (8) while
   `/tmp/hermex-build.lock` or the device's `scripts/test-sim` lock is held or a lease is left; they take
-  those locks themselves, so do not wrap them in `lockf` on the same files. `ensure` does not create a missing device:
+  those locks themselves, so do not wrap them in `lockf` on the same files. Hand back a leftover lease
+  by hand (`sim-vault release "HERMEX iPhone 18 Pro Max" --lease <owner>`) only once the owner's checkout
+  no longer exists or that session has ended. `ensure` does not create a missing device:
   when SIM3 says to recreate, this is the command (it does not boot the device):
 
   ```zsh

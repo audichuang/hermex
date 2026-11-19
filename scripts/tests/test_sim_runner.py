@@ -294,6 +294,7 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.assertFalse(any(c[:3] in (["xcrun", "simctl", "terminate"], ["xcrun", "simctl", "shutdown"],
                                        ["xcrun", "simctl", "boot"]) for c in self.commands))
         self.assertIn("in use by hermex:up:/x:1a2b3c4d", output.getvalue())
+        self.assertIn("no longer exists or that session has ended", output.getvalue())
 
     def test_stale_lease_or_no_sim_vault_lets_the_run_go_on(self):
         self.vault = "/stub/sim-vault"

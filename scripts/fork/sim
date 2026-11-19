@@ -70,6 +70,11 @@ else:
 ' "$@"
 }
 
+# Busy (8) because of someone else's lease: when it is safe to hand a leftover lease back by hand.
+hint_leftover() {
+  echo "Only if ${1}'s checkout no longer exists or that session has ended: sim-vault release \"${NAME}\" --lease ${1}" >&2
+}
+
 rc=0
 case "$CMD" in
   ensure)
@@ -82,6 +87,7 @@ case "$CMD" in
         previous="$(cat "$OWNER_FILE")"
         if [[ -n "$previous" ]] && status_query alive "$previous" <<< "$status"; then
           echo "Another session in this checkout holds ${previous}: it runs scripts/fork/sim down first, or each session sets HERMEX_SIM_OWNER." >&2
+          hint_leftover "$previous"
           finish 8
         fi
         rm -f "$OWNER_FILE"
@@ -141,4 +147,8 @@ PY
     sim-vault park "$NAME" --shutdown --busy-lock "$BUILD_LOCK" --busy-lock "$DEVICE_LOCK" || rc=$?
     ;;
 esac
+if (( rc == 8 )) && [[ "$CMD" != ensure ]]; then
+  echo "Busy: see the holder named above. If it is a lease:" >&2
+  hint_leftover "<owner>"
+fi
 finish "$rc"

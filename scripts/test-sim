@@ -367,8 +367,10 @@ def main():
             if holders:
                 raise RunnerError(
                     "{} is in use by {} (sim-vault lease); not terminating, rebooting or shutting "
-                    "it down. Rerun once it is handed back (scripts/fork/sim down).".format(
-                        device["name"], ", ".join(map(str, holders))))
+                    "it down. Rerun once it is handed back (scripts/fork/sim down). Only if the "
+                    "owner's checkout no longer exists or that session has ended: sim-vault release "
+                    "\"{}\" --lease <owner>.".format(
+                        device["name"], ", ".join(map(str, holders)), device["name"]))
             small = host_memory() <= SMALL_HOST_BYTES
             if small:
                 # Same lock as hermex-flow's run-sim.sh builds.

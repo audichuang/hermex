@@ -145,6 +145,18 @@ class ForkSimTests(unittest.TestCase):
         self.assertEqual(third.returncode, 0, third.stderr)
         self.assertNotEqual(calls[-1][-1], owner)
 
+    def test_busy_messages_say_when_a_leftover_lease_may_be_released(self):
+        self.invoke("ensure")
+        second, _ = self.invoke("ensure")
+        self.assertEqual(second.returncode, 8)
+        self.assertIn("no longer exists or that session has ended: sim-vault release", second.stderr)
+        for command, stub in (("down", "STUB_RC_SHUTDOWN"), ("park", "STUB_RC_PARK")):
+            with self.subTest(command=command):
+                result, _ = self.invoke(command, HERMEX_SIM_OWNER="x", **{stub: "8"})
+                self.assertEqual(result.returncode, 8)
+                self.assertIn("no longer exists or that session has ended: sim-vault release", result.stderr)
+                self.assertEqual(result.stderr.splitlines()[-1], command + " rc=8")
+
     def test_stale_record_does_not_block_ensure(self):
         self.invoke("ensure")
         self.leases_file.write_text("[]")
