@@ -167,8 +167,11 @@ git fetch --multiple origin fork
 base=$(git rev-parse fork/develop)
 git push fork "${base}:refs/heads/backup/develop-$(date +%Y%m%d)"   # rollback point
 git worktree add --detach ../hermex-wt/rebase "$base" && cd ../hermex-wt/rebase   # never the main checkout
-git rebase --onto origin/master $(git merge-base "$base" origin/master)
+old=$(git merge-base "$base" origin/master)
+git rebase --onto origin/master "$old"
 # resolve conflicts commit by commit; a fork commit upstream already took comes out empty: drop it.
+# Localizable.xcstrings conflicts: scripts/fork/resolve-catalog merge, then git add it. After the rebase,
+# scripts/fork/resolve-catalog check "$old" "$base" origin/master: a union can keep a moved key twice.
 # If upstream merged it reworked, it conflicts instead: git checkout --ours <files>, then git rebase --skip
 # recheck every upstreamable commit against the new upstream (a locale it added, an API it renamed)
 # (scripts/fork/check-locales) and fold fixes in: git commit --fixup=<owner>, then
