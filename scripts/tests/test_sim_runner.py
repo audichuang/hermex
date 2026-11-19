@@ -46,6 +46,9 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.ran_tests = {"BotLiveActivityTests": ["testA()"], "X": ["testA()"]}
         # CI runs these on Linux, which has no hw.memsize; default to a large Mac.
         self.host_bytes = 32 * 1024 ** 3
+        # No sim-vault unless a test opts in, so the real one on a developer Mac is never run.
+        self.vault = None
+        self.leases = []
 
     def fake_run(self, command, output, timeout, lock_fds=(), stalled=None):
         self.commands.append(command)
@@ -54,6 +57,8 @@ class SimulatorRunnerTests(unittest.TestCase):
             raise subprocess.TimeoutExpired(command, timeout)
         if command[:4] == ["xcrun", "simctl", "list", "devices"]:
             output.write_text(json.dumps({"devices": {self.device["runtime"]: [self.device]}}))
+        elif command[:2] == ["sim-vault", "status"]:
+            output.write_text("a log line on stderr\n" + json.dumps({"leases": self.leases}) + "\n")
         elif command[:3] == ["xcrun", "simctl", "bootstatus"]:
             return int(self.boot_failed)
         elif command[:3] == ["xcrun", "simctl", "shutdown"]:
@@ -104,6 +109,7 @@ class SimulatorRunnerTests(unittest.TestCase):
                 patch.object(runner.Path, "home", return_value=self.home), \
                 patch.object(runner, "run", side_effect=self.fake_run), \
                 patch.object(runner, "host_memory", return_value=self.host_bytes), \
+                patch.object(runner, "sim_vault", return_value=self.vault), \
                 patch.object(sys, "argv", ["test-sim", device, *extra]), \
                 redirect_stdout(output or io.StringIO()):
             return runner.main()
@@ -276,6 +282,27 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.assertEqual(self.invoke(device="iPhone 17"), 0)
         self.assertEqual(lookups[:2], [1, 2])
         self.assertEqual(self.xcodebuild_runs, 1)
+
+    def test_manual_lease_stops_before_touching_the_device(self):
+        self.vault = "/stub/sim-vault"
+        self.leases = [dict(owner="hermex:up:/x:1a2b3c4d", stale=False)]
+        output = io.StringIO()
+        self.assertEqual(self.invoke(output=output), 2)
+        status = next(c for c in self.commands if c[0] == "sim-vault")
+        self.assertEqual(status, ["sim-vault", "status", "iPhone 17", "--json"])
+        self.assertEqual(self.xcodebuild_runs, 0)
+        self.assertFalse(any(c[:3] in (["xcrun", "simctl", "terminate"], ["xcrun", "simctl", "shutdown"],
+                                       ["xcrun", "simctl", "boot"]) for c in self.commands))
+        self.assertIn("in use by hermex:up:/x:1a2b3c4d", output.getvalue())
+        self.assertIn("no longer exists or that session has ended", output.getvalue())
+
+    def test_stale_lease_or_no_sim_vault_lets_the_run_go_on(self):
+        self.vault = "/stub/sim-vault"
+        self.leases = [dict(owner="gone", stale=True)]
+        self.assertEqual(self.invoke(), 0)
+        self.vault = None
+        self.leases = [dict(owner="ignored without sim-vault", stale=False)]
+        self.assertEqual(self.invoke(), 0)
 
     def test_boot_failure_does_not_start_tests_or_retry(self):
         self.boot_failed = True
