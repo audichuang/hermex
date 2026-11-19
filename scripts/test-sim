@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import sys
@@ -137,6 +138,24 @@ def select_device(entries, requested):
             else "No available iOS simulator matches " + requested
         )
     return matches[0]
+
+
+def sim_vault():
+    return shutil.which("sim-vault")
+
+
+def lease_holders(device, run_dir, lock_fds):
+    """Owners of live sim-vault leases on the device, i.e. someone's manual
+    check (this fork's scripts/fork/sim ensure). None without sim-vault."""
+    if not sim_vault():
+        return []
+    output = run_dir / "sim-vault-status.json"
+    if run(["sim-vault", "status", device["name"], "--json"], output, 30, lock_fds):
+        raise RunnerError("Cannot read sim-vault status; see " + str(output))
+    # stderr shares the log; the JSON object is the last line that starts with "{".
+    line = [l for l in output.read_text().splitlines() if l.startswith("{")][-1]
+    return [lease.get("owner") for lease in json.loads(line).get("leases") or []
+            if not lease.get("stale")]
 
 
 def boot(device, run_dir, locks_dir, owner, lock_fds, timeout):
@@ -342,6 +361,14 @@ def main():
                     "{} changed from {} to {} before its lock was taken; check who replaced it, "
                     "then rerun".format(args.device, device["udid"], current["udid"]))
             device = current
+            # A manual check holds a lease for as long as it uses the device. The run
+            # terminates the app and may reboot or shut the device down, so stop here.
+            holders = lease_holders(device, run_dir, lock_fds)
+            if holders:
+                raise RunnerError(
+                    "{} is in use by {} (sim-vault lease); not terminating, rebooting or shutting "
+                    "it down. Rerun once it is handed back (scripts/fork/sim down).".format(
+                        device["name"], ", ".join(map(str, holders))))
             small = host_memory() <= SMALL_HOST_BYTES
             if small:
                 # Same lock as hermex-flow's run-sim.sh builds.
