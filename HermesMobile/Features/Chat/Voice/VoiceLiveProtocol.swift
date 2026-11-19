@@ -159,6 +159,47 @@ enum VoiceLiveProtocol {
     private static let latinWeight = 3
     private static let cjkWeight = 14
 
+    // MARK: Spoken stop and speech timing
+
+    /// Whole-utterance stop commands, compared without spaces or punctuation. Only clear orders:
+    /// "never mind" or 算了 also answer the voice's own questions, and would cancel real work.
+    private static let stopPhrases: Set<String> = [
+        "stop", "stopit", "stopstop", "stopthat", "cancel", "cancelit", "cancelthat",
+        "停", "停止", "停下", "停下來", "停停", "取消",
+    ]
+    /// Words around a stop command that leave it one: an address, "please", a sentence particle.
+    private static let stopPrefixes = ["heyhermes", "hermes", "okay", "ok", "hey", "please", "好", "那", "請", "先", "欸"]
+    private static let stopSuffixes = ["please", "hermes", "啦", "吧", "喔", "了"]
+
+    /// The whole utterance orders the running request stopped ("Hermes, stop", "請停止"); a
+    /// request that merely contains the word ("stop the build") is not one.
+    static func isStopCommand(_ text: String) -> Bool {
+        var compact = String(text.precomposedStringWithCompatibilityMapping.lowercased().unicodeScalars.filter {
+            !CharacterSet.punctuationCharacters.union(.symbols).union(.whitespacesAndNewlines).contains($0)
+        }.map(Character.init))
+        var changed = true
+        while changed, !compact.isEmpty {
+            changed = false
+            if let prefix = stopPrefixes.first(where: { compact.hasPrefix($0) && compact.count > $0.count }) {
+                compact.removeFirst(prefix.count)
+                changed = true
+            }
+            if let suffix = stopSuffixes.first(where: { compact.hasSuffix($0) && compact.count > $0.count }) {
+                compact.removeLast(suffix.count)
+                changed = true
+            }
+        }
+        return stopPhrases.contains(compact)
+    }
+
+    /// Roughly how long the voice takes to say `text`: about 14 Latin or 4.5 CJK characters a
+    /// second, on the slow side so a sentence near a drop counts as unheard.
+    static func estimatedSpeech(_ text: String) -> Duration {
+        let cjk = text.reduce(0) { $0 + (isCJK($1) ? 1 : 0) }
+        let other = text.count - cjk
+        return .milliseconds(Int((Double(cjk) / 4.5 + Double(other) / 14) * 1_000))
+    }
+
     // MARK: Delegation and history
 
     /// Turns the transcript window into a Hermes turn: `prompt` is what the user said last

@@ -426,6 +426,110 @@ import XCTest
         XCTAssertEqual(second.sessionsMinted, 1)
     }
 
+    /// More talk while the call's turn runs a tool waits for that work instead of stopping it,
+    /// and goes out, merged, once the turn is over (twring ADR-026).
+    func testMoreTalkWhileTheTurnRunsAToolWaitsAndGoesOutAfterIt() async {
+        let (_, transport, chat, _) = await startedCall()
+        await delegate(transport, chat)
+        chat.isIdleForVoice = false
+        chat.isRunningTurn = true
+        chat.emit(.toolStarted("terminal"))
+
+        transport.hear(.assistant, "On it.")
+        transport.hear(.user, "Also check the docs.")
+        transport.onEvent?(.delegation(id: "d2"))
+        transport.hear(.assistant, "Noted.")
+        transport.hear(.user, "And the tests.")
+        transport.onEvent?(.delegation(id: "d3"))
+        XCTAssertEqual(transport.thinking.last, HermesVoiceCall.Line.queued)
+
+        let submitted = expectation(description: "The queued request goes out")
+        chat.onSubmit = { submitted.fulfill() }
+        chat.voiceTurnReply = "Build is green."
+        chat.isIdleForVoice = true
+        chat.isRunningTurn = false
+        chat.emit(.settled(lostTrack: false))
+        chat.emit(.turnEnded)
+        await fulfillment(of: [submitted], timeout: 5)
+
+        XCTAssertEqual(transport.commentary, ["Build is green."], "the working turn's answer is still spoken")
+        XCTAssertEqual(chat.submits.map(\.prompt), ["Check the build.", "Also check the docs.\nAnd the tests."])
+        XCTAssertEqual(chat.interrupts, 0)
+    }
+
+    /// A spoken stop cancels the request out and the one queued behind it, and the voice says so.
+    func testASpokenStopCancelsTheWorkingRequestAndTheQueue() async {
+        let (call, transport, chat, scheduler) = await startedCall()
+        await delegate(transport, chat)
+        chat.isIdleForVoice = false
+        chat.isRunningTurn = true
+        chat.emit(.toolStarted("terminal"))
+        transport.hear(.assistant, "On it.")
+        transport.hear(.user, "Also check the docs.")
+        transport.onEvent?(.delegation(id: "d2"))
+        scheduler.advance(by: HermesVoiceCall.utteranceSettle)
+
+        let said = expectation(description: "The voice hears it stopped")
+        transport.onSend = { if $0["type"].text == "session.commentary.append" { said.fulfill() } }
+        transport.hear(.user, "Hermes, stop!")
+        scheduler.advance(by: HermesVoiceCall.utteranceSettle)
+        await fulfillment(of: [said], timeout: 5)
+
+        XCTAssertEqual(chat.interrupts, 1)
+        XCTAssertEqual(transport.commentary, [HermesVoiceCall.Line.stopped])
+        XCTAssertEqual(call.status, .listening)
+        chat.isIdleForVoice = true
+        chat.isRunningTurn = false
+        chat.emit(.turnEnded)
+        await Task.yield()
+        XCTAssertEqual(chat.submits.count, 1, "the queued request never goes out")
+    }
+
+    /// A stop said while the request's Send is on its way stops the turn that Send started.
+    func testAStopWhileTheRequestIsSentStopsItsTurnOnceItStarts() async {
+        let (_, transport, chat, scheduler) = await startedCall()
+        let sending = expectation(description: "The Send is on its way")
+        chat.holdsSubmit = true
+        chat.onSubmit = { sending.fulfill() }
+        transport.hear(.user, "Check the build.")
+        transport.onEvent?(.delegation(id: "d1"))
+        await fulfillment(of: [sending], timeout: 5)
+        scheduler.advance(by: HermesVoiceCall.utteranceSettle)
+
+        transport.hear(.user, "停止。")
+        scheduler.advance(by: HermesVoiceCall.utteranceSettle)
+        XCTAssertEqual(chat.interrupts, 0, "nothing to stop before the turn starts")
+
+        let stopped = expectation(description: "The started turn is stopped")
+        chat.onInterrupt = { stopped.fulfill() }
+        chat.finishSubmit()
+        await fulfillment(of: [stopped], timeout: 5)
+    }
+
+    /// A redial says again what the dropped session may not have said yet, but not what it had
+    /// time to say (twring ADR-038).
+    func testARedialSaysAgainWhatTheDroppedSessionMayNotHaveSaid() async {
+        let (_, transport, chat, scheduler) = await startedCall()
+        await delegate(transport, chat)
+        chat.emit(.reply("Two errors found. The"))
+        XCTAssertEqual(transport.commentary, ["Two errors found."])
+        scheduler.advance(by: VoiceLiveProtocol.estimatedSpeech("Two errors found. ") + HermesVoiceCall.heardSlack + .seconds(1))
+        chat.emit(.reply(" fix is in parser.swift. Then"))
+        XCTAssertEqual(transport.commentary, ["Two errors found.", "The fix is in parser.swift."])
+
+        let redialed = expectation(description: "The call dials again")
+        transport.onReconnect = { redialed.fulfill() }
+        transport.onConnection?(.lost)
+        await fulfillment(of: [redialed], timeout: 5)
+        let spoken = expectation(description: "The unheard sentence goes out again")
+        transport.onSend = { _ in spoken.fulfill() }
+        transport.finishReconnect()
+        await fulfillment(of: [spoken], timeout: 5)
+
+        XCTAssertEqual(Array(transport.commentary.dropFirst(2)), ["The fix is in parser.swift."])
+        XCTAssertEqual(transport.sent.last?["delegation_id"], .null)
+    }
+
     private func startedCall() async -> (HermesVoiceCall, FakeTransport, FakeChat, ManualScheduler) {
         let transport = FakeTransport(), chat = FakeChat(), scheduler = ManualScheduler()
         let call = HermesVoiceCall(transport: transport, chat: chat, scheduler: scheduler)
@@ -520,11 +624,21 @@ import XCTest
         return interruptResult
     }
 
+    /// Holds each Send open until `finishSubmit`.
+    var holdsSubmit = false
+    private var submitting: CheckedContinuation<Void, Never>?
+
     func submitVoice(prompt: String, context: String) async -> Bool {
         submits.append((prompt, context))
-        onSubmit?()
+        if holdsSubmit {
+            await withCheckedContinuation { submitting = $0; onSubmit?() }
+        } else {
+            onSubmit?()
+        }
         return submitResult
     }
+
+    func finishSubmit() { submitting?.resume(); submitting = nil }
 
     private(set) var sessionsMinted = 0
 

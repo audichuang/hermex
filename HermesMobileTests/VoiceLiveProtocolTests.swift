@@ -155,4 +155,15 @@ final class VoiceLiveProtocolTests: XCTestCase {
         XCTAssertEqual(capped.count, 24)
         XCTAssertEqual(capped.first?["content"].list?.first?["text"].text, "turn 6")
     }
+
+    /// Only a whole utterance that orders the request stopped counts; a request about stopping
+    /// something, or words that also answer the voice, do not.
+    func testAStopCommandIsTheWholeUtterance() {
+        for text in ["Stop.", "Hermes, stop!", "please stop", "Cancel that.", "請停止。", "停下來吧", "取消"] {
+            XCTAssertTrue(VoiceLiveProtocol.isStopCommand(text), text)
+        }
+        for text in ["Stop the build.", "How do I stop a process?", "never mind", "算了", "停止那個容器", ""] {
+            XCTAssertFalse(VoiceLiveProtocol.isStopCommand(text), text)
+        }
+    }
 }
