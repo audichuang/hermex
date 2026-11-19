@@ -277,7 +277,10 @@ rides out bad signal the way a phone call does (`HermesVoiceCall`, Reconnecting)
   ahead of it) plus 3 s (`heardSlack`, for the delay before a drop is noticed) has
   passed; what is unheard at the drop is said again first on a redialed session,
   at most twice per request (`maxReplays`). A short repeat beats a gap. A wavering
-  connection that comes back is the same session and repeats nothing.
+  connection that comes back is the same session and repeats nothing, and once
+  the user speaks, nothing said before it is repeated. Known limit: a sentence
+  sent before a waver that came back is no longer tracked, so a drop right after
+  it doesn't repeat that sentence.
 - A phone call or Siri (`interrupted`) and the vendor's own closes still end the
   call at once.
 

@@ -457,6 +457,23 @@ import XCTest
         XCTAssertEqual(chat.interrupts, 0)
     }
 
+    /// The call's own turn that hasn't started a tool has acted on nothing yet: a newer request
+    /// still stops it rather than waiting.
+    func testANewerRequestStopsTheCallsTurnBeforeItRunsATool() async {
+        let (_, transport, chat, _) = await startedCall()
+        await delegate(transport, chat)
+        chat.isIdleForVoice = false
+        chat.isRunningTurn = true
+        let interrupted = expectation(description: "The running turn is stopped")
+        chat.onInterrupt = { interrupted.fulfill() }
+
+        transport.hear(.assistant, "On it.")
+        transport.hear(.user, "Actually, check the docs.")
+        transport.onEvent?(.delegation(id: "d2"))
+        await fulfillment(of: [interrupted], timeout: 5)
+        XCTAssertFalse(transport.thinking.contains(HermesVoiceCall.Line.queued))
+    }
+
     /// A spoken stop cancels the request out and the one queued behind it, and the voice says so.
     func testASpokenStopCancelsTheWorkingRequestAndTheQueue() async {
         let (call, transport, chat, scheduler) = await startedCall()
