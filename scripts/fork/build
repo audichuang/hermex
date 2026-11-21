@@ -1,0 +1,13 @@
+#!/bin/zsh
+# Runs one Hermex build or test in line with everything else on this Mac (FORK.md § Simulators on this Mac):
+#
+#   scripts/fork/build scripts/test-sim "HERMEX iPhone 18 Pro Max" --only HermesMobileTests/<TestClass>
+#   scripts/fork/build xcodebuild -project HermesMobile.xcodeproj ... build
+#
+# First the fork lock Hermex agents take turns on (/tmp/hermex-build.lock, also checked by
+# scripts/fork/sim down/park), then one of this Mac's shared build slots from heavy (~/.local/bin/heavy,
+# deployed by the owner's agent-config; `heavy status` lists holders). Waiting for the fork lock holds no
+# slot. Do not wrap this in lockf on the same file, and do not call it from inside another heavy command.
+set -euo pipefail
+(( $# )) || { print -u2 "usage: $0 <command...>"; exit 2 }
+exec lockf -k /tmp/hermex-build.lock heavy --name build -- "$@"
