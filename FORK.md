@@ -101,9 +101,11 @@ bullet); only the Hermex specifics are here.
   ```
 
 - Temporary parallel devices: `HERMEX tmp <task>`.
-- Agents working in parallel on the resident device take turns through one lock: wrap every
-  `scripts/test-sim` and `xcodebuild` call in `lockf -k /tmp/hermex-build.lock …`. Writing code can overlap;
-  builds and simulator runs wait in line.
+- Agents working in parallel on the resident device take turns through one lock: run every
+  `scripts/test-sim` and `xcodebuild` call through `scripts/fork/build …`. It takes
+  `lockf -k /tmp/hermex-build.lock`, then one of this Mac's shared build slots from `heavy` (other
+  projects' builds count too; `heavy status` lists holders), so waiting for the lock holds no slot.
+  Writing code can overlap; builds and simulator runs wait in line.
 - `scripts/test-sim` has no default device: pass the assigned device's UDID or its unique name, never
   `booted`. It resolves the device again once it holds that device's lock and stops if the name now
   points to another UDID (for example after a restore), so rerun it rather than reuse an old UDID. Look the
@@ -122,7 +124,7 @@ bullet); only the Hermex specifics are here.
   temporary device, set `udid` to its UDID:
 
   ```zsh
-  xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Debug \
+  scripts/fork/build xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Debug \
     -destination "id=${udid}" -parallel-testing-enabled NO \
     -derivedDataPath .build/DerivedData build
   ```
