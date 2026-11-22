@@ -31,3 +31,15 @@ Lives in: `HermesMobile/Networking/Hermes/HermesCall.swift`,
 `HermesMobile/Features/Bots/BotRoomReader.swift`,
 `HermesMobile/Features/Bots/BotGroupRoom.swift`,
 `HermesMobile/Features/Bots/BotRoomSettingsView.swift`
+
+## Preserve newer room settings for untouched fields
+
+The settings draft records the values loaded when the form opens. On save,
+routing and lead are omitted unless the user changed them so the host keeps its
+current routing under its write lock, and an untouched purpose or notes field
+uses the latest value polled into `reader.context` instead of the stale copy in
+the draft. When both sides edit the same field, the user's draft wins without
+merging. This intentionally differs from Hermes Desktop, which submits all four
+fields from the form snapshot.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomSettingsView.swift`
