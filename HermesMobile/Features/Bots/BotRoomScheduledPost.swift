@@ -6,6 +6,18 @@ extension BotRoomEvent {
         return id.hasPrefix("cron:") || id.hasPrefix("cron-notice:")
     }
 
+    func isScheduledPostRoot(for threadID: String) -> Bool {
+        guard isScheduledPost,
+              threadID.hasPrefix("cron-"),
+              let eventID,
+              eventID.hasPrefix("cron-post:") else {
+            return false
+        }
+        let digest = threadID.dropFirst("cron-".count)
+        guard !digest.isEmpty else { return false }
+        return eventID.dropFirst("cron-post:".count).hasPrefix(digest)
+    }
+
     func authorName(in room: BotGroupRoom) -> String {
         if isScheduledPost {
             if let displayName = actor["display_name"].text?.trimmingCharacters(in: .whitespacesAndNewlines),
