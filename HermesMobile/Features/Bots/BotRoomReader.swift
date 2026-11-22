@@ -458,6 +458,9 @@ enum BotRoomStopControl: Equatable {
     var mayDownload: Bool { allows(BotRoomAttachment.downloadMethod) }
 
     var showsAttachmentPicker: Bool { allows(BotRoomFiles.uploadMethod) }
+    var offersAttachments: Bool {
+        showsComposer && (!capabilities.readable || capabilities.methods.contains(BotRoomFiles.uploadMethod))
+    }
 
     func mayAddAttachments(in threadID: String?) -> Bool {
         showsAttachmentPicker && mayEditDraft(in: threadID)
