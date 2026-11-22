@@ -716,6 +716,7 @@
 		436EFD8DACCE4A408E203282 /* BotRoomPauseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC302382D8844BB88113BB0 /* BotRoomPauseTests.swift */; };
 		7A4C9E2B10834F51B6D0281C /* BotRoomRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4C9E2B10834F51B6D0281D /* BotRoomRoutingTests.swift */; };
 		6C1F4A8E29054D31B7A26E1C /* BotRoomReasonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C1F4A8E29054D31B7A26E1D /* BotRoomReasonTests.swift */; };
+		8E3F6CA041274F53D9C48A3C /* BotRoomRefusalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3F6CA041274F53D9C48A3D /* BotRoomRefusalTests.swift */; };
 		7D2E5B9F30164E42C8B37F2C /* BotRoomScheduledPostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2E5B9F30164E42C8B37F2D /* BotRoomScheduledPostTests.swift */; };
 		02D863C7372B43A690FF0067 /* BotRoomContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCAFBC38CC3248C29EFFAFEA /* BotRoomContextTests.swift */; };
 		8B5D0F3C21945E62C7E1392C /* BotRoomReplyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5D0F3C21945E62C7E1392D /* BotRoomReplyTests.swift */; };
@@ -726,6 +727,7 @@
 		F1C9FF8625FC4D2DB48868FA /* BotRoomPauses.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6BC2386D1640DDA0934809 /* BotRoomPauses.swift */; };
 		7A4C9E2B10834F51B6D0281A /* BotRoomRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4C9E2B10834F51B6D0281B /* BotRoomRouting.swift */; };
 		6C1F4A8E29054D31B7A26E1A /* BotRoomReasons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C1F4A8E29054D31B7A26E1B /* BotRoomReasons.swift */; };
+		8E3F6CA041274F53D9C48A3A /* BotRoomRefusals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3F6CA041274F53D9C48A3B /* BotRoomRefusals.swift */; };
 		7D2E5B9F30164E42C8B37F2A /* BotRoomScheduledPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2E5B9F30164E42C8B37F2B /* BotRoomScheduledPost.swift */; };
 		2CE6DE96FE4248899D21C129 /* BotRoomContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3379305561F54EEE81797275 /* BotRoomContext.swift */; };
 		8D8018CD0EEA4D9A84B4376F /* BotRoomSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC43A49D77BB4437A14BA416 /* BotRoomSettingsView.swift */; };
@@ -1509,6 +1511,7 @@
 		DCC302382D8844BB88113BB0 /* BotRoomPauseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomPauseTests.swift"; sourceTree = "<group>"; };
 		7A4C9E2B10834F51B6D0281D /* BotRoomRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomRoutingTests.swift"; sourceTree = "<group>"; };
 		6C1F4A8E29054D31B7A26E1D /* BotRoomReasonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomReasonTests.swift"; sourceTree = "<group>"; };
+		8E3F6CA041274F53D9C48A3D /* BotRoomRefusalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomRefusalTests.swift"; sourceTree = "<group>"; };
 		7D2E5B9F30164E42C8B37F2D /* BotRoomScheduledPostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomScheduledPostTests.swift"; sourceTree = "<group>"; };
 		CCAFBC38CC3248C29EFFAFEA /* BotRoomContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomContextTests.swift"; sourceTree = "<group>"; };
 		8B5D0F3C21945E62C7E1392D /* BotRoomReplyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomReplyTests.swift"; sourceTree = "<group>"; };
@@ -1519,6 +1522,7 @@
 		5F6BC2386D1640DDA0934809 /* BotRoomPauses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomPauses.swift"; sourceTree = "<group>"; };
 		7A4C9E2B10834F51B6D0281B /* BotRoomRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomRouting.swift"; sourceTree = "<group>"; };
 		6C1F4A8E29054D31B7A26E1B /* BotRoomReasons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomReasons.swift"; sourceTree = "<group>"; };
+		8E3F6CA041274F53D9C48A3B /* BotRoomRefusals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomRefusals.swift"; sourceTree = "<group>"; };
 		7D2E5B9F30164E42C8B37F2B /* BotRoomScheduledPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomScheduledPost.swift"; sourceTree = "<group>"; };
 		3379305561F54EEE81797275 /* BotRoomContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomContext.swift"; sourceTree = "<group>"; };
 		CC43A49D77BB4437A14BA416 /* BotRoomSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomSettingsView.swift"; sourceTree = "<group>"; };
@@ -1714,6 +1718,7 @@
 				DCC302382D8844BB88113BB0 /* BotRoomPauseTests.swift */,
 				7A4C9E2B10834F51B6D0281D /* BotRoomRoutingTests.swift */,
 				6C1F4A8E29054D31B7A26E1D /* BotRoomReasonTests.swift */,
+				8E3F6CA041274F53D9C48A3D /* BotRoomRefusalTests.swift */,
 				7D2E5B9F30164E42C8B37F2D /* BotRoomScheduledPostTests.swift */,
 				CCAFBC38CC3248C29EFFAFEA /* BotRoomContextTests.swift */,
 				8B5D0F3C21945E62C7E1392D /* BotRoomReplyTests.swift */,
@@ -2104,6 +2109,7 @@
 				5F6BC2386D1640DDA0934809 /* BotRoomPauses.swift */,
 				7A4C9E2B10834F51B6D0281B /* BotRoomRouting.swift */,
 				6C1F4A8E29054D31B7A26E1B /* BotRoomReasons.swift */,
+				8E3F6CA041274F53D9C48A3B /* BotRoomRefusals.swift */,
 				7D2E5B9F30164E42C8B37F2B /* BotRoomScheduledPost.swift */,
 				3379305561F54EEE81797275 /* BotRoomContext.swift */,
 				CC43A49D77BB4437A14BA416 /* BotRoomSettingsView.swift */,
@@ -2930,6 +2936,7 @@
 				F1C9FF8625FC4D2DB48868FA /* BotRoomPauses.swift in Sources */,
 				7A4C9E2B10834F51B6D0281A /* BotRoomRouting.swift in Sources */,
 				6C1F4A8E29054D31B7A26E1A /* BotRoomReasons.swift in Sources */,
+				8E3F6CA041274F53D9C48A3A /* BotRoomRefusals.swift in Sources */,
 				7D2E5B9F30164E42C8B37F2A /* BotRoomScheduledPost.swift in Sources */,
 				2CE6DE96FE4248899D21C129 /* BotRoomContext.swift in Sources */,
 				8D8018CD0EEA4D9A84B4376F /* BotRoomSettingsView.swift in Sources */,
@@ -3352,6 +3359,7 @@
 				436EFD8DACCE4A408E203282 /* BotRoomPauseTests.swift in Sources */,
 				7A4C9E2B10834F51B6D0281C /* BotRoomRoutingTests.swift in Sources */,
 				6C1F4A8E29054D31B7A26E1C /* BotRoomReasonTests.swift in Sources */,
+				8E3F6CA041274F53D9C48A3C /* BotRoomRefusalTests.swift in Sources */,
 				7D2E5B9F30164E42C8B37F2C /* BotRoomScheduledPostTests.swift in Sources */,
 				02D863C7372B43A690FF0067 /* BotRoomContextTests.swift in Sources */,
 				8B5D0F3C21945E62C7E1392C /* BotRoomReplyTests.swift in Sources */,

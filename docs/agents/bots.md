@@ -2226,18 +2226,18 @@ The gateway owns room execution. iOS may poll reads while a room is visible;
 it never orchestrates member turns, retries work, or opens the hidden
 `Group: <room_id>` sessions. There are no room push events at the tested pin.
 
-On inbox open and pull to refresh, `groups.capabilities` gates room rows: `driver`
-must be true and `methods` must include `groups.list`,
-`groups.state`, and `groups.log`. Missing capabilities hide rooms, including name
-search. Group rooms sit in the unfiled block with unfiled bots; every block puts
-waiting and working bots first, then unread ones, then the rest newest first,
-using room updated time and bot last activity. Undated chats sort last; ties use
+On inbox open and pull to refresh, `groups.capabilities.methods` gates room rows
+and name search on `groups.list`, `groups.state`, and `groups.log`. The list and
+transcript stay readable when `driver` is false. Group rooms sit in the unfiled
+block with unfiled bots; every block puts waiting and working bots first, then
+unread ones, then the rest newest first, using room updated time and bot last
+activity. Undated chats sort last; ties use
 stable chat identity. Revealed hidden bots join that order, with
 the reveal control at the bottom. Pinned bot tiles remain above the list.
 The top-right + menu, or the home's new chat, offers New Bot and New Group Chat; group creation is disabled
-when the host lacks its capability. `groups.list` pages all active
-rooms; disbanded entries are excluded. Identity is configured server URL + Bot
-connection UUID + `room_id`; names and member Profiles are never room keys.
+when the host lacks `groups.create`, the read methods, or a running driver.
+`groups.list` pages active rooms and excludes disbanded entries. Room keys use
+the configured server URL, Bot connection UUID, and `room_id`.
 Avatars resolve against that connection’s roster, with a placeholder for unknown
 members. Search matches room names and previously loaded room messages through the local cache above.
 
@@ -2298,7 +2298,13 @@ keeps it, and the first message replaces it for good.
 
 The socket allowlist admits room reads, attachment transfers, participant commands, and lifecycle commands with typed parameter checks.
 Room RPC errors preserve `data.reason`: `room_history_expired` or code 4114 removes
-the room with a toast; 4123 asks for a gateway restart on the Mac. No replica, peer, promotion, or demotion method is permitted.
+the room with a toast. Canonical `runtime_coordination_required` and standalone
+4123 both ask for a gateway restart. Known retry, discard, disband, and approval
+refusals explain what happened and what to do next. A non-disbanded room whose
+`groups.state` omits `driver_status` shows an unavailable banner and disables
+the composer, room commands, and attachment downloads and automatic previews.
+The next state with `driver_status` restores the controls. No replica, peer,
+promotion, or demotion method is permitted.
 
 Contract: `tui_gateway/methods_groups.py` and `gateway/hosted_rooms.py` at
 `HERMES_AGENT_TESTED_SHA`; read-only tunnel checks on 2026-09-16 captured
@@ -2404,7 +2410,7 @@ re-reads the active list; a room with the attempted ID, same authority and froze
 member identities completes creation even if another client renamed it after a
 lost reply. The canonical host refuses an unseatable member before it looks for the room, so
 a Try Again with one reads the active list instead of resending: the room it made opens, or
-the choice unlocks. Other conflicts stay errors. Code 4123 asks for a gateway restart on the Mac.
+the choice unlocks. Other conflicts stay errors.
 Closing or backgrounding the sheet invalidates late replies. Success opens the
 acknowledged room under the same configured server and connection identity.
 

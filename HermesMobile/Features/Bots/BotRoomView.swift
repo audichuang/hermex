@@ -48,6 +48,10 @@ import SwiftUI
                         if reader.foreignAuthority {
                             Text("Managed by another Hermes").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         }
+                        if reader.runtimeDown {
+                            Text("This group is temporarily unavailable. Restart or update the Hermes gateway that manages it.")
+                                .font(AppFont.caption()).foregroundStyle(.appSecondary)
+                        }
                         if threadID != nil, reader.threads.first(where: { $0.id == threadID })?.root == nil {
                             Text("Earlier messages not loaded").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         }
@@ -91,7 +95,7 @@ import SwiftUI
                         }
                         if showsWelcome {
                             BotRoomWelcomeView(room: reader.room, roster: roster, avatars: avatars,
-                                               showsPrompt: reader.showsComposer)
+                                               showsPrompt: reader.showsComposer && !reader.runtimeDown)
                         }
                         Color.clear.frame(height: 0).id("room-actions")
                         ForEach(Array(reader.status.actions.enumerated()), id: \.offset) { _, action in

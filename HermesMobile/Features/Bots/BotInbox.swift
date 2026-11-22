@@ -98,7 +98,7 @@ import UIKit
             + byAttention(visibleRooms.filter { isRoomPinned($0) && !isRoomHidden($0) }.map(ChatRow.room))
     }
 
-    private var visibleRooms: [BotGroupRoom] { roomCapabilities.enabled ? rooms : [] }
+    private var visibleRooms: [BotGroupRoom] { roomCapabilities.readable ? rooms : [] }
 
     private func byAttention(_ rows: [ChatRow]) -> [ChatRow] {
         func rank(_ row: ChatRow) -> Int {
@@ -636,7 +636,7 @@ import UIKit
     }
 
     func rooms(matching query: String) -> [BotGroupRoom] {
-        guard roomCapabilities.enabled else { return [] }
+        guard roomCapabilities.readable else { return [] }
         return rooms.filter { query.isEmpty || $0.name.localizedStandardContains(query) }
     }
 
@@ -692,7 +692,7 @@ import UIKit
     func mayRenameRoom(_ room: BotGroupRoom) -> Bool { mayCommandRoom(room, "groups.rename") }
     func mayDisbandRoom(_ room: BotGroupRoom) -> Bool { mayCommandRoom(room, "groups.disband") }
     private func mayCommandRoom(_ room: BotGroupRoom, _ method: String) -> Bool {
-        link == .live && roomCapabilities.methods.contains(method)
+        link == .live && roomCapabilities.enabled && roomCapabilities.methods.contains(method)
             && !room.isForeign(to: roomCapabilities.authority) && !editing.contains(ChatRow.room(room).id)
     }
 
@@ -748,7 +748,7 @@ import UIKit
             guard wire === client, !Task.isCancelled else { return }
             let capabilities = BotRoomCapabilities(value)
             if capabilities != roomCapabilities { roomCapabilities = capabilities }
-            guard capabilities.enabled else {
+            guard capabilities.readable else {
                 rooms = []; hasRoomList = true
                 if let scope { await rosterCache.saveRooms(capabilities: value, rooms: nil, scope: scope, readAt: readAt) }
                 return

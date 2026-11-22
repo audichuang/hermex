@@ -299,13 +299,18 @@ import XCTest
         XCTAssertFalse(BotRoomStatus(value["state"]["driver_status"]).working)
     }
 
-    func testCapabilityGateRequiresDriverAndEveryReadMethod() {
+    func testCapabilitiesSeparateReadsFromDriverAvailability() {
         XCTAssertTrue(BotRoomCapabilities(RoomFixture.capabilities).enabled)
-        XCTAssertFalse(BotRoomCapabilities(.object(["driver": .bool(false), "methods": .array(RoomFixture.methods.map(BotJSON.string))])).enabled)
+        let driverDown = BotRoomCapabilities(.object(["driver": .bool(false), "methods": .array(RoomFixture.methods.map(BotJSON.string))]))
+        XCTAssertTrue(driverDown.readable)
+        XCTAssertFalse(driverDown.enabled)
         for missing in ["groups.list", "groups.state", "groups.log"] {
-            XCTAssertFalse(BotRoomCapabilities(.object(["driver": .bool(true), "methods": .array(RoomFixture.methods.filter { $0 != missing }.map(BotJSON.string))])).enabled)
+            let methods = RoomFixture.methods.filter { $0 != missing }.map(BotJSON.string)
+            let incomplete = BotRoomCapabilities(.object(["driver": .bool(true), "methods": .array(methods)]))
+            XCTAssertFalse(incomplete.readable)
+            XCTAssertFalse(incomplete.enabled)
         }
-        XCTAssertFalse(BotRoomCapabilities(.null).enabled)
+        XCTAssertFalse(BotRoomCapabilities(.null).readable)
     }
 
     func testReplayIgnoresDuplicateSequencesAndUnknownKindsAdvanceCursor() {
@@ -519,8 +524,8 @@ import XCTest
         wire.capabilities = .object(["driver": .bool(false)])
         await inbox.open()
         XCTAssertTrue(inbox.rooms(matching: "Comms").isEmpty)
-        XCTAssertFalse(inbox.roomCapabilities.enabled)
-        XCTAssertEqual(wire.listCalls, 1, "A disabled driver must not list rooms")
+        XCTAssertFalse(inbox.roomCapabilities.readable)
+        XCTAssertEqual(wire.listCalls, 1, "The host must advertise the room read methods")
         wire.capabilities = RoomFixture.capabilities; wire.disbanded = true
         await inbox.open()
         XCTAssertTrue(inbox.rooms.isEmpty)
@@ -1251,6 +1256,7 @@ enum RoomFixture {
     var attachmentReply: ((String) async -> BotJSON)?
     var failure: Error?
     var driverStatus = RoomFixture.status()
+    var includesDriverStatus = true
     var context: BotJSON?
     var writes: [(String, [String: BotJSON])] = []
     var writeCalls: [HermesCall] = []
@@ -1394,7 +1400,8 @@ enum RoomFixture {
             room["name"] = .string(roomName)
             if let members { room["members"] = .array(members) }
             room["authority_gateway_id"] = .string(authority); room["authority_epoch"] = .number(Double(epoch))
-            var state: [String: BotJSON] = ["room": .object(room), "driver_status": driverStatus]
+            var state: [String: BotJSON] = ["room": .object(room)]
+            if includesDriverStatus { state["driver_status"] = driverStatus }
             state["context"] = context
             return .object(state)
         case "groups.log":
@@ -1419,6 +1426,7 @@ enum RoomFixture {
     }
     func releaseState(latest: Int, context: BotJSON? = nil) {
         var state = ["room": RoomFixture.room(latest: latest)]
+        if includesDriverStatus { state["driver_status"] = driverStatus }
         state["context"] = context
         held?.resume(returning: .object(state)); held = nil
     }

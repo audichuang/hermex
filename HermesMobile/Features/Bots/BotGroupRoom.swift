@@ -8,6 +8,7 @@ struct BotRoomKey: Hashable, Identifiable {
 }
 
 struct BotRoomCapabilities: Equatable {
+    let readable: Bool
     let enabled: Bool
     let authority: String?
     let pageLimit: Int
@@ -17,7 +18,8 @@ struct BotRoomCapabilities: Equatable {
         let methods = Set(value["methods"].list?.compactMap(\.text) ?? [])
         self.methods = methods
         seatableProfiles = value["seatable_profiles"].list.map { Set($0.compactMap(\.text)) }
-        enabled = value["driver"].flag == true && Set(["groups.list", "groups.state", "groups.log"]).isSubset(of: methods)
+        readable = Set(["groups.list", "groups.state", "groups.log"]).isSubset(of: methods)
+        enabled = readable && value["driver"].flag == true
         authority = value["authority_gateway_id"].text
         pageLimit = min(200, max(1, value["max_log_limit"].integer ?? 200))
     }
@@ -385,9 +387,8 @@ struct BotRoomFailure: Error, LocalizedError {
     var expired: Bool { code == 4114 || reason == "room_history_expired" }
     var rejectsSendBeforeAdmission: Bool { reason == "invalid_params" || (code == 5112 && admitted == false) }
     var errorDescription: String? {
+        if let explanation { return explanation }
         if expired { return String(localized: "This room’s history is no longer available.") }
-        if code == 4123 { return String(localized: "Restart the Hermes gateway on your Mac, then reconnect.") }
-        if reason == "stale_generation" { return String(localized: "This chat changed on the server. Reopen it and try again.") }
         return message ?? BotFailure.rejected(code).localizedDescription
     }
 }

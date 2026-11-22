@@ -2,6 +2,18 @@
 
 Area: bots
 
+## Keep history readable when the room driver is unavailable
+
+The gateway still serves `groups.list`, `groups.state`, and `groups.log` when
+the room driver is down. The capabilities flag gates creation and inbox room
+commands. An open room uses each `groups.state` response: omission of
+`driver_status` means the driver is unavailable, and a later response restores
+participation and attachment transfers without reopening the room.
+
+Lives in: `HermesMobile/Features/Bots/BotGroupRoom.swift`,
+`HermesMobile/Features/Bots/BotInbox.swift`, and
+`HermesMobile/Features/Bots/BotRoomReader.swift`
+
 ## Retry room creation with the same room id
 
 `BotRoomCreator` gives one sheet one immutable create attempt: a deliberate retry uses the same room ID and payload, including after backgrounding or losing the socket, so an uncertain create never makes a second room. Another client can rename the room between a lost create reply and the retry, so the retry finds its earlier success in the room list by permanent ID and frozen members, not by name.

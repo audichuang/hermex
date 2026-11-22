@@ -340,7 +340,8 @@ import XCTest
             let result: BotJSON
             switch request["method"].text {
             case "groups.capabilities": result = capabilities
-            case "groups.state": result = .object(["room": RoomFixture.room(latest: 0)])
+            case "groups.state":
+                result = .object(["room": RoomFixture.room(latest: 0), "driver_status": RoomFixture.status()])
             case "groups.log": result = RoomFixture.page([], cursor: 0)
             case BotRoomFiles.uploadMethod:
                 let params = request["params"]
