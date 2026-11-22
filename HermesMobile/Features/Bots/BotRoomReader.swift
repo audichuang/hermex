@@ -247,6 +247,13 @@ enum BotRoomStopControl: Equatable {
 
     func poll() async {
         guard let client = wire, link == .live else { return }
+        let hasUpload = attachmentDrafts.values.contains { chips in
+            chips.contains { chip in
+                if case .uploading = chip.state { return true }
+                return false
+            }
+        }
+        guard !hasUpload else { return }
         _ = await poll(client)
     }
 
@@ -392,17 +399,21 @@ enum BotRoomStopControl: Equatable {
         guard !additions.isEmpty else { return }
         attachmentDrafts[context, default: []].append(contentsOf: additions)
         for (input, chip) in zip(inputs, additions) {
-            guard uploadIndex(chip.id, context: context, client: client, epoch: epoch) != nil else { continue }
+            guard attachmentIndex(chip.id, context: context) != nil else { continue }
             do {
                 let media = try await input.load()
                 let file = try await Task.detached(priority: .userInitiated) { try BotRoomFiles.prepare(media) }.value
-                guard let index = uploadIndex(chip.id, context: context, client: client, epoch: epoch) else { continue }
+                guard let index = attachmentIndex(chip.id, context: context) else { continue }
                 let total = attachmentChips(in: threadID).reduce(0) { $0 + $1.state.byteCount }
                 guard total + file.data.count <= BotRoomFiles.maximumMessageBytes else { throw BotRoomFiles.Failure.totalSize }
                 attachmentDrafts[context]?[index].name = file.name
-                await upload(file, id: chip.id, context: context, client: client, epoch: epoch)
+                if wire === client, room.epoch == epoch {
+                    await upload(file, id: chip.id, context: context, client: client, epoch: epoch)
+                } else {
+                    attachmentDrafts[context]?[index].state = .failed(file, BotFailure.transport.localizedDescription)
+                }
             } catch {
-                guard let index = uploadIndex(chip.id, context: context, client: client, epoch: epoch) else { continue }
+                guard let index = attachmentIndex(chip.id, context: context) else { continue }
                 attachmentDrafts[context]?.remove(at: index)
                 setAttachmentNotice(error.localizedDescription, in: threadID)
             }
@@ -427,9 +438,13 @@ enum BotRoomStopControl: Equatable {
         return manifest
     }
 
+    private func attachmentIndex(_ id: UUID, context: String) -> Int? {
+        attachmentDrafts[context]?.firstIndex { $0.id == id }
+    }
+
     private func uploadIndex(_ id: UUID, context: String, client: any BotTransport, epoch: Int?) -> Int? {
         guard wire === client, room.epoch == epoch else { return nil }
-        return attachmentDrafts[context]?.firstIndex { $0.id == id }
+        return attachmentIndex(id, context: context)
     }
 
     private func upload(_ file: BotRoomUpload, id: UUID, context: String, client: any BotTransport, epoch: Int?) async {
@@ -457,17 +472,13 @@ enum BotRoomStopControl: Equatable {
     private func interruptUploads() {
         for context in Array(attachmentDrafts.keys) {
             guard let chips = attachmentDrafts[context] else { continue }
-            let remaining = chips.compactMap { chip -> BotRoomAttachmentChip? in
-                switch chip.state {
-                case .preparing: return nil
-                case .uploading(let file):
-                    var updated = chip
-                    updated.state = .failed(file, BotFailure.transport.localizedDescription)
-                    return updated
-                default: return chip
-                }
+            let interrupted = chips.map { chip in
+                guard case .uploading(let file) = chip.state else { return chip }
+                var updated = chip
+                updated.state = .failed(file, BotFailure.transport.localizedDescription)
+                return updated
             }
-            if remaining != chips { attachmentDrafts[context] = remaining }
+            if interrupted != chips { attachmentDrafts[context] = interrupted }
         }
     }
 
@@ -734,7 +745,7 @@ enum BotRoomStopControl: Equatable {
             do { if try await reconcileDisband(client) { return } }
             catch { fail(error, client); return }
         }
-        if !reconciled { await poll() }
+        if !reconciled { _ = await poll(client) }
     }
 
     private func check(_ client: any BotTransport) throws {

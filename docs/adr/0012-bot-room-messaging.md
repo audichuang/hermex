@@ -86,7 +86,15 @@ it can retain formats like animated GIF. Keep the resulting bytes through an upl
 A successful upload needs only the returned manifest. A removed chip leaves
 its uncommitted data for the host to reclaim after an hour.
 
-Lives in: `HermesMobile/Features/Bots/BotRoomAttachments.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`
+Room uploads add the base64 byte count divided by 100,000 seconds to the usual
+RPC deadline to allow for a 0.8 Mbit/s uplink.
+A socket fixture that held an upload frame reproduced a `groups.state` timeout
+that disconnected the room, so timer polls pause while any chip is uploading
+and command replies still trigger their own refresh.
+If the room connection or epoch changes during preparation, the chip keeps its
+original ID and the prepared bytes for an explicit retry.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomAttachments.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`, `HermesMobile/Networking/Hermes/HermesGateway.swift`
 
 ## Check the room log before restoring an uncertain attachment send
 
