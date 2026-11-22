@@ -2266,14 +2266,17 @@ root uses its first filename in the overview. When the host advertises
 `groups.attachment.download`, a card opens a preview with Save to Files and Share.
 Images with a known size up to 5 MiB can preview as they approach the viewport.
 Files over 12,000,000 bytes direct the user to Hermes Desktop.
-`turn.failed`, `turn.cancelled`, `room.stop_requested`, `room.renamed`,
-`room.continued`, `room.assignment`, and `room.routed` are centered system lines.
-A `room.routed` whose picks have all left the roster is filtered out rather than
+`turn.failed`, `turn.cancelled`, `turn.deferred`, `member.unavailable`, `room.stop_requested`,
+`room.renamed`, `room.continued`, `room.assignment`, and `room.routed` are centered system lines.
+`turn.failed`, `turn.cancelled`, and `turn.deferred` name the roster member when present (omitting
+the name for departed members) and resolve known reason codes through `BotRoomReason` before falling
+back to the first line of free-text error detail; `member.unavailable` renders as a room-level line
+on the overview. A `room.routed` whose picks have all left the roster is filtered out rather than
 rendering a blank line. A member message that `@mentions` a teammate who later
 takes a turn in the same discussion shows a centered handoff line below the reply;
 messages restored from disk without `discussion_event_id` do not produce handoffs.
 A bounded `room.activity` renders a pause notice. Settled activity, `turn.settled`,
-`turn.deferred`, `authority.*`, and all unknown kinds remain invisible. Driver
+`authority.*`, and all unknown kinds remain invisible. Driver
 status reports room-wide working/blocked state, never an inferred active member.
 The activity strip derives planned seats from `room.assignment`, then `room.routed`,
 before falling back to mentions or lead routing. Pending actions
@@ -2432,8 +2435,10 @@ composer has an uncertain send (`BotRoomReader.primaryAction(in:)`); the room-wi
 control lives in the navigation bar trailing toolbar (`BotRoomReader.stopControl`). Room
 requests link to their cards; Stop and uncertain-send guards remain in effect.
 
-Rooms have no elapsed row: the tested `groups.state` contract exposes aggregate
-activity but no current-work start timestamp.
+While members are active, `BotRoomActivityStrip` shows elapsed time, the running
+member's active tool, and a quiet-progress warning after 120 seconds without
+progress; expanding a multi-member round shows each seat's outcome (including
+`No answer` for `turn.deferred` with `member_unavailable`).
 
 ## Push provisioning
 

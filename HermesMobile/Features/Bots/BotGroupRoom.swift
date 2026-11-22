@@ -83,7 +83,7 @@ struct BotRoomMemberActivity: Equatable {
 }
 
 struct BotRoomRound: Equatable {
-    enum Outcome: Equatable { case waiting, queued, working, stopping, passed, replied, failed, cancelled }
+    enum Outcome: Equatable { case waiting, queued, working, stopping, passed, replied, failed, cancelled, unavailable }
     struct Seat: Equatable {
         let memberID: String
         let name: String
@@ -94,7 +94,7 @@ struct BotRoomRound: Equatable {
     let live: [BotRoomMemberActivity]
     let routingBy: String?
 
-    var finished: Int { seats.filter { [.passed, .replied, .failed, .cancelled].contains($0.outcome) }.count }
+    var finished: Int { seats.filter { [.passed, .replied, .failed, .cancelled, .unavailable].contains($0.outcome) }.count }
 
     static func build(events: [BotRoomEvent], activity: [BotRoomMemberActivity], room: BotGroupRoom,
                       threadID: String?, context: BotRoomContext? = nil) -> BotRoomRound? {
@@ -144,6 +144,7 @@ struct BotRoomRound: Equatable {
             case "turn.settled": event.payload["passed"].flag == true ? .passed : .replied
             case "turn.failed": .failed
             case "turn.cancelled": .cancelled
+            case "turn.deferred" where event.payload["reason"].text == "member_unavailable": .unavailable
             default: nil
             }
             guard let outcome else { continue }
@@ -212,6 +213,7 @@ struct BotRoomEvent: Identifiable, Equatable {
     }
     var visible: Bool {
         isBoundedActivity || ["message.user", "message.member", "turn.failed", "turn.cancelled",
+                              "turn.deferred", "member.unavailable",
                               "room.stop_requested", "room.renamed", "room.continued",
                               "room.assignment", "room.routed"].contains(kind)
     }
@@ -220,13 +222,52 @@ struct BotRoomEvent: Identifiable, Equatable {
         let id = payload["member_id"].text ?? actor["id"].text
         return room.members.first { $0.id == id }
     }
+    private func memberName(in room: BotGroupRoom) -> String? {
+        let name = member(in: room)?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name?.isEmpty == false ? name : nil
+    }
     func sender(in room: BotGroupRoom) -> String {
         actor["display_name"].text ?? member(in: room)?.name ?? actor["profile"].text ?? String(localized: "Bot")
     }
-    var systemText: String {
+    func systemText(in room: BotGroupRoom) -> String {
         switch kind {
-        case "turn.failed": return payload["error"].text.map { String(localized: "Failed: \($0)") } ?? String(localized: "Turn failed")
-        case "turn.cancelled": return String(localized: "Turn cancelled")
+        case "turn.failed":
+            let name = memberName(in: room)
+            let reason = BotRoomReason.text(code: payload["reason_code"].text, detail: payload["error"].text)
+            switch (name, reason) {
+            case (let name?, let reason?): return String(localized: "\(name) failed: \(reason)")
+            case (let name?, nil): return String(localized: "\(name) failed")
+            case (nil, let reason?): return String(localized: "Failed: \(reason)")
+            case (nil, nil): return String(localized: "Turn failed")
+            }
+        case "turn.cancelled":
+            let name = memberName(in: room)
+            let reason = BotRoomReason.text(code: payload["reason"].text, detail: payload["reason"].text)
+            switch (name, reason) {
+            case (let name?, let reason?): return String(localized: "\(name) cancelled: \(reason)")
+            case (let name?, nil): return String(localized: "\(name) cancelled")
+            case (nil, let reason?): return String(localized: "Turn cancelled: \(reason)")
+            case (nil, nil): return String(localized: "Turn cancelled")
+            }
+        case "turn.deferred":
+            let name = memberName(in: room)
+            let rawReason = payload["reason"].text?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if rawReason == "member_unavailable" {
+                if let name { return String(localized: "\(name) didn’t answer in time") }
+                return String(localized: "The bot didn’t answer in time")
+            }
+            let reason = BotRoomReason.text(code: rawReason, detail: rawReason)
+            switch (name, reason) {
+            case (let name?, let reason?): return String(localized: "\(name) deferred: \(reason)")
+            case (let name?, nil): return String(localized: "\(name) deferred")
+            case (nil, let reason?): return String(localized: "Turn deferred: \(reason)")
+            case (nil, nil): return String(localized: "Turn deferred")
+            }
+        case "member.unavailable":
+            let reason = BotRoomReason.text(code: payload["reason_code"].text ?? payload["reason"].text,
+                                            detail: payload["error"].text)
+            if let reason { return String(localized: "Member unavailable: \(reason)") }
+            return String(localized: "Member unavailable")
         case "room.stop_requested": return String(localized: "Stop requested")
         case "room.continued": return String(localized: "Discussion continued")
         case "room.activity" where isBoundedActivity: return String(localized: "Work limit reached")

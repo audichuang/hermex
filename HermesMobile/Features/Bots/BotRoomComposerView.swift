@@ -423,6 +423,7 @@ struct BotRoomActivityStrip: View {
         case .replied: String(localized: "Replied")
         case .failed: String(localized: "Failed")
         case .cancelled: String(localized: "Cancelled")
+        case .unavailable: String(localized: "No answer")
         case .working, .stopping: ""
         }
     }

@@ -56,3 +56,27 @@ messages restored from disk cache omit that ID and must not match unrelated turn
 Lives in: `HermesMobile/Features/Bots/BotRoomRouting.swift`,
 `HermesMobile/Features/Bots/BotGroupRoom.swift`, and
 `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Prefer known reason codes over raw error text in turn notices
+
+`turn.failed`, `turn.cancelled`, `turn.deferred`, and `member.unavailable` resolve their
+reason text through `BotRoomReason.text(code:detail:)`:
+
+1. If `reason_code` (or `reason` for cancelled/deferred turns) matches the gateway's
+   21-entry vocabulary, display its localized label.
+2. Otherwise, if `error` (or `reason`) contains free text (not a code-shaped token and
+   not the server's default boilerplate `member turn cancelled` or `member turn failed` —
+   suppressing `member turn failed` is a deliberate small divergence from Desktop so
+   fallback failures do not repeat the base notice), display its first line verbatim.
+3. Otherwise omit the detail and show only the base notice (with the member's name when
+   that member is still in the roster, or without a name for departed members and
+   room-level `member.unavailable`).
+
+This deliberately diverges from Desktop's transcript rows (which check free-text `error`
+first and therefore almost always surface raw English provider errors) and matches
+Desktop's member status precedence (`OUTCOME_OF` / `memberStatusText`) so users get
+localized explanations for known failures while still seeing raw error text when the host
+classifies a failure as `unknown`.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomReasons.swift` and
+`HermesMobile/Features/Bots/BotGroupRoom.swift`
