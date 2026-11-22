@@ -81,6 +81,7 @@ struct BotRoomComposerView: View {
                 .padding(.top, isExpanded ? 2 : 0)
                 .padding(.bottom, isExpanded ? 4 : 0)
                 .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
+                .zIndex(1)
                 if focused && !isDictating {
                     HStack(alignment: .center, spacing: 8) {
                         attachmentButton(usesGlass: true)
@@ -89,12 +90,7 @@ struct BotRoomComposerView: View {
                         actionButton
                     }
                     .frame(maxWidth: .infinity)
-                    .background(
-                        Color(.appCanvas)
-                            .padding(.top, -10)
-                            .padding(.bottom, -12)
-                            .ignoresSafeArea(edges: .bottom)
-                    )
+                    .background(toolbarBackground)
                     .transition(.opacity)
                 }
                 if isDictating {
@@ -103,6 +99,8 @@ struct BotRoomComposerView: View {
                         tint: PrimaryActionTintSettings.colors(accentHex: accentHex, serverHex: themeHex))
                     ComposerDictationRow(voiceInput: voiceInput, circleSize: ChatComposerMetrics.actionSize,
                                          finishBackground: finish.background, finishForeground: finish.foreground)
+                        .frame(maxWidth: .infinity)
+                        .background(toolbarBackground)
                         .transition(.opacity)
                 }
             }
@@ -158,6 +156,14 @@ struct BotRoomComposerView: View {
             .accessibilityLabel("Attach files")
             .disabled(!reader.mayAddAttachments(in: threadID))
         }
+    }
+
+    private var toolbarBackground: some View {
+        Color(.appCanvas)
+            .padding(.top, -10)
+            .padding(.bottom, -12)
+            .padding(.horizontal, -16)
+            .ignoresSafeArea(edges: .bottom)
     }
 
     private var voiceButton: some View {
