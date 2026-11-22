@@ -19,3 +19,22 @@ Lives in: `HermesMobile/Features/Bots/BotRoomView.swift`
 A pushed thread destination in `BotRoomView` lays out after the overview's synchronous search callback. The jump awaits `Task.yield` so those materialized rows exist before `proxy.scrollTo` runs.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomView.swift`
+
+## Derive actionable pauses from the loaded room log
+
+A bounded activity can arrive after the work it describes has been superseded.
+A room stop or a newer user message in the same thread retires the pause if
+it follows the discussion's source message, even if it precedes the bounded
+notice. If the source is outside the loaded window, use the notice's sequence.
+The count includes only loaded member messages carrying the discussion ID.
+Earlier pages and messages restored from disk without that ID can make the
+displayed count lower than the host's.
+
+Stop is room-wide, including when invoked from a pause row while the room
+is idle. It invalidates pauses across threads and asks for confirmation
+when room work is queued or running. Hermex serializes room commands, so
+the pause row's Stop waits for an in-flight Send or Continue to finish.
+Desktop allows Stop during those requests.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomPauses.swift` and
+`HermesMobile/Features/Bots/BotRoomReader.swift`

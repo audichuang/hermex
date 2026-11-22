@@ -22,6 +22,8 @@ enum BotRoomStopControl: Equatable {
     private(set) var room: BotGroupRoom
     private(set) var events: [BotRoomEvent] = []
     private(set) var roundEvents: [BotRoomEvent] = []
+    private(set) var pauses: [Int: BotRoomPause] = [:]
+    private(set) var pausedThreadIDs: Set<String> = []
     private(set) var attachmentLists: [Int: BotRoomAttachmentList] = [:]
     @ObservationIgnored private let attachmentPreviews = BotRoomPreviewQueue()
     @ObservationIgnored private var sentAt: ContinuousClock.Instant?
@@ -122,6 +124,8 @@ enum BotRoomStopControl: Equatable {
         } else {
             log = BotRoomLog(); events = []; threads = []; hasEarlier = false; hasRecentLog = false
             if !attachmentLists.isEmpty { attachmentLists = [:] }
+            if !pauses.isEmpty { pauses = [:] }
+            if !pausedThreadIDs.isEmpty { pausedThreadIDs = [] }
         }
         recentOwner = cache.recent.begin(.init(key))
         if needsSignIn {
@@ -269,6 +273,8 @@ enum BotRoomStopControl: Equatable {
     func close() {
         suspend(); log = BotRoomLog(); events = []; threads = []; hasEarlier = false
         if !attachmentLists.isEmpty { attachmentLists = [:] }
+        if !pauses.isEmpty { pauses = [:] }
+        if !pausedThreadIDs.isEmpty { pausedThreadIDs = [] }
         hasRecentLog = false; restoredFromDisk = false
         status = BotRoomStatus(.null); lastAuthority = nil
     }
@@ -284,6 +290,9 @@ enum BotRoomStopControl: Equatable {
         return nil
     }
     var mayStop: Bool { allows("groups.stop") && !busy && !awaitingStop && status.stopping == 0 && status.stoppable > 0 }
+    var mayContinue: Bool { allows("groups.continue") && !busy && status.maxContinues != nil }
+    var mayStopPaused: Bool { allows("groups.stop") && !busy && !awaitingStop && status.stopping == 0 }
+    var pausedStopNeedsConfirmation: Bool { status.stoppable > 0 }
     var maySend: Bool { maySend(in: nil) }
     func primaryAction(in threadID: String?) -> BotRoomPrimaryAction {
         if uncertainSend(in: threadID) != nil {
@@ -568,6 +577,27 @@ enum BotRoomStopControl: Equatable {
         })
     }
 
+    func continueDiscussion(_ id: String) async {
+        guard mayContinue else { return }
+        await command(.groupsContinue(roomID: key.roomID, discussionEventID: id), validate: {}, accept: { result in
+            let value = result["event"]
+            guard result["continued"].flag == true, BotRoomEvent(value)?.kind == "room.continued" else {
+                throw BotFailure.unsupported
+            }
+            self.log.acknowledge(value)
+            self.publishLog()
+        })
+    }
+
+    func stopPausedDiscussion() async {
+        guard mayStopPaused else { return }
+        await command(.groupsStop(roomID: key.roomID, cancelID: UUID().uuidString), validate: {}, accept: { result in
+            guard result["cancelled"].integer != nil else { throw BotFailure.unsupported }
+            self.awaitingStop = true
+            self.feedback = BotFeedback(.stopped, after: self.feedback)
+        })
+    }
+
     private var summaryScope: ApprovalSummaries.Scope {
         .init(server: key.server, connectionID: connection.id, conversation: .room(id: key.roomID, epoch: room.epoch))
     }
@@ -625,7 +655,11 @@ enum BotRoomStopControl: Equatable {
             guard commandID == token, wire === client else { return }
             if let rejection = error as? BotRoomFailure {
                 if case .groupsDisband = call { uncertainDisband = false }
-                commandMessage = rejection.localizedDescription
+                if case .groupsContinue = call, !rejection.expired {
+                    commandMessage = String(localized: "Couldn’t continue the discussion.")
+                } else {
+                    commandMessage = rejection.localizedDescription
+                }
                 if rejection.reason == "authority_conflict" { foreignAuthority = true }
                 if rejection.expired { discardHistory(); close(); onExpired(); return }
                 if rejection.rejectsSendBeforeAdmission, let reconcileAttachmentRetry {
@@ -670,7 +704,11 @@ enum BotRoomStopControl: Equatable {
             ApprovalSummaries.Key(scope: summaryScope, request: .room($0.id))
         }
         ApprovalSummaries.shared.retain(Set(pendingSummaries), in: summaryScope)
-        if status != nextStatus { status = nextStatus }
+        if status != nextStatus {
+            let limitChanged = status.maxContinues != nextStatus.maxContinues
+            status = nextStatus
+            if limitChanged && link == .live && updated.latestSeq <= log.cursor { publishLog() }
+        }
         if !busy && nextStatus.stopping == 0 { awaitingStop = false }
         let pendingIDs = Set(nextStatus.actions.map(\.id))
         inactiveActions = inactiveActions.filter { !["retry", "discard"].contains($0.kind) || pendingIDs.contains($0) }
@@ -760,6 +798,15 @@ enum BotRoomStopControl: Equatable {
         }
         let round = (visible + log.signals).sorted { $0.seq < $1.seq }
         if roundEvents != round { roundEvents = round }
+        let nextPauses: [Int: BotRoomPause]
+        if capabilities.methods.contains("groups.continue"), let limit = status.maxContinues {
+            nextPauses = BotRoomPause.pauses(in: log.events, maxContinues: limit)
+        } else {
+            nextPauses = [:]
+        }
+        if pauses != nextPauses { pauses = nextPauses }
+        let pausedThreads = Set(log.events.lazy.filter { nextPauses[$0.seq]?.actionable == true }.compactMap(\.threadID))
+        if pausedThreadIDs != pausedThreads { pausedThreadIDs = pausedThreads }
         hasEarlier = log.earlierBoundary > 0
         let grouped = BotRoomThread.group(visible, hasEarlier: hasEarlier)
         if threads != grouped { threads = grouped }

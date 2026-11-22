@@ -2248,8 +2248,9 @@ root uses its first filename in the overview. When the host advertises
 `groups.attachment.download`, a card opens a preview with Save to Files and Share.
 Images with a known size up to 5 MiB can preview as they approach the viewport.
 Files over 12,000,000 bytes direct the user to Hermes Desktop.
-`turn.failed`, `turn.cancelled`, `room.stop_requested`, and `room.renamed` are
-centered system lines. `room.activity`, `turn.settled`, `turn.deferred`,
+`turn.failed`, `turn.cancelled`, `room.stop_requested`, `room.renamed`, and
+`room.continued` are centered system lines. A bounded `room.activity` renders a
+pause notice. Settled activity, `turn.settled`, `turn.deferred`,
 `authority.*`, and all unknown kinds remain invisible. Driver status reports
 room-wide working/blocked state, never an inferred active member. Pending actions
 use the participant controls below; unknown kinds show Desktop attention. Room profiles link to existing bot profiles and expose the lifecycle controls below.
@@ -2261,7 +2262,7 @@ shows while the room is live with no earlier history and no user or member
 message loaded (`BotRoomReader.showsWelcome`), so a rename before anyone speaks
 keeps it, and the first message replaces it for good.
 
-The socket allowlist admits four room reads, attachment download, four participant commands and three lifecycle commands with typed parameter checks.
+The socket allowlist admits room reads, attachment transfers, participant commands, and lifecycle commands with typed parameter checks.
 Room RPC errors preserve `data.reason`: `room_history_expired` or code 4114 removes
 the room with a toast; 4123 asks for a gateway restart on the Mac. No replica, peer, promotion, or demotion method is permitted.
 
@@ -2317,6 +2318,13 @@ the room overview and thread detail whenever the room is working or stopping, an
 hides when idle. Its `cancelled` receipt is informational; the toolbar item stays
 disabled on `Stopping…` until a subsequent state read reports no stopping tasks.
 Queued/running counts govern whether Stop can be tapped.
+
+The thread overview marks an actionable pause. Its transcript row offers
+Continue and Stop when the host advertises `groups.continue` and returns
+`driver_status.max_continues`. Continue grants another work budget. A rejection
+shows a generic message and refreshes the room. The pause row's Stop also works
+while idle and invalidates earlier pauses across the room. If work is queued
+or running, the row asks for confirmation because other threads are affected.
 
 Approvals use the existing request card with only `once` and `deny`. Dispatch
 revalidates the room, socket owner, authority epoch and exact member/task/generation/

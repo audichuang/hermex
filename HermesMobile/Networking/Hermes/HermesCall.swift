@@ -120,6 +120,7 @@ enum HermesCall: Equatable, Sendable {
     case groupsAttachmentUpload(roomID: String, uploadID: String, file: BotRoomUpload)
     case groupsAttachmentDownload(roomID: String, eventID: String, attachmentID: String)
     case groupsStop(roomID: String, cancelID: String)
+    case groupsContinue(roomID: String, discussionEventID: String)
     case groupsApprove(roomID: String, memberID: String, taskID: String, executionGeneration: Int,
                        requestID: String, choice: BotApprovalRequest.Choice)
     case groupsRetry(roomID: String, taskID: String, attempt: RoomAttempt? = nil)
@@ -376,6 +377,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsAttachmentUpload: return BotRoomFiles.uploadMethod
         case .groupsAttachmentDownload: return "groups.attachment.download"
         case .groupsStop: return "groups.stop"
+        case .groupsContinue: return "groups.continue"
         case .groupsApprove: return "groups.approve"
         case .groupsRetry: return "groups.retry"
         case .groupsDiscard: return "groups.discard"
@@ -628,6 +630,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsAttachmentDownload(let roomID, let eventID, let attachmentID):
             return ["room_id": .string(roomID), "event_id": .string(eventID), "attachment_id": .string(attachmentID)]
         case .groupsStop(let roomID, let cancelID): return ["room_id": .string(roomID), "cancel_id": .string(cancelID)]
+        case .groupsContinue(let roomID, let discussionEventID): return ["room_id": .string(roomID), "discussion_event_id": .string(discussionEventID)]
         case .groupsApprove(let roomID, let memberID, let taskID, let executionGeneration, let requestID, let choice):
             return ["room_id": .string(roomID), "member_id": .string(memberID), "task_id": .string(taskID),
                     "execution_generation": .number(Double(executionGeneration)),
@@ -766,6 +769,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsAttachmentDownload(let roomID, let eventID, let attachmentID):
             valid = [roomID, eventID, attachmentID].allSatisfy(BotRoomRPC.validID)
         case .groupsStop(let roomID, let cancelID): valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(cancelID)
+        case .groupsContinue(let roomID, let discussionEventID): valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(discussionEventID)
         case .groupsApprove(let roomID, let memberID, let taskID, let executionGeneration, let requestID, let choice):
             valid = [roomID, memberID, taskID, requestID].allSatisfy(BotRoomRPC.validID) && executionGeneration > 0
                 && [.once, .deny].contains(choice)
