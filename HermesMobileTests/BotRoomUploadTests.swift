@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 @testable import HermesMobile
 
@@ -105,7 +106,12 @@ import XCTest
         let priorReads = wire.stateCalls
         await reader.poll()
         XCTAssertEqual(wire.stateCalls, priorReads)
+
+        wire.driverStatus = RoomFixture.status(maxContinues: 1)
+        let refreshed = expectation(description: "Command applied fresh room state during the upload")
+        withObservationTracking { _ = reader.status } onChange: { refreshed.fulfill() }
         await reader.rename("Renamed Comms")
+        await fulfillment(of: [refreshed], timeout: 3)
         XCTAssertEqual(wire.stateCalls, priorReads + 1, "A command must still refresh room state")
 
         release?.resume()

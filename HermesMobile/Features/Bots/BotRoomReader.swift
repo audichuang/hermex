@@ -139,6 +139,10 @@ enum BotRoomStopControl: Equatable {
     @ObservationIgnored private var restoredFromDisk = false
     @ObservationIgnored private var wire: (any BotTransport)?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTask: Task<Bool, Never>?
+    @ObservationIgnored private var changeEvents = false
+    @ObservationIgnored private var refreshPending = false
+    @ObservationIgnored private var recentBroadcastIDs: [String] = []
     @ObservationIgnored private var capabilities = BotRoomCapabilities(.null)
     @ObservationIgnored private var lastAuthority: BotJSON?
     @ObservationIgnored private let makeWire: @MainActor (BotConnection) -> any BotTransport
@@ -204,6 +208,10 @@ enum BotRoomStopControl: Equatable {
         }
         let client = makeWire(connection)
         wire = client; link = .connecting; errorMessage = nil
+        client.onEvent = { [weak self, weak client] event in
+            guard let self, let client, self.wire === client else { return }
+            self.roomDidChange(event, from: client)
+        }
         client.onDisconnect = { [weak self] error in
             guard let self, self.wire === client else { return }
             self.fail(error, client)
@@ -245,9 +253,11 @@ enum BotRoomStopControl: Equatable {
             publishLog()
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
             try check(client)
+            if !changeEvents { refreshPending = false }
             link = .live; didOpen = true; hasRecentLog = true; restoredFromDisk = false
             reconnect.succeeded()
             saveRecentTranscript()
+            startPendingRefresh(client)
             pollTask = Task { [weak self] in
                 var last = ContinuousClock.now
                 while let self, self.wire === client, !Task.isCancelled {
@@ -273,8 +283,32 @@ enum BotRoomStopControl: Equatable {
     }
 
     var pollInterval: Duration {
-        if let sentAt, ContinuousClock.now - sentAt < .seconds(20) { return .seconds(1) }
-        return status.interval
+        if !changeEvents, let sentAt, ContinuousClock.now - sentAt < .seconds(20) { return .seconds(1) }
+        let interval = status.interval
+        return changeEvents && interval == .seconds(10) ? .seconds(15) : interval
+    }
+
+    private func roomDidChange(_ event: BotJSON, from client: any BotTransport) {
+        guard event["type"].text == "groups.changed", changeEvents || link == .connecting else { return }
+        let payload = event["payload"]
+        if let rooms = payload["room_ids"].list, !rooms.isEmpty, !rooms.contains(.string(key.roomID)) { return }
+        if let id = payload["broadcast_id"].text, !id.isEmpty {
+            guard !recentBroadcastIDs.contains(id) else { return }
+            if recentBroadcastIDs.count == 64 { recentBroadcastIDs.removeFirst() }
+            recentBroadcastIDs.append(id)
+        }
+        requestRefresh(client)
+    }
+
+    private func requestRefresh(_ client: any BotTransport) {
+        refreshPending = true
+        startPendingRefresh(client)
+    }
+
+    private func startPendingRefresh(_ client: any BotTransport) {
+        guard wire === client, link == .live, refreshPending,
+              refreshTask == nil, !loadingEarlier else { return }
+        _ = startRefresh(client)
     }
 
     func poll() async {
@@ -290,6 +324,27 @@ enum BotRoomStopControl: Equatable {
     }
 
     private func poll(_ client: any BotTransport) async -> Bool {
+        if let refreshTask { _ = await refreshTask.value }
+        guard wire === client, link == .live, !Task.isCancelled else { return false }
+        return await (refreshTask ?? startRefresh(client)).value
+    }
+
+    private func startRefresh(_ client: any BotTransport) -> Task<Bool, Never> {
+        let task = Task { [weak self] in
+            guard let self, self.wire === client, !Task.isCancelled else { return false }
+            if !self.loadingEarlier { self.refreshPending = false }
+            let refreshed = await self.readChanges(client)
+            if self.wire === client, !Task.isCancelled {
+                self.refreshTask = nil
+                self.startPendingRefresh(client)
+            }
+            return refreshed
+        }
+        refreshTask = task
+        return task
+    }
+
+    private func readChanges(_ client: any BotTransport) async -> Bool {
         guard wire === client, link == .live else { return false }
         do {
             let revision = stateRevision + 1
@@ -312,6 +367,8 @@ enum BotRoomStopControl: Equatable {
     func loadEarlier() async {
         guard let client = wire, link == .live, hasEarlier, !loadingEarlier else { return }
         loadingEarlier = true
+        if let refreshTask { _ = await refreshTask.value }
+        guard wire === client else { return }
         let boundary = log.earlierBoundary
         let start = BotRoomLog.windowStart(before: boundary)
         do {
@@ -319,6 +376,7 @@ enum BotRoomStopControl: Equatable {
             try check(client)
             for page in pages { log.apply(page) }
             log.loadedEarlier(from: start); publishLog(); loadingEarlier = false
+            startPendingRefresh(client)
         } catch { fail(error, client) }
     }
 
@@ -340,6 +398,8 @@ enum BotRoomStopControl: Equatable {
         commandID = nil; busy = false; sending = nil; dispatched = false; renaming = false
         let old = wire; wire = nil
         pollTask?.cancel(); pollTask = nil
+        refreshTask?.cancel(); refreshTask = nil
+        changeEvents = false; refreshPending = false; recentBroadcastIDs.removeAll()
         old?.onDisconnect = nil; old?.onEvent = nil
         old?.close(); loadingEarlier = false; link = .idle
     }
@@ -788,7 +848,7 @@ enum BotRoomStopControl: Equatable {
             do { if try await reconcileDisband(client) { return } }
             catch { fail(error, client); return }
         }
-        if !reconciled { _ = await poll(client) }
+        if !reconciled { requestRefresh(client) }
     }
 
     private func check(_ client: any BotTransport) throws {
@@ -803,6 +863,7 @@ enum BotRoomStopControl: Equatable {
         guard let updated = BotGroupRoom(value["room"]), updated.id == key.roomID else { throw BotFailure.unsupported }
         guard revision == stateRevision else { return room.latestSeq }
         if updated.disbanded { throw BotRoomFailure(code: 4114, reason: nil) }
+        changeEvents = value["change_events"].flag == true
         let previousSummaryScope = summaryScope
         var membersChanged = false
         if !renaming && room != updated {

@@ -28,7 +28,7 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
 ## Poll a room after every command reply
 
-`BotRoomReader.command` reads room state after every acknowledgment or rejection, including codes 5118 and 5119. Action tuples marked inactive stay inert even if a stale server snapshot repeats them.
+`BotRoomReader.command` queues a room refresh after acknowledgment or rejection, including codes 5118 and 5119. A slow state read can delay the refresh while the command result is already available to the caller. Action tuples marked inactive stay inert even if a stale server snapshot repeats them.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 

@@ -466,6 +466,20 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
 - hermex-push's restart re-execs the gateway without its drain there
   (uzairansaruzi/hermex-push#33), so it isn't offered on a Webapp.
 
+### Room change events
+
+Hermes 0.23.2 (`ae2a81ccc00`) emits `groups.changed` when a room's log, tasks,
+or live status changes. The event can name affected rooms in `room_ids` or omit
+the list for a process-wide change. Copies carry the same `broadcast_id`.
+
+Hermex enables room change events when `groups.state` returns `change_events: true`.
+Forwarding gateways omit that field because the room owner's events do not reach
+their clients. The pinned Hermes 0.23.1 (`3b421578`) advertises change events in
+`gateway.ready` but lacks `groups.changed`; both routes keep their existing poll
+cadence. With room change events enabled, Hermex reads immediately on a matching
+broadcast and keeps a 15-second idle poll and a 2-second active poll as backstops.
+Reopening after a disconnect reads state and log before resuming live updates.
+
 ## Pin and minimum release
 
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
