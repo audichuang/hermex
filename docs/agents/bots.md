@@ -2427,6 +2427,12 @@ use it. The host applies edits from the next message, keeping the context of
 already admitted work. See [room settings](../adr/0181-bot-room-settings.md) for
 the validation and polling contract.
 
+The room profile also shows each member's `@handle`, live status (working with active tool,
+queued, or stopping) or latest outcome in the current discussion (failed with reason, no answer,
+cancelled, replied, or skipped; omitted when none is loaded), and a footer noting that members
+are set when the group is created. Member outcomes are derived once in `BotRoomReader.publishLog()`
+from loaded host events in `roundEvents`; older turns outside the loaded window show no outcome.
+
 The room profile also shows a copyable delivery target for scheduled Tasks:
 `room:<room_id>@<profile>` on canonical connections (taking `<profile>`, including
 `default`, from the first row of `profiles.list`, which the canonical host always
@@ -2458,7 +2464,11 @@ requests link to their cards; Stop and uncertain-send guards remain in effect.
 While members are active, `BotRoomActivityStrip` shows elapsed time, the running
 member's active tool, and a quiet-progress warning after 120 seconds without
 progress; expanding a multi-member round shows each seat's outcome (including
-`No answer` for `turn.deferred` with `member_unavailable`).
+`No answer` for `turn.deferred` with `member_unavailable`). When both
+`driver_status.member_activity[].round_index` and `driver_status.max_rounds`
+are present (and the lead is not routing), the trailing progress label shows
+`Round N of M` (or `Round N` once continued past `max_rounds`), falling back to
+seat progress when either field is absent.
 
 ## Push provisioning
 

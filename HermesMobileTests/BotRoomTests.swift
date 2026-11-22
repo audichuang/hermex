@@ -1626,11 +1626,13 @@ final class BotRoomActivityStripTests: XCTestCase {
         event(1, "room.context_set", ["routing": .string("lead"), "lead_member_id": .string("default")])
     }
     private func row(_ member: String, _ status: String = "running", thread: String = "t1",
-                     started: Double = 1_000, progress: Double? = nil, tool: String? = nil) -> BotRoomMemberActivity {
+                     started: Double = 1_000, progress: Double? = nil, tool: String? = nil,
+                     roundIndex: Int? = nil) -> BotRoomMemberActivity {
         var value: [String: BotJSON] = ["member_id": .string(member), "status": .string(status),
                                         "thread_id": .string(thread), "started_at": .number(started)]
         if let progress { value["progress_at"] = .number(progress) }
         if let tool { value["tool"] = .string(tool) }
+        if let roundIndex { value["round_index"] = .number(Double(roundIndex)) }
         return BotRoomMemberActivity(.object(value))!
     }
 
@@ -1752,5 +1754,49 @@ final class BotRoomActivityStripTests: XCTestCase {
         XCTAssertEqual(round.finished, 1)
         XCTAssertEqual(BotRoomActivityStrip.progress(round), "2/4")
         XCTAssertEqual(BotRoomActivityStrip.word(.unavailable), "No answer")
+    }
+
+    func testRoundProgressShowsRoundAndDropsDenominatorAfterContinueOrFallsBackWhenMissing() throws {
+        let events = [context,
+            event(2, "message.user", id: lead, ["text": .string("找餐廳"), "thread_id": .string("t1")]),
+            event(3, "room.assignment", ["discussion_event_id": .string(lead), "member_ids": .array([.string("research-desk")])]),
+            event(4, "message.user", id: reply, ["text": .string("再確認"), "thread_id": .string("t1")]),
+            event(5, "turn.settled", ["discussion_event_id": .string(reply), "member_id": .string("codex-watch"), "passed": .bool(true)])]
+
+        let within = try XCTUnwrap(BotRoomRound.build(events: events,
+            activity: [row("personal-assistant", roundIndex: 1), row("research-desk", "queued", roundIndex: 0)],
+            room: room, threadID: "t1", maxRounds: 3))
+        XCTAssertEqual(BotRoomActivityStrip.progress(within), "Round 2 of 3")
+
+        let continued = try XCTUnwrap(BotRoomRound.build(events: events,
+            activity: [row("personal-assistant", roundIndex: 3)],
+            room: room, threadID: "t1", maxRounds: 3))
+        XCTAssertEqual(BotRoomActivityStrip.progress(continued), "Round 4")
+
+        let noRoundIndex = try XCTUnwrap(BotRoomRound.build(events: events,
+            activity: [row("personal-assistant")], room: room, threadID: "t1", maxRounds: 3))
+        XCTAssertEqual(BotRoomActivityStrip.progress(noRoundIndex), "2/4")
+
+        let noMaxRounds = try XCTUnwrap(BotRoomRound.build(events: events,
+            activity: [row("personal-assistant", roundIndex: 1)], room: room, threadID: "t1", maxRounds: nil))
+        XCTAssertEqual(BotRoomActivityStrip.progress(noMaxRounds), "2/4")
+
+        let message = event(2, "message.user", id: lead, ["text": .string("找餐廳"), "thread_id": .string("t1")])
+        let routing = try XCTUnwrap(BotRoomRound.build(events: [context, message],
+            activity: [row("default", roundIndex: 0)], room: room, threadID: nil, maxRounds: 3))
+        XCTAssertNil(BotRoomActivityStrip.progress(routing))
+
+        let status = BotRoomStatus(.object([
+            "max_rounds": .number(3),
+            "member_activity": .array([.object(["member_id": .string("default"), "status": .string("running"), "round_index": .number(1)])])
+        ]))
+        XCTAssertEqual(status.maxRounds, 3)
+        XCTAssertEqual(status.activity.first?.roundIndex, 1)
+        let invalid = BotRoomStatus(.object([
+            "max_rounds": .number(0),
+            "member_activity": .array([.object(["member_id": .string("default"), "status": .string("running"), "round_index": .number(-1)])])
+        ]))
+        XCTAssertNil(invalid.maxRounds)
+        XCTAssertNil(invalid.activity.first?.roundIndex)
     }
 }
