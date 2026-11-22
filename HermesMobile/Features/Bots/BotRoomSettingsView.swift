@@ -10,17 +10,23 @@ import SwiftUI
     var routing: Routing
     private(set) var saving = false
     private(set) var error: String?
+    @ObservationIgnored private var initialPurpose: String
+    @ObservationIgnored private var initialNotes: String
+    @ObservationIgnored private var initialRouting: Routing
 
     init(context: BotRoomContext) {
+        let initialRouting: Routing = switch context.routing {
+        case "everyone": .everyone
+        case "auto": .auto
+        case "lead": context.leadMemberID.map(Routing.lead) ?? .unchanged
+        default: .unchanged
+        }
         purpose = context.purpose
         notes = context.notes
-        switch context.routing {
-        case "everyone": routing = .everyone
-        case "auto": routing = .auto
-        case "lead":
-            routing = context.leadMemberID.map(Routing.lead) ?? .unchanged
-        default: routing = .unchanged
-        }
+        routing = initialRouting
+        initialPurpose = context.purpose
+        initialNotes = context.notes
+        self.initialRouting = initialRouting
     }
 
     var purposeLength: Int { BotRoomContext.purposeLength(purpose) }
@@ -38,11 +44,14 @@ import SwiftUI
 
     func save(in reader: BotRoomReader) async -> Bool {
         guard maySave(in: reader) else { return false }
-        let request: HermesCall.RoomContext = switch routing {
-        case .everyone: .init(purpose: purpose, notes: notes, routing: "everyone", leadMemberID: "")
-        case .auto: .init(purpose: purpose, notes: notes, routing: "auto", leadMemberID: "")
-        case .lead(let id): .init(purpose: purpose, notes: notes, routing: "lead", leadMemberID: id)
-        case .unchanged: .init(purpose: purpose, notes: notes, routing: nil, leadMemberID: nil)
+        let savedPurpose = purpose != initialPurpose ? purpose : reader.context?.purpose ?? purpose
+        let savedNotes = notes != initialNotes ? notes : reader.context?.notes ?? notes
+        let savedRouting = routing == initialRouting ? Routing.unchanged : routing
+        let request: HermesCall.RoomContext = switch savedRouting {
+        case .everyone: .init(purpose: savedPurpose, notes: savedNotes, routing: "everyone", leadMemberID: "")
+        case .auto: .init(purpose: savedPurpose, notes: savedNotes, routing: "auto", leadMemberID: "")
+        case .lead(let id): .init(purpose: savedPurpose, notes: savedNotes, routing: "lead", leadMemberID: id)
+        case .unchanged: .init(purpose: savedPurpose, notes: savedNotes, routing: nil, leadMemberID: nil)
         }
         saving = true
         error = nil
@@ -51,6 +60,9 @@ import SwiftUI
             error = reader.commandMessage ?? reader.errorMessage ?? String(localized: "Couldn’t save room settings.")
             return false
         }
+        initialPurpose = purpose
+        initialNotes = notes
+        initialRouting = routing
         return true
     }
 }

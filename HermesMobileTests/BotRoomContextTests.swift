@@ -48,6 +48,65 @@ import XCTest
         XCTAssertEqual(reader.context?.routing, "future-mode")
     }
 
+    func testSavingOnlyPurposePreservesNewerPolledNotesAndOmitsUnchangedRouting() async throws {
+        let wire = RoomWire()
+        wire.members = [
+            .object(["member_id": .string("m1"), "profile": .string("alpha")]),
+            .object(["member_id": .string("m2"), "profile": .string("beta")])
+        ]
+        wire.context = .object(["purpose": .string("A"), "notes": .string("N1"),
+                                "routing": .string("lead"), "lead_member_id": .string("m1")])
+        let reader = makeReader(wire)
+        defer { reader.close() }
+        await reader.open()
+        let draft = BotRoomSettingsDraft(context: try XCTUnwrap(reader.context))
+
+        wire.context = .object(["purpose": .string("A"), "notes": .string("N2"),
+                                "routing": .string("everyone"), "lead_member_id": .string("")])
+        await reader.poll()
+
+        draft.purpose = "B"
+        let saved = await draft.save(in: reader)
+        XCTAssertTrue(saved)
+        let params = try XCTUnwrap(wire.writes.last?.1)
+        XCTAssertEqual(params["purpose"], .string("B"))
+        XCTAssertEqual(params["notes"], .string("N2"))
+        XCTAssertNil(params["routing"])
+        XCTAssertNil(params["lead_member_id"])
+        XCTAssertEqual(reader.context?.purpose, "B")
+        XCTAssertEqual(reader.context?.notes, "N2")
+        XCTAssertEqual(reader.context?.routing, "everyone")
+        XCTAssertNil(reader.context?.leadMemberID)
+    }
+
+    func testChangingLeadSendsUpdatedLeadAndUsesLatestUntouchedText() async throws {
+        let wire = RoomWire()
+        wire.members = [
+            .object(["member_id": .string("m1"), "profile": .string("alpha")]),
+            .object(["member_id": .string("m2"), "profile": .string("beta")])
+        ]
+        wire.context = .object(["purpose": .string("A"), "notes": .string("N1"),
+                                "routing": .string("lead"), "lead_member_id": .string("m1")])
+        let reader = makeReader(wire)
+        defer { reader.close() }
+        await reader.open()
+        let draft = BotRoomSettingsDraft(context: try XCTUnwrap(reader.context))
+
+        wire.context = .object(["purpose": .string("A2"), "notes": .string("N1"),
+                                "routing": .string("lead"), "lead_member_id": .string("m1")])
+        await reader.poll()
+
+        draft.routing = .lead("m2")
+        let saved = await draft.save(in: reader)
+        XCTAssertTrue(saved)
+        let params = try XCTUnwrap(wire.writes.last?.1)
+        XCTAssertEqual(params["purpose"], .string("A2"))
+        XCTAssertEqual(params["notes"], .string("N1"))
+        XCTAssertEqual(params["routing"], .string("lead"))
+        XCTAssertEqual(params["lead_member_id"], .string("m2"))
+        XCTAssertEqual(reader.context?.leadMemberID, "m2")
+    }
+
     func testSavingLeadAndEveryoneSendsRequiredFieldsAndUsesTheAcknowledgedContext() async throws {
         let wire = RoomWire()
         wire.context = .object([:])
