@@ -857,9 +857,53 @@ import XCTest
         wire.driverStatus = RoomFixture.status()
         await reader.poll()
         XCTAssertFalse(reader.finishingStop)
-        XCTAssertFalse(reader.showsStop)
+        XCTAssertNil(reader.stopControl)
         XCTAssertFalse(reader.mayStop)
         reader.close()
+    }
+
+    func testSendStaysAvailableWhileMembersWork() async {
+        let wire = RoomWire(); wire.driverStatus = RoomFixture.status(running: 1)
+        let reader = makeReader(wire); await reader.open()
+        defer { reader.close() }
+        reader.draft = "follow up"
+        XCTAssertEqual(reader.primaryAction(in: nil), .send(enabled: true))
+        XCTAssertEqual(reader.stopControl, .stop(enabled: true))
+        await reader.send()
+        XCTAssertEqual(wire.writes.map(\.0), ["groups.send"])
+    }
+
+    func testAnUnresolvedSendTurnsThePrimaryActionIntoRetry() async {
+        let wire = RoomWire(); wire.driverStatus = RoomFixture.status(running: 1)
+        let reader = makeReader(wire); await reader.open()
+        defer { reader.close() }
+        reader.draft = "did this land?"
+        wire.writeFailure = BotFailure.transport
+        await reader.send()
+        XCTAssertEqual(reader.primaryAction(in: nil), .retry(enabled: true))
+        XCTAssertEqual(reader.stopControl, .stop(enabled: true))
+
+        wire.onDisconnect?(BotFailure.transport)
+        XCTAssertNotEqual(reader.link, .live)
+        XCTAssertEqual(reader.primaryAction(in: nil), .retry(enabled: false))
+    }
+
+    func testStopControlFollowsRoomWork() async {
+        let wire = RoomWire()
+        let reader = makeReader(wire); await reader.open()
+        defer { reader.close() }
+        XCTAssertNil(reader.stopControl)
+
+        wire.driverStatus = RoomFixture.status(running: 1)
+        await reader.poll()
+        XCTAssertEqual(reader.stopControl, .stop(enabled: true))
+
+        await reader.stop()
+        XCTAssertEqual(reader.stopControl, .stopping)
+
+        wire.driverStatus = RoomFixture.status()
+        await reader.poll()
+        XCTAssertNil(reader.stopControl)
     }
 
     func testAcceptedSendStopAndApprovalPublishFeedbackAndRejectionsDoNot() async throws {

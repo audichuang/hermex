@@ -100,3 +100,9 @@ event is absent, restore the text and ask the user to attach the files again.
 A failed poll leaves the send uncertain while delivery is unconfirmed.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Send stays available while the room works; Stop lives in the navigation bar
+
+Room sends do not depend on whether members are currently working: the host accepts `groups.send` while work is active, and Hermes Desktop keeps Send available during work (`canonical-group-workspace.tsx`) while placing Stop in the room header (`group-room-ui.tsx`, `canonical-group-header.tsx`). Only an in-flight command (`busy`) or an unresolved send in that composer blocks ordinary Send; an unresolved send turns the composer's primary action into Retry (`BotRoomReader.primaryAction(in:)`). Keeping Stop in the navigation bar's trailing toolbar (`BotRoomReader.stopControl`) on both overview and thread views leaves it reachable even while the user is composing a draft, unlike 1:1 chat's empty-draft stop toggle.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`, `HermesMobile/Features/Bots/BotRoomComposerView.swift`, `HermesMobile/Features/Bots/BotRoomView.swift`

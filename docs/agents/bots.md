@@ -2302,18 +2302,21 @@ carry through. Room uploads bypass chat image compression.
 A lost reply preserves the draft and reports an unknown outcome. Reconnect only
 reads state/history. A matching user message in the loaded log resolves the
 unknown outcome, shows the message, and clears that composer's draft if it
-still matches. Only the explicit Retry send button reuses the original id,
-thread, text and attachment manifest. Ordinary Send stays disabled in that
-composer while its outcome is unresolved. Overview and each thread keep separate
-drafts and uncertain sends.
+still matches. Only the explicit Retry send action (both the composer primary button and the
+Retry send pill) reuses the original id, thread, text and attachment manifest.
+Ordinary Send stays disabled in that composer while its outcome is unresolved.
+Overview and each thread keep separate drafts and uncertain sends.
 Pending log suppression matches the exact server event identity, not the thread,
 so earlier user messages in a continued thread remain visible.
 Pending commands are invalidated before a room closes or backgrounds. Drafts and
 uncertain commands stay with that room reader in memory, never another connection.
 
-Stop targets every bot in the room without confirmation. Its `cancelled` receipt
-is informational; the status stays Stopping until a subsequent state read reports
-no stopping tasks. Queued/running counts govern whether Stop can be tapped.
+Sending stays available while members are working. Stop targets every bot in the
+room without confirmation from the navigation bar's trailing toolbar item on both
+the room overview and thread detail whenever the room is working or stopping, and
+hides when idle. Its `cancelled` receipt is informational; the toolbar item stays
+disabled on `Stopping…` until a subsequent state read reports no stopping tasks.
+Queued/running counts govern whether Stop can be tapped.
 
 Approvals use the existing request card with only `once` and `deny`. Dispatch
 revalidates the room, socket owner, authority epoch and exact member/task/generation/
@@ -2376,7 +2379,10 @@ only to the app target; the share extension and Live Activity do not manage room
 The room composer has one action pill (`BotComposerPill`) for requests, errors, reconnect,
 Update sign-in and retry; a Hermes chat borrows its Update sign-in. In rooms, command
 errors and uncertain-send recovery take precedence over a blocked member's request; its
-inline action card remains available. Routine Working/Connecting banners are omitted. Room
+inline action card remains available. Routine Working/Connecting banners are omitted. The
+composer's primary button stays Send while members work and switches to Retry when that
+composer has an uncertain send (`BotRoomReader.primaryAction(in:)`); the room-wide Stop
+control lives in the navigation bar trailing toolbar (`BotRoomReader.stopControl`). Room
 requests link to their cards; Stop and uncertain-send guards remain in effect.
 
 Rooms have no elapsed row: the tested `groups.state` contract exposes aggregate

@@ -2,6 +2,16 @@ import CryptoKit
 import Foundation
 import Observation
 
+enum BotRoomPrimaryAction: Equatable {
+    case send(enabled: Bool)
+    case retry(enabled: Bool)
+}
+
+enum BotRoomStopControl: Equatable {
+    case stop(enabled: Bool)
+    case stopping
+}
+
 @MainActor @Observable final class BotRoomReader {
     enum Link: Equatable { case idle, connecting, live, stopped }
     let key: BotRoomKey
@@ -268,9 +278,19 @@ import Observation
     }
     var showsComposer: Bool { !foreignAuthority }
     var showsWelcome: Bool { link == .live && !hasEarlier && !BotRoomEvent.hasConversation(in: events) }
-    var showsStop: Bool { status.working || status.stopping > 0 || awaitingStop }
+    var stopControl: BotRoomStopControl? {
+        if finishingStop { return .stopping }
+        if status.working { return .stop(enabled: mayStop) }
+        return nil
+    }
     var mayStop: Bool { allows("groups.stop") && !busy && !awaitingStop && status.stopping == 0 && status.stoppable > 0 }
     var maySend: Bool { maySend(in: nil) }
+    func primaryAction(in threadID: String?) -> BotRoomPrimaryAction {
+        if uncertainSend(in: threadID) != nil {
+            return .retry(enabled: mayResend(in: threadID))
+        }
+        return .send(enabled: maySend(in: threadID))
+    }
     func mayEditDraft(in threadID: String?) -> Bool { !busy && uncertainSend(in: threadID) == nil }
     func maySend(in threadID: String?) -> Bool {
         guard allows("groups.send"), mayEditDraft(in: threadID), let attachments = uploadedAttachments(in: threadID)
