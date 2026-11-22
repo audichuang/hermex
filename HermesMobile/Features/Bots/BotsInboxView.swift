@@ -335,8 +335,9 @@ import SwiftUI
 
     private func row(_ profile: BotProfile, dimmed: Bool) -> some View {
         Button { inbox.selection.profile = profile } label: {
-            BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                        status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
+            BotInboxRow(profile: profile, roster: inbox.profiles, avatar: inbox.avatars[profile.id],
+                        unread: inbox.isUnread(profile), status: inbox.liveStatuses[profile.id],
+                        statusIsStale: inbox.liveStatusesAreStale)
         }
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
@@ -834,38 +835,46 @@ private struct BotRoomHeroTile: View {
     }
 }
 
-private struct BotInboxRow: View {
+struct BotInboxRow: View {
+    struct Summary: Equatable {
+        let chip: String?
+        let subline: String
+        let isFromBot: Bool
+    }
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let profile: BotProfile
+    let roster: [BotProfile]
     let avatar: UIImage?
     let unread: Bool
     let status: BotLiveStatus?
     let statusIsStale: Bool
-    private var chip: String? {
-        guard let description = profile.description, description.count <= 24,
-              profile.preview?.isEmpty == false else { return nil }
-        return description
-    }
-    private var subline: String {
-        if let preview = profile.preview, !preview.isEmpty { return preview }
-        return profile.description ?? profile.id
+    var summary: Summary {
+        let parsed = BotPreviewText.parse(profile.preview, roster: roster)
+        if parsed.hasContent {
+            let chip = profile.description.flatMap { $0.count <= 24 ? $0 : nil }
+            return Summary(chip: chip, subline: parsed.displayLine, isFromBot: parsed.fromBot != nil)
+        }
+        return Summary(chip: nil, subline: profile.description ?? profile.id, isFromBot: false)
     }
     var body: some View {
+        let summary = self.summary
         HStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 if dynamicTypeSize.isAccessibilitySize {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) { nameAndChip }
+                    HStack(alignment: .firstTextBaseline, spacing: 8) { nameAndChip(summary.chip) }
                     trailingSlot
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        nameAndChip
+                        nameAndChip(summary.chip)
                         Spacer(minLength: 8)
                         trailingSlot
                     }
                 }
                 HStack(spacing: 8) {
-                    Text(subline).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
+                    Text(verbatim: summary.subline).font(AppFont.body()).italic(summary.isFromBot)
+                        .foregroundStyle(.appSecondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if unread { BotUnreadDot() }
                 }
@@ -874,7 +883,7 @@ private struct BotInboxRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    @ViewBuilder private var nameAndChip: some View {
+    @ViewBuilder private func nameAndChip(_ chip: String?) -> some View {
         Text(profile.name).font(AppFont.headline()).lineLimit(1)
         if let chip {
             Text(chip).font(AppFont.footnote()).foregroundStyle(.appSecondary).lineLimit(1)
