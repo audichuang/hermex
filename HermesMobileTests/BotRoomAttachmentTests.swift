@@ -219,6 +219,23 @@ import XCTest
         XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 0), .timedOut)
     }
 
+    func testALoadedPreviewSurvivesAReconnect() throws {
+        let photo = try request("photo")
+        var slot = BotRoomPreviewSlot()
+        slot.aim(at: photo)
+        XCTAssertNil(slot.load(mayDownload: false), "Nothing loads before the room is live")
+        XCTAssertEqual(slot.load(mayDownload: true), photo)
+        slot.image = UIImage()
+
+        slot.aim(at: photo)
+        XCTAssertNotNil(slot.image, "Going idle and live again keeps the picture on screen")
+        XCTAssertNil(slot.load(mayDownload: true), "A shown picture is not downloaded again")
+        slot.aim(at: nil)
+        XCTAssertNil(slot.image, "Scrolling far away releases the picture")
+        slot.aim(at: photo)
+        XCTAssertEqual(slot.load(mayDownload: true), photo)
+    }
+
     private static func rootFiles(_ thread: BotRoomThread, _ reader: BotRoomReader) -> String? {
         thread.root.flatMap { reader.attachmentLists[$0.seq]?.summary }
     }

@@ -7,15 +7,15 @@ struct BotRoomAttachmentCard: View {
 
     @State private var observer = UUID()
     @State private var nearViewport = false
-    @State private var image: UIImage?
+    @State private var preview = BotRoomPreviewSlot()
     @State private var showingFile = false
 
     private var request: BotRoomAttachment.Request? {
         reader.mayDownload ? file.request : nil
     }
 
-    private var previewRequest: BotRoomAttachment.Request? {
-        nearViewport && file.attachment.canPreview ? request : nil
+    private var previewTarget: BotRoomAttachment.Request? {
+        nearViewport && file.attachment.canPreview ? file.request : nil
     }
 
     var body: some View {
@@ -35,18 +35,18 @@ struct BotRoomAttachmentCard: View {
         } action: {
             nearViewport = $0
         }
-        .onChange(of: previewRequest, initial: true) { _, request in
+        .onChange(of: previewTarget, initial: true) { _, target in preview.aim(at: target) }
+        .onChange(of: preview.load(mayDownload: reader.mayDownload), initial: true) { _, request in
             reader.cancelAttachmentPreview(observer: observer)
-            image = nil
             if let request {
                 reader.previewAttachment(request, namespace: transcriptMediaCacheNamespace, observer: observer) {
-                    image = $0
+                    preview.image = $0
                 }
             }
         }
         .onDisappear {
             reader.cancelAttachmentPreview(observer: observer)
-            image = nil
+            preview.aim(at: nil)
             nearViewport = false
         }
         .sheet(isPresented: $showingFile) {
@@ -60,7 +60,7 @@ struct BotRoomAttachmentCard: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if request != nil, let image {
+            if let image = preview.image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()

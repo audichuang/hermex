@@ -87,6 +87,23 @@ struct BotRoomAttachmentList: Equatable {
     }
 }
 
+/// One card's preview picture. The picture follows what the card wants to show, not whether the room is
+/// live, so a reconnect keeps it on screen instead of collapsing the row and loading it again.
+struct BotRoomPreviewSlot {
+    var image: UIImage?
+    private var target: BotRoomAttachment.Request?
+
+    mutating func aim(at target: BotRoomAttachment.Request?) {
+        guard target != self.target else { return }
+        self.target = target
+        image = nil
+    }
+
+    func load(mayDownload: Bool) -> BotRoomAttachment.Request? {
+        image == nil && mayDownload ? target : nil
+    }
+}
+
 @MainActor final class BotRoomPreviewQueue {
     struct Key: Hashable {
         let wire: ObjectIdentifier
