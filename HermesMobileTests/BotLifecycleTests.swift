@@ -31,6 +31,52 @@ import XCTest
         XCTAssertFalse(BotProfileName.isValid(""))
     }
 
+    func testNonASCIIProfileNamesEncodeDeterministicTokensAndCutOnHyphenBoundaries() {
+        XCTAssertEqual(BotProfileName.slug(from: "小助手"), "u5c0f-u52a9-u624b")
+        XCTAssertEqual(BotProfileName.slug(from: "한글"), "ud55c-uae00")
+        XCTAssertEqual(BotProfileName.slug(from: "Résumé"), "resume")
+        XCTAssertEqual(BotProfileName.slug(from: "Re\u{0301}sume\u{0301}"), "resume")
+        XCTAssertEqual(BotProfileName.slug(from: "test机器人"), "test-u673a-u5668-u4eba")
+        XCTAssertEqual(BotProfileName.slug(from: "u5c0f-u52a9-u624b"), "u5c0f-u52a9-u624b")
+        XCTAssertNotEqual(BotProfileName.slug(from: "ガ"), BotProfileName.slug(from: "カ"))
+        XCTAssertEqual(BotProfileName.slug(from: "🤖"), "")
+
+        let long = BotProfileName.slug(from: String(repeating: "小助手", count: 7))
+        XCTAssertEqual(long, "u5c0f-u52a9-u624b-u5c0f-u52a9-u624b-u5c0f-u52a9-u624b-u5c0f")
+        XCTAssertTrue(BotProfileName.isValid(long))
+
+        XCTAssertEqual(BotProfileName.slug(from: String(repeating: "a", count: 64) + "-小"),
+                       String(repeating: "a", count: 64))
+        XCTAssertEqual(BotProfileName.slug(from: String(repeating: "a", count: 63) + "-小"),
+                       String(repeating: "a", count: 63))
+    }
+
+    func testLongASCIIAndAccentedProfileNamesTruncateAtHyphenBoundaries() {
+        let longASCII = String(repeating: "a", count: 60) + " bbbbbbbb"
+        XCTAssertEqual(BotProfileName.slug(from: longASCII), String(repeating: "a", count: 60))
+
+        let longAccented = "Café " + String(repeating: "a", count: 60) + " bbbbbbbb"
+        XCTAssertEqual(BotProfileName.slug(from: longAccented), "cafe")
+    }
+
+    func testCreateWithCJKNameUsesEncodedProfileIDAndKeepsDisplayTitle() async throws {
+        var created: [String] = []
+        let (creator, wire) = try makeCreator(roster: []) { created.append($0) }
+        creator.setTitle("小助手")
+        XCTAssertEqual(creator.name, "u5c0f-u52a9-u624b")
+        XCTAssertTrue(creator.canCreate)
+        XCTAssertNil(creator.nameProblem)
+
+        await creator.create()
+
+        XCTAssertEqual(wire.calls[0].1["name"], .string("u5c0f-u52a9-u624b"))
+        XCTAssertEqual(wire.calls[1].1["name"], .string("u5c0f-u52a9-u624b"))
+        XCTAssertEqual(wire.calls[1].1["ui_meta"]?["hermes-bots"]["title"], .string("小助手"))
+        XCTAssertEqual(wire.calls[3].1["profile"], .string("u5c0f-u52a9-u624b"))
+        XCTAssertEqual(creator.phase, .created)
+        XCTAssertEqual(created, ["u5c0f-u52a9-u624b"])
+    }
+
     func testTakenAndReservedNamesBlockCreateBeforeAnyWrite() throws {
         let (creator, wire) = try makeCreator(roster: [row("triage")])
         creator.setTitle("Triage")
@@ -117,7 +163,7 @@ import XCTest
                                                                      "sectionId": .string("desk"), "pinned": .bool(true)], description: "Sorts mail")))
         let (creator, wire) = try makeCreator(roster: [row("triage")], source: source)
         XCTAssertEqual(creator.draft.title, "Triage copy")
-        XCTAssertEqual(creator.name, "triage-copy")
+        XCTAssertEqual(creator.name, "triage-2")
         XCTAssertEqual(creator.draft.role, "Sorts mail")
         creator.setSharesCredentials(false)
         creator.setInstructions("Ignored for a copy"); creator.setSkipsBundledSkills(true)
@@ -134,8 +180,50 @@ import XCTest
         XCTAssertEqual(look["shape"], .string("drop")); XCTAssertEqual(look["color"], .string("#14b8a6"))
         XCTAssertEqual(look["title"], .string("Triage copy"))
         XCTAssertNil(look["sectionId"]); XCTAssertNil(look["pinned"], "Desktop organization stays with the original")
-        XCTAssertEqual(wire.calls[3].1["profile"], .string("triage-copy"), "the copy gets its own Bot Chat")
+        XCTAssertEqual(wire.calls[3].1["profile"], .string("triage-2"), "the copy gets its own Bot Chat")
         XCTAssertEqual(creator.phase, .created)
+    }
+
+    func testDuplicateNumbersFromSourceIDAndTruncatesBaseForLongIDs() throws {
+        let sixtyTwo = String(repeating: "a", count: 62)
+        let source62 = try XCTUnwrap(BotProfile(row(sixtyTwo)))
+        let (creator62, _) = try makeCreator(roster: [row(sixtyTwo)], source: source62)
+        XCTAssertEqual(creator62.name, sixtyTwo + "-2")
+        XCTAssertTrue(creator62.canCreate)
+        XCTAssertNil(creator62.nameProblem)
+
+        let sixtyFour = String(repeating: "b", count: 64)
+        let source64 = try XCTUnwrap(BotProfile(row(sixtyFour)))
+        let (creator64, _) = try makeCreator(roster: [row(sixtyFour)], source: source64)
+        XCTAssertEqual(creator64.name, String(repeating: "b", count: 62) + "-2")
+        XCTAssertEqual(creator64.name.count, 64)
+
+        let cjkID = "u6bcf-u65e5-u80a1-u7968-u5206-u6790-u5c0f-u52a9-u624b-u7532"
+        let cjkRow = row(cjkID, look: ["title": .string("每日股票分析小助手甲乙")])
+        let cjkSource = try XCTUnwrap(BotProfile(cjkRow))
+        let (cjkCreator, _) = try makeCreator(roster: [cjkRow], source: cjkSource)
+        XCTAssertEqual(cjkCreator.name, cjkID + "-2")
+        XCTAssertTrue(cjkCreator.canCreate)
+
+        let opsRoster = [row("ops"), row("ops-2"), row("ops-3")]
+        let opsSource = try XCTUnwrap(BotProfile(row("ops")))
+        let (opsCreator, _) = try makeCreator(roster: opsRoster, source: opsSource)
+        XCTAssertEqual(opsCreator.name, "ops-4")
+    }
+
+    func testRenamingADuplicateKeepsItsNumberedProfileIDAndSavesTheNewTitle() async throws {
+        let source = try XCTUnwrap(BotProfile(row("triage", look: ["title": .string("Triage")])))
+        let (creator, wire) = try makeCreator(roster: [row("triage")], source: source)
+        creator.setTitle("Renamed")
+        XCTAssertEqual(creator.name, "triage-2")
+
+        await creator.create()
+
+        XCTAssertEqual(creator.name, "triage-2")
+        XCTAssertEqual(wire.calls[0].1["name"], .string("triage-2"))
+        XCTAssertEqual(wire.calls[1].1["name"], .string("triage-2"))
+        XCTAssertEqual(wire.calls[1].1["ui_meta"]?["hermes-bots"]["title"], .string("Renamed"))
+        XCTAssertEqual(wire.calls[3].1["profile"], .string("triage-2"))
     }
 
     func testHostRefusingTheNameStopsBeforeLookAndChat() async throws {

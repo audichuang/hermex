@@ -3,25 +3,100 @@ import Observation
 
 enum BotProfileName {
     static let reserved: Set<String> = ["hermes", "default", "test", "tmp", "root", "sudo"]
+    private static let maxLength = 64
 
     static func slug(from title: String) -> String {
-        let folded = title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased()
         var result = ""
         var pendingDash = false
-        for scalar in folded.unicodeScalars {
-            if ("a"..."z").contains(scalar) || ("0"..."9").contains(scalar) || scalar == "_" {
+        for scalar in title.precomposedStringWithCanonicalMapping.unicodeScalars {
+            if scalar == "_" {
                 if pendingDash, !result.isEmpty { result.append("-") }
                 pendingDash = false
-                result.unicodeScalars.append(scalar)
-            } else { pendingDash = true }
+                result.append("_")
+            } else if isLetterOrNumber(scalar) {
+                if let ascii = foldedASCII(scalar) {
+                    if pendingDash, !result.isEmpty { result.append("-") }
+                    pendingDash = false
+                    result.append(ascii)
+                } else {
+                    if !result.isEmpty { result.append("-") }
+                    pendingDash = true
+                    result.append("u")
+                    result.append(String(scalar.value, radix: 16))
+                }
+            } else {
+                pendingDash = true
+            }
         }
-        return String(result.prefix(64))
+        return truncateAtTokenBoundary(result)
+    }
+
+    static func copyID(of sourceID: String, taken: Set<String>) -> String? {
+        for n in 2..<100 {
+            let suffix = "-\(n)"
+            let candidate = String(sourceID.prefix(maxLength - suffix.count)) + suffix
+            if !taken.contains(candidate) { return candidate }
+        }
+        return nil
     }
 
     static func isValid(_ name: String) -> Bool {
         guard let first = name.unicodeScalars.first, name.count <= 64, !reserved.contains(name) else { return false }
         guard ("a"..."z").contains(first) || ("0"..."9").contains(first) else { return false }
         return name.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" || $0 == "_" }
+    }
+
+    private static func isLetterOrNumber(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.properties.generalCategory {
+        case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+             .decimalNumber, .letterNumber, .otherNumber:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func foldedASCII(_ scalar: Unicode.Scalar) -> String? {
+        if scalar.isASCII {
+            if ("a"..."z").contains(scalar) || ("0"..."9").contains(scalar) { return String(scalar) }
+            if ("A"..."Z").contains(scalar) { return String(Unicode.Scalar(scalar.value + 32)!) }
+            return nil
+        }
+        var folded = ""
+        for part in String(scalar).decomposedStringWithCompatibilityMapping.unicodeScalars {
+            switch part.properties.generalCategory {
+            case .nonspacingMark, .spacingMark, .enclosingMark:
+                continue
+            default:
+                if ("a"..."z").contains(part) || ("0"..."9").contains(part) {
+                    folded.unicodeScalars.append(part)
+                } else if ("A"..."Z").contains(part) {
+                    folded.unicodeScalars.append(Unicode.Scalar(part.value + 32)!)
+                } else {
+                    return nil
+                }
+            }
+        }
+        return folded.isEmpty ? nil : folded
+    }
+
+    private static func truncateAtTokenBoundary(_ slug: String) -> String {
+        guard slug.count > maxLength else { return slug }
+        let cap = slug.index(slug.startIndex, offsetBy: maxLength)
+        let cut = slug[..<cap]
+        let sliced: Substring
+        if slug[cap] == "-" {
+            sliced = cut
+        } else if let dash = cut.lastIndex(of: "-"), dash > cut.startIndex {
+            sliced = cut[..<dash]
+        } else {
+            sliced = cut
+        }
+        var end = sliced.endIndex
+        while end > sliced.startIndex, sliced[sliced.index(before: end)] == "-" {
+            end = sliced.index(before: end)
+        }
+        return String(sliced[..<end])
     }
 }
 
@@ -61,6 +136,7 @@ enum BotProfileName {
     private(set) var note: String?
 
     private var taken: Set<String>
+    private let duplicateID: String?
     private var wire: (any BotTransport)?
     private var generation = 0
     private let store: BotConnectionStore
@@ -73,7 +149,9 @@ enum BotProfileName {
         self.server = server; self.connection = connection; self.source = source
         self.store = store ?? BotConnectionStore()
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }; self.onCreated = onCreated
-        taken = Set(roster.map(\.id))
+        let taken = Set(roster.map(\.id))
+        self.taken = taken
+        duplicateID = source.flatMap { BotProfileName.copyID(of: $0.id, taken: taken) }
         var draft = Draft()
         if let source {
             draft.title = String(localized: "\(source.name) copy")
@@ -89,7 +167,7 @@ enum BotProfileName {
         self.draft = draft
     }
 
-    var name: String { BotProfileName.slug(from: draft.title) }
+    var name: String { duplicateID ?? BotProfileName.slug(from: draft.title) }
     var nameIsTaken: Bool { taken.contains(name) }
     var hasStarted: Bool { !outcomes.isEmpty }
     var nameProblem: String? {
