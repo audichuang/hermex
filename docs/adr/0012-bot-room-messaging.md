@@ -22,7 +22,7 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
 ## Never resend room commands automatically
 
-`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail; only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure, and a lost reply never starts another command. A dispatched command with no reply stays in `uncertainSends`. For an attachment send, a retry rejection before admission triggers the log check below.
+`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail. Only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure. A matching server event id in the loaded log settles an uncertain send without resending. For an attachment send, a retry rejection before admission triggers the log check below.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
@@ -32,9 +32,11 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
-## Hide pending room sends until acknowledged
+## Hide in-flight room sends and reconcile uncertain sends from the log
 
-A poll can race the send acknowledgment, so `BotRoomReader.publishLog` filters out the user's own `message.user` events whose event id matches a pending or uncertain send; a message must not show as sent before the RPC result is validated. `BotRoomReader.saveRecentTranscript` likewise does not save while a command is busy or a disband is uncertain, so pending send bubbles stay private until their acknowledgment is known.
+A poll can race the send acknowledgment, so `BotRoomReader.publishLog` hides the matching `message.user` event while the RPC result is pending. Once the send becomes uncertain, that exact event confirms delivery and frees its composer. The host derives the event id from the client id and rejects a retry that changes the payload. Missing history leaves the draft available for explicit Retry.
+
+Desktop lets a send finish through navigation, shows the log event as soon as it arrives, and exposes Retry on the send button once the outcome is uncertain. Hermex suspends the room socket on backgrounding or navigation, so a lost reply can leave the send hidden and the composer locked even when the host received it. Matching the event in already-loaded history resolves that case immediately, even if the next poll has no new events.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
@@ -93,9 +95,8 @@ the host can remove them. A committed event retains its attachments, so an
 explicit retry may still be safe after that deadline. The canonical gateway
 reports expired manifests as `invalid_params`. A standalone gateway reports
 `5112` with `data.admitted: false`. After either rejection, a successful poll
-checks the exact server event ID. If the event exists, clear the draft only
-when it still matches the delivered text. If the event is absent, restore its
-text and ask the user to attach the files again. A failed poll leaves the send
-uncertain.
+lets the reader reconcile a matching event through the same log check. If the
+event is absent, restore the text and ask the user to attach the files again.
+A failed poll leaves the send uncertain while delivery is unconfirmed.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`

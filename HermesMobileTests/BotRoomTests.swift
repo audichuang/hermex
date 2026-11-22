@@ -1,4 +1,5 @@
 import CryptoKit
+import Observation
 import XCTest
 @testable import HermesMobile
 
@@ -596,6 +597,30 @@ import XCTest
         subject.close()
     }
 
+    func testAThreadReplyThatLandedSettlesOnlyItsOwnContext() async throws {
+        let wire = RoomWire(), reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        reader.draft = "root"
+        await reader.send()
+        let thread = try XCTUnwrap(reader.events.first?.threadID)
+        reader.draft = "separate overview draft"
+        reader.setDraft("thread reply", in: thread)
+
+        wire.loseWrite = true
+        await reader.send(threadID: thread)
+        XCTAssertNotNil(reader.uncertainSend(in: thread))
+        wire.loseWrite = false
+        await reader.open()
+
+        XCTAssertNil(reader.uncertainSend(in: thread))
+        XCTAssertEqual(reader.draft(in: thread), "")
+        XCTAssertTrue(reader.mayEditDraft(in: thread))
+        XCTAssertEqual(reader.threads.first?.events.compactMap { $0.payload["text"].text }, ["root", "thread reply"])
+        XCTAssertEqual(reader.draft, "separate overview draft")
+        XCTAssertEqual(wire.writes.count, 2)
+    }
+
     func testThreadDraftsAndUncertainRetriesStayWithTheirOriginalContext() async throws {
         let wire = RoomWire()
         let subject = makeReader(wire)
@@ -603,14 +628,14 @@ import XCTest
         let thread = try XCTUnwrap(subject.events.first?.threadID)
         subject.draft = "separate overview draft"
         subject.setDraft("uncertain reply", in: thread)
-        wire.loseWrite = true; await subject.send(threadID: thread)
+        wire.writeFailure = BotFailure.transport; await subject.send(threadID: thread)
         let original = wire.writes[1].1
         XCTAssertEqual(subject.draft, "separate overview draft")
         XCTAssertEqual(subject.draft(in: thread), "uncertain reply")
         XCTAssertNil(subject.uncertainSend)
         XCTAssertEqual(subject.uncertainSend(in: thread)?.threadID, thread)
-        wire.loseWrite = false; await subject.open()
-        XCTAssertEqual(subject.events.count, 1, "Replay cannot turn an uncertain reply into an acknowledged bubble")
+        wire.writeFailure = nil; await subject.open()
+        XCTAssertEqual(subject.events.count, 1, "An undelivered reply must not appear as a message")
         await subject.send()
         XCTAssertNotEqual(wire.writes[2].1["payload"]?["thread_id"].text, thread)
         XCTAssertEqual(subject.draft(in: thread), "uncertain reply")
@@ -669,16 +694,83 @@ import XCTest
         XCTAssertEqual(log.events.map(\.seq), [1, 2, 3])
     }
 
+    func testALostSendThatLandedSettlesFromTheLogWithoutResending() async throws {
+        let wire = RoomWire(), reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        reader.draft = "keep me"
+        wire.loseWrite = true
+        await reader.send()
+        XCTAssertNotNil(reader.uncertainSend)
+        wire.loseWrite = false
+        await reader.open()
+
+        XCTAssertNil(reader.uncertainSend)
+        XCTAssertEqual(reader.draft, "")
+        XCTAssertEqual(reader.events.count, 1)
+        XCTAssertEqual(wire.writes.count, 1)
+        XCTAssertNil(reader.commandMessage)
+        XCTAssertNil(reader.feedback)
+
+        reader.draft = "next"
+        XCTAssertTrue(reader.maySend)
+        await reader.send()
+        XCTAssertEqual(wire.writes.count, 2)
+        XCTAssertNotEqual(wire.writes.first?.1["event_id"], wire.writes.last?.1["event_id"])
+    }
+
+    func testAnUncertainSendAlreadyReadBeforeTheLossSettlesWithoutNewEvents() async {
+        for suspending in [false, true] {
+            let wire = RoomWire(), reader = makeReader(wire)
+            await reader.open()
+            defer { reader.close() }
+            reader.draft = "read before losing the reply"
+            let parked = expectation(description: "send waiting for reply (suspending: \(suspending))")
+            wire.holdWrite = true; wire.onWriteHeld = { parked.fulfill() }
+            let send = Task { await reader.send() }
+            await fulfillment(of: [parked], timeout: 2)
+            await reader.poll()
+            XCTAssertTrue(reader.events.isEmpty)
+            let logStarts = wire.logStarts
+
+            if suspending { reader.suspend() }
+            wire.failHeldWrite(BotFailure.transport)
+            await send.value
+
+            XCTAssertNil(reader.uncertainSend, "suspending: \(suspending)")
+            XCTAssertEqual(reader.events.count, 1)
+            XCTAssertEqual(reader.draft, "")
+            XCTAssertEqual(wire.logStarts, logStarts)
+        }
+    }
+
+    func testSettlingASendDoesNotRepublishOnAnIdlePoll() async {
+        let wire = RoomWire(), reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        reader.draft = "already delivered"
+        wire.loseWrite = true
+        await reader.send()
+        wire.loseWrite = false
+        await reader.open()
+        XCTAssertEqual(reader.events.count, 1)
+
+        let changes = ObservationChangeProbe()
+        withObservationTracking { _ = reader.events } onChange: { changes.increment() }
+        await reader.poll()
+        XCTAssertEqual(changes.value, 0)
+    }
+
     func testLostSendKeepsDraftAndOnlyExplicitRetryReusesIdentity() async throws {
         let wire = RoomWire(); let reader = makeReader(wire)
         await reader.open(); reader.draft = "keep me"
-        wire.loseWrite = true
+        wire.writeFailure = BotFailure.transport
         await reader.send()
         XCTAssertEqual(reader.draft, "keep me")
         XCTAssertNotNil(reader.uncertainSend)
         XCTAssertTrue(reader.commandMessage?.contains("Outcome unknown") == true)
         XCTAssertEqual(wire.writes.count, 1)
-        wire.loseWrite = false
+        wire.writeFailure = nil
         await reader.open()
         XCTAssertEqual(wire.writes.count, 1, "Reconnect must never resend")
         await reader.send()
@@ -1121,7 +1213,7 @@ enum RoomFixture {
     var holdWrite = false
     var onWriteHeld: (() -> Void)?
     private var writeReply: BotJSON?
-    private var heldWrite: CheckedContinuation<BotJSON, Never>?
+    private var heldWrite: CheckedContinuation<BotJSON, Error>?
     private var sentEvents: [String: BotJSON] = [:]
     var holdState = false
     var onHeld: (() -> Void)?
@@ -1175,7 +1267,7 @@ enum RoomFixture {
             if loseWrite { onDisconnect?(BotFailure.transport); throw BotFailure.transport }
             if holdWrite {
                 writeReply = result
-                return await withCheckedContinuation { heldWrite = $0; onWriteHeld?() }
+                return try await withCheckedThrowingContinuation { heldWrite = $0; onWriteHeld?() }
             }
             return result
         }
@@ -1235,6 +1327,10 @@ enum RoomFixture {
     }
     func releaseWrite() {
         if let writeReply { heldWrite?.resume(returning: writeReply) }
+        heldWrite = nil; writeReply = nil
+    }
+    func failHeldWrite(_ error: Error) {
+        heldWrite?.resume(throwing: error)
         heldWrite = nil; writeReply = nil
     }
     func releaseState(latest: Int) {

@@ -2300,7 +2300,9 @@ The photo picker reads the current Photos rendition so crops and redactions
 carry through. Room uploads bypass chat image compression.
 
 A lost reply preserves the draft and reports an unknown outcome. Reconnect only
-reads state/history. Only the explicit Retry send button reuses the original id,
+reads state/history. A matching user message in the loaded log resolves the
+unknown outcome, shows the message, and clears that composer's draft if it
+still matches. Only the explicit Retry send button reuses the original id,
 thread, text and attachment manifest. Ordinary Send stays disabled in that
 composer while its outcome is unresolved. Overview and each thread keep separate
 drafts and uncertain sends.
