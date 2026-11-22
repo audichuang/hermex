@@ -29,6 +29,7 @@ enum BotRoomStopControl: Equatable {
     @ObservationIgnored private let attachmentPreviews = BotRoomPreviewQueue()
     @ObservationIgnored private var sentAt: ContinuousClock.Instant?
     private(set) var status = BotRoomStatus(.null)
+    private(set) var context: BotRoomContext?
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
     private(set) var needsSignIn = false
@@ -231,7 +232,7 @@ enum BotRoomStopControl: Equatable {
     @ObservationIgnored private var contextRead = false
     @discardableResult
     private func readContextIfNeeded(_ client: any BotTransport) async throws -> Bool {
-        guard !contextRead, !log.hasRoutingContext, !status.activity.isEmpty else { return false }
+        guard context == nil, !contextRead, !log.hasRoutingContext, !status.activity.isEmpty else { return false }
         contextRead = true
         let head = try await client.call(.groupsLog(roomID: key.roomID, sinceSeq: 0, limit: min(capabilities.pageLimit, 20)))
         try check(client)
@@ -306,6 +307,7 @@ enum BotRoomStopControl: Equatable {
 
     func close() {
         suspend(); log = BotRoomLog(); events = []; threads = []; hasEarlier = false
+        if context != nil { context = nil }
         if !attachmentLists.isEmpty { attachmentLists = [:] }
         if !pauses.isEmpty { pauses = [:] }
         if !pausedThreadIDs.isEmpty { pausedThreadIDs = [] }
@@ -517,8 +519,10 @@ enum BotRoomStopControl: Equatable {
     }
 
     var showsRename: Bool { !foreignAuthority && capabilities.methods.contains("groups.rename") }
+    var showsSettings: Bool { !foreignAuthority && capabilities.methods.contains("groups.context") && context != nil }
     var showsDisband: Bool { !foreignAuthority && capabilities.methods.contains("groups.disband") }
     var mayRename: Bool { allows("groups.rename") && !busy }
+    var maySaveContext: Bool { context != nil && allows("groups.context") && !busy }
     var finishingStop: Bool { status.stopping > 0 || awaitingStop }
     var mayDisband: Bool { allows("groups.disband") && !busy && !finishingStop }
 
@@ -531,6 +535,22 @@ enum BotRoomStopControl: Equatable {
             self.stateRevision += 1
             self.room = updated; self.onChanged(updated)
         })
+    }
+
+    func saveContext(_ draft: HermesCall.RoomContext) async -> Bool {
+        guard maySaveContext else { return false }
+        var saved = false
+        await command(.groupsContext(roomID: key.roomID, eventID: UUID().uuidString, draft), validate: {
+            if draft.routing == "lead", !self.room.members.contains(where: { $0.id == draft.leadMemberID }) {
+                throw BotFailure.stale
+            }
+        }, accept: { result in
+            guard let updated = BotRoomContext(result["context"]) else { throw BotFailure.unsupported }
+            self.stateRevision += 1
+            if self.context != updated { self.context = updated }
+            saved = true
+        })
+        return saved
     }
 
     func disband() async {
@@ -740,6 +760,8 @@ enum BotRoomStopControl: Equatable {
             ApprovalSummaries.shared.retain([], in: previousSummaryScope)
         }
         let nextStatus = BotRoomStatus(value["driver_status"])
+        let nextContext = BotRoomContext(value["context"])
+        if context != nextContext { context = nextContext }
         let pendingSummaries = nextStatus.actions.filter { $0.approval != nil }.map {
             ApprovalSummaries.Key(scope: summaryScope, request: .room($0.id))
         }

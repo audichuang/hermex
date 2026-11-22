@@ -149,7 +149,7 @@ import SwiftUI
                         onRetrySend: { Task { await reader.send(retry: true, threadID: threadID) } })
                 }
                 if let round = BotRoomRound.build(events: reader.roundEvents, activity: reader.status.activity,
-                                                  room: reader.room, threadID: threadID) {
+                                                  room: reader.room, threadID: threadID, context: reader.context) {
                     BotRoomActivityStrip(round: round)
                 }
                 if reader.showsComposer {
