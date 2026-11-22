@@ -416,6 +416,11 @@ struct BotRoomActivityStrip: View {
     }
 
     static func progress(_ round: BotRoomRound) -> String? {
+        if round.routingBy == nil, let current = round.roundNumber, let max = round.maxRounds {
+            return current <= max
+                ? String(localized: "Round \(current) of \(max)")
+                : String(localized: "Round \(current)")
+        }
         guard round.seats.count > 1 else { return nil }
         return "\(min(round.finished + 1, round.seats.count))/\(round.seats.count)"
     }

@@ -109,3 +109,25 @@ Lives in: `HermesMobile/Features/Bots/BotRoomScheduledPost.swift`,
 `HermesMobile/Features/Bots/BotInbox.swift`, `HermesMobile/Features/Bots/BotRoomView.swift`,
 `HermesMobile/Features/Bots/BotRoomProfileView.swift`, and
 `HermesMobile/Features/Bots/BotHistoryCache.swift`
+
+## Derive member latest outcomes per thread from the loaded room log
+
+The room profile displays each member's live activity (`Working` with optional tool, `Queued`,
+or `Stopping…`) and, when idle, their latest turn outcome (`Failed` with localized reason via
+`BotRoomReason.text(code:detail:)`, `No answer`, `Cancelled`, `Replied`, or `Skipped`).
+`BotRoomReader.publishLog()` derives `memberOutcomes` from `roundEvents` (which includes
+`turn.settled` signals) and compares before assigning so unchanged polls do not invalidate
+views.
+
+Matching Desktop's `memberOutcomes` rules, each thread tracks its current discussion as the
+`event_id` of its newest `message.user`. Only terminal turns (`turn.settled`, `turn.failed`,
+`turn.cancelled`, and `turn.deferred` with `reason == "member_unavailable"`) whose
+`discussion_event_id` matches their thread's current discussion count; a newer user message in
+the same thread retires older outcomes there without affecting other threads, and later events
+for a member overwrite earlier ones. Because Hermex loads rooms in pages and disk-cached rows
+omit `discussion_event_id` and `turn.*`, outcomes reflect only loaded host-fetched events:
+members whose last turn predates the loaded window show no outcome rather than a stale one.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomMemberStatus.swift`,
+`HermesMobile/Features/Bots/BotRoomReader.swift`, and
+`HermesMobile/Features/Bots/BotRoomProfileView.swift`

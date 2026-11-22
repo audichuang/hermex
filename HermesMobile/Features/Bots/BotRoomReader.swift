@@ -28,6 +28,7 @@ enum BotRoomStopControl: Equatable {
     private(set) var pauses: [Int: BotRoomPause] = [:]
     private(set) var pausedThreadIDs: Set<String> = []
     private(set) var handoffs: [Int: [BotRoomHandoff]] = [:]
+    private(set) var memberOutcomes: [String: BotRoomMemberOutcome] = [:]
     private(set) var attachmentLists: [Int: BotRoomAttachmentList] = [:]
     @ObservationIgnored private let attachmentPreviews = BotRoomPreviewQueue()
     @ObservationIgnored private var sentAt: ContinuousClock.Instant?
@@ -191,6 +192,7 @@ enum BotRoomStopControl: Equatable {
             if !pauses.isEmpty { pauses = [:] }
             if !pausedThreadIDs.isEmpty { pausedThreadIDs = [] }
             if !handoffs.isEmpty { handoffs = [:] }
+            if !memberOutcomes.isEmpty { memberOutcomes = [:] }
         }
         recentOwner = cache.recent.begin(.init(key))
         if needsSignIn {
@@ -349,6 +351,7 @@ enum BotRoomStopControl: Equatable {
         if !pauses.isEmpty { pauses = [:] }
         if !pausedThreadIDs.isEmpty { pausedThreadIDs = [] }
         if !handoffs.isEmpty { handoffs = [:] }
+        if !memberOutcomes.isEmpty { memberOutcomes = [:] }
         hasRecentLog = false; restoredFromDisk = false
         status = BotRoomStatus(.null); lastAuthority = nil; runtimeDown = false
     }
@@ -935,6 +938,8 @@ enum BotRoomStopControl: Equatable {
         }
         let round = (unpending + log.signals).sorted { $0.seq < $1.seq }
         if roundEvents != round { roundEvents = round }
+        let nextOutcomes = BotRoomMemberOutcome.latest(in: round)
+        if memberOutcomes != nextOutcomes { memberOutcomes = nextOutcomes }
         let nextHandoffs = BotRoomHandoffs.find(in: round, members: room.members)
         if handoffs != nextHandoffs { handoffs = nextHandoffs }
         let nextPauses: [Int: BotRoomPause]

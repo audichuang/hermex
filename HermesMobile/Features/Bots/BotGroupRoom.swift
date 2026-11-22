@@ -69,6 +69,7 @@ struct BotRoomMemberActivity: Equatable {
     let startedAt: Date?
     let tool: String?
     let progressAt: Date?
+    let roundIndex: Int?
     init?(_ value: BotJSON) {
         guard let memberID = value["member_id"].text, !memberID.isEmpty else { return nil }
         switch value["status"].text {
@@ -81,6 +82,7 @@ struct BotRoomMemberActivity: Equatable {
         startedAt = value["started_at"].number.map(Date.init(timeIntervalSince1970:))
         tool = value["tool"].text.flatMap { $0.isEmpty ? nil : $0 }
         progressAt = value["progress_at"].number.map(Date.init(timeIntervalSince1970:))
+        roundIndex = value["round_index"].integer.flatMap { $0 >= 0 ? $0 : nil }
     }
 }
 
@@ -95,11 +97,13 @@ struct BotRoomRound: Equatable {
     let seats: [Seat]
     let live: [BotRoomMemberActivity]
     let routingBy: String?
+    let roundNumber: Int?
+    let maxRounds: Int?
 
     var finished: Int { seats.filter { [.passed, .replied, .failed, .cancelled, .unavailable].contains($0.outcome) }.count }
 
     static func build(events: [BotRoomEvent], activity: [BotRoomMemberActivity], room: BotGroupRoom,
-                      threadID: String?, context: BotRoomContext? = nil) -> BotRoomRound? {
+                      threadID: String?, context: BotRoomContext? = nil, maxRounds: Int? = nil) -> BotRoomRound? {
         let rows = threadID.map { id in activity.filter { $0.threadID == id } } ?? activity
         guard !rows.isEmpty else { return nil }
         let live = rows.filter { $0.phase != .queued } + rows.filter { $0.phase == .queued }
@@ -164,7 +168,11 @@ struct BotRoomRound: Equatable {
         let seats = (order + planned.filter { !order.contains($0) }).map {
             Seat(memberID: $0, name: name($0), outcome: outcomes[$0] ?? .waiting)
         }
-        return BotRoomRound(seats: routingBy == nil ? seats : [], live: live, routingBy: routingBy)
+        let owningRounds = live.filter { $0.threadID == thread }.compactMap(\.roundIndex)
+        let roundNumber = routingBy == nil ? owningRounds.max().map { $0 + 1 } : nil
+        let resolvedMaxRounds = maxRounds.flatMap { $0 > 0 ? $0 : nil }
+        return BotRoomRound(seats: routingBy == nil ? seats : [], live: live, routingBy: routingBy,
+                            roundNumber: roundNumber, maxRounds: resolvedMaxRounds)
     }
 }
 
@@ -174,6 +182,7 @@ struct BotRoomStatus: Equatable {
     let stopping: Int
     let stoppable: Int
     let maxContinues: Int?
+    let maxRounds: Int?
     let actions: [BotRoomAction]
     let activity: [BotRoomMemberActivity]
     let routingModes: Set<String>
@@ -184,6 +193,7 @@ struct BotRoomStatus: Equatable {
         stopping = max(0, value["counts"]["stopping"].integer ?? 0)
         stoppable = max(0, value["counts"]["queued"].integer ?? 0) + max(0, value["counts"]["running"].integer ?? 0)
         maxContinues = value["max_continues"].integer
+        maxRounds = value["max_rounds"].integer.flatMap { $0 > 0 ? $0 : nil }
         routingModes = Set(value["routing_modes"].list?.compactMap(\.text) ?? [])
         actions = (value["pending_actions"].list ?? []).map(BotRoomAction.init)
     }

@@ -61,6 +61,8 @@ import SwiftUI
                         } label: { memberRow(member) }
                     } else { memberRow(member) }
                 }
+            } appFooter: {
+                Text("Members are set when the group is created.")
             }
             deliveryTargetSection
             if reader.foreignAuthority { Text("Managed by another Hermes").font(AppFont.callout()) }
@@ -168,12 +170,32 @@ import SwiftUI
         Task { await reader.rename(submitted) }
     }
     private func memberRow(_ member: BotGroupRoom.Member) -> some View {
-        HStack(spacing: 14) {
+        let activity = BotRoomMemberOutcome.activeActivity(for: member.id, in: reader.status.activity)
+        let status = BotRoomMemberOutcome.statusText(activity: activity, outcome: reader.memberOutcomes[member.id])
+        let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return HStack(spacing: 14) {
             BotRoomMemberAvatar(member: member, roster: roster, avatars: avatars, size: 36)
             VStack(alignment: .leading, spacing: 4) {
-                Text(member.name)
+                if let handle, !handle.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(member.name)
+                            Text(verbatim: "@\(handle)").font(AppFont.caption()).foregroundStyle(.secondary)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(member.name)
+                            Text(verbatim: "@\(handle)").font(AppFont.caption()).foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Text(member.name)
+                }
                 if reader.context?.routing == "lead", reader.context?.leadMemberID == member.id {
                     Text("Room lead").font(AppFont.caption()).foregroundStyle(.secondary)
+                }
+                if let status {
+                    Text(status).font(AppFont.caption()).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .accessibilityElement(children: .combine)
