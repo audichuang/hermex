@@ -264,8 +264,9 @@ struct BotRoomEvent: Identifiable, Equatable {
             case (nil, nil): return String(localized: "Turn deferred")
             }
         case "member.unavailable":
-            let reason = BotRoomReason.text(code: payload["reason_code"].text ?? payload["reason"].text,
-                                            detail: payload["error"].text)
+            let code = payload["reason_code"].text ?? payload["reason"].text
+            let reason = BotRoomReason.text(code: nil, detail: payload["error"].text)
+                ?? BotRoomReason.text(code: code)
             if let reason { return String(localized: "Member unavailable: \(reason)") }
             return String(localized: "Member unavailable")
         case "room.stop_requested": return String(localized: "Stop requested")
