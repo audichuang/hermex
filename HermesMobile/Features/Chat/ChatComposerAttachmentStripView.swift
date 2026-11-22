@@ -127,8 +127,6 @@ private struct ComposerDocumentThumbnail<Content: View>: View {
     }
 }
 
-/// One pending attachment tile with its remove button. Rooms reuse it without `onOpen`,
-/// since their pending files have no preview screen.
 struct ComposerAttachmentThumbnailView: View {
     let attachment: PendingAttachment
     let onRemove: () -> Void

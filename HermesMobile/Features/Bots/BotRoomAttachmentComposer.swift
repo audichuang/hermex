@@ -17,13 +17,6 @@ struct BotRoomAttachmentChip: Identifiable, Equatable {
             }
         }
 
-        var isInFlight: Bool {
-            switch self {
-            case .preparing, .uploading: return true
-            default: return false
-            }
-        }
-
         var expiry: Date? {
             if case .uploaded(_, let expiry) = self { return expiry }
             return nil
@@ -33,7 +26,6 @@ struct BotRoomAttachmentChip: Identifiable, Equatable {
     let id: UUID
     var name: String
     var state: State
-    /// Downsampled preview of an image file, shown in the composer like a chat attachment.
     var thumbnail: Data?
 }
 
@@ -52,7 +44,6 @@ struct BotRoomAttachmentComposer: View {
                             attachmentChip(chip)
                         }
                     }
-                    // Room for the remove button, which sits past each tile's corner.
                     .padding(.trailing, 8)
                 }
                 .scrollIndicators(.hidden)
@@ -87,7 +78,6 @@ struct BotRoomAttachmentComposer: View {
                 attachment: Self.pending(chip),
                 onRemove: { reader.removeAttachment(chip.id, in: threadID) }
             )
-            .overlay { if chip.state.isInFlight { uploadingOverlay } }
             .opacity(chip.state == .expired ? 0.5 : 1)
             .disabled(!reader.mayEditDraft(in: threadID))
             status(chip)
@@ -97,15 +87,14 @@ struct BotRoomAttachmentComposer: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var uploadingOverlay: some View {
-        ProgressView()
-            .accessibilityLabel(Text("Uploading…"))
-    }
-
     @ViewBuilder
     private func status(_ chip: BotRoomAttachmentChip) -> some View {
         switch chip.state {
-        case .preparing, .uploading, .uploaded:
+        case .preparing, .uploading:
+            Label { Text("Uploading…") } icon: { ProgressView().controlSize(.mini) }
+                .font(AppFont.caption())
+                .foregroundStyle(Color(.appTextSecondary))
+        case .uploaded:
             EmptyView()
         case .failed(_, let message):
             VStack(alignment: .leading, spacing: 2) {
