@@ -273,7 +273,6 @@ struct BotRoomTranscriptRow: Identifiable {
 struct BotRoomThreadPreview: View {
     let thread: BotRoomThread
     let reader: BotRoomReader
-    /// The root's file summary, looked up by the parent so a new attachment elsewhere leaves this row alone.
     let rootFiles: String?
 
     var rootTitle: String? {
@@ -374,7 +373,6 @@ struct BotRoomTranscriptWindow: Equatable {
 
 private struct BotRoomEventView: View {
     let event: BotRoomEvent
-    /// Looked up by the parent so a new attachment elsewhere leaves this row alone.
     let files: [BotRoomAttachmentList.File]
     let reader: BotRoomReader
     let roster: [BotProfile]

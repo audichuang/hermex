@@ -66,4 +66,10 @@ with polling. Leaving the viewport drops a queued preview, while an admitted rea
 can finish and warm the room-scoped image cache. A manual download can join a read
 already in flight or start without waiting for an automatic slot.
 
+`BotRoomPreviewSlot` keeps a loaded picture while the room passes through idle and
+connecting on reopen or foregrounding, so the card does not collapse and reload;
+only a missing picture waits for a live room. Rows and thread previews receive their
+own file summary from the parent instead of reading `attachmentLists`, so a new
+attachment elsewhere does not invalidate every row.
+
 Lives in: `HermesMobile/Features/Bots/BotRoomAttachments.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`

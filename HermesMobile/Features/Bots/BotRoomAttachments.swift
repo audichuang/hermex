@@ -87,8 +87,6 @@ struct BotRoomAttachmentList: Equatable {
     }
 }
 
-/// One card's preview picture. The picture follows what the card wants to show, not whether the room is
-/// live, so a reconnect keeps it on screen instead of collapsing the row and loading it again.
 struct BotRoomPreviewSlot {
     var image: UIImage?
     private var target: BotRoomAttachment.Request?
