@@ -21,6 +21,8 @@ enum BotRoomStopControl: Equatable {
     @ObservationIgnored private let cache: BotHistoryCache
     @ObservationIgnored private let draftStore: BotRoomDraftStore
     @ObservationIgnored private let draftGeneration: UUID
+    @ObservationIgnored private let draftSaveDelay: Duration
+    @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
     @ObservationIgnored private(set) var historyRemoval: Task<Void, Never>?
     private(set) var room: BotGroupRoom
     private(set) var events: [BotRoomEvent] = []
@@ -67,7 +69,7 @@ enum BotRoomStopControl: Equatable {
            !BotRoomReplyTarget.startsWithMention(handle, in: text) {
             replyTargets[context] = nil
         }
-        persistDrafts()
+        scheduleDraftSave()
     }
     func setDictating(_ dictating: Bool, in threadID: String?) {
         let context = threadID ?? ""
@@ -159,8 +161,10 @@ enum BotRoomStopControl: Equatable {
          onDisbanded: @escaping () -> Void = {},
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied },
-         attachmentNow: @escaping () -> Date = Date.init) {
+         attachmentNow: @escaping () -> Date = Date.init,
+         draftSaveDelay: Duration = .milliseconds(200)) {
         self.attachmentNow = attachmentNow
+        self.draftSaveDelay = draftSaveDelay
         self.key = key; self.connection = connection; self.room = room
         self.cache = cache; self.initialSequence = initialSequence
         let draftStore = drafts ?? .shared
@@ -395,6 +399,7 @@ enum BotRoomStopControl: Equatable {
         ApprovalSummaries.shared.leave(summaryScope)
         saveRecentTranscript()
         if busy && dispatched { markUncertain(sending) }
+        if draftSaveTask != nil { persistDrafts() }
         commandID = nil; busy = false; sending = nil; dispatched = false; renaming = false
         let old = wire; wire = nil
         pollTask?.cancel(); pollTask = nil
@@ -979,7 +984,21 @@ enum BotRoomStopControl: Equatable {
         if draft(in: send.contextThreadID) == send.text { drafts[context] = nil }
     }
 
+    private func scheduleDraftSave() {
+        draftSaveTask?.cancel()
+        draftSaveTask = Task { [weak self, draftSaveDelay] in
+            guard (try? await Task.sleep(for: draftSaveDelay)) != nil, !Task.isCancelled else { return }
+            self?.persistDrafts()
+        }
+    }
+
+    private func cancelDraftSave() {
+        draftSaveTask?.cancel()
+        draftSaveTask = nil
+    }
+
     private func writeDrafts(including send: Send?) throws {
+        cancelDraftSave()
         var pending = uncertainSends
         if let send, uncertainSend(in: send.contextThreadID) == nil { pending.append(send) }
         try draftStore.save(.init(texts: drafts, pending: pending), for: key, generation: draftGeneration)
@@ -1031,6 +1050,7 @@ enum BotRoomStopControl: Equatable {
 
     private func discardHistory() {
         let cache = cache, key = key
+        cancelDraftSave()
         draftStore.removeRoom(key)
         drafts = [:]; uncertainSends = []; sending = nil
         cache.recent.remove { $0 == .init(key) }

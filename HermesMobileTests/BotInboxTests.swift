@@ -1332,6 +1332,27 @@ import SwiftUI
         XCTAssertEqual(inbox.rooms(matching: ""), [], "the live read replaces the copy")
     }
 
+    func testRoomListRefreshKeepsDraftsOfRoomsMissingFromTheList() async throws {
+        let connections = try connectedStore()
+        let connectionID = try XCTUnwrap(connections.load(server: server)).id
+        let listed = BotRoomKey(server: server, connectionID: connectionID, roomID: "room-a")
+        let missing = BotRoomKey(server: server, connectionID: connectionID, roomID: "room-b")
+        let store = BotRoomDraftStore(directory: rosterRoot.appendingPathComponent("drafts", isDirectory: true))
+        for key in [listed, missing] {
+            let generation = store.load(key).generation
+            try store.save(.init(texts: ["": key.roomID]), for: key, generation: generation)
+        }
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.rooms = [.object(["room_id": .string(listed.roomID)])]
+        let inbox = try makeInbox(wires: [wire], store: connections, draftStore: store)
+        defer { inbox.close() }
+
+        await inbox.open()
+        XCTAssertEqual(inbox.rooms.map(\.id), [listed.roomID])
+        XCTAssertEqual(store.load(missing).draft.texts, ["": missing.roomID],
+                       "an offline owning gateway leaves its rooms out of the list")
+    }
+
     func testRoomsRemainListedWhenTheDriverIsDownButCreationIsDisabled() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.rooms = [RoomFixture.room(latest: 0)]
@@ -1439,7 +1460,8 @@ import SwiftUI
     }
 
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil,
-                           rosterCache: BotRosterCache? = nil, statusPollInterval: Duration = .seconds(3600),
+                           rosterCache: BotRosterCache? = nil, draftStore: BotRoomDraftStore? = nil,
+                           statusPollInterval: Duration = .seconds(3600),
                            rosterRefreshInterval: Duration = .seconds(3600), reconnectDelays: [Duration] = [.zero],
                            wireFor: ((BotConnection) -> BotInboxFixtureWire)? = nil,
                            isNetworkAvailable: @escaping @MainActor () -> Bool = { true }) throws -> BotInbox {
@@ -1450,6 +1472,7 @@ import SwiftUI
                         roomStore: BotRoomOrganizeStore(defaults: defaults),
                         sectionOrderStore: BotSectionOrderStore(defaults: defaults),
                         avatarStore: BotAvatarStore(), rosterCache: rosterCache ?? makeRosterCache(),
+                        draftStore: draftStore,
                         profileNames: HermesProfileNameCache(defaults: defaults),
                         reloadSpacing: .zero, reconnectDelays: reconnectDelays,
                         statusPollInterval: statusPollInterval, rosterRefreshInterval: rosterRefreshInterval, makeWire: { wireFor?($0) ?? queue.removeFirst() },

@@ -186,7 +186,7 @@ import XCTest
 
     func testSendIsRecoverableBeforeTheReplyOrSuspendRuns() async throws {
         let store = disk
-        let wire = RoomWire(), reader = makeReader(wire, store: store)
+        let wire = RoomWire(), reader = makeReader(wire, store: store, draftSaveDelay: .seconds(3600))
         wire.latest = 1
         wire.roomEvents[1] = RoomFixture.attachmentEvent(1, text: "Thread root", threadID: "discussion", files: [])
         await reader.open()
@@ -342,6 +342,7 @@ import XCTest
         let writer = disk
         let reader = makeReader(RoomWire(), store: writer)
         reader.draft = "Private draft"
+        reader.suspend()
 
         XCTAssertEqual(disk.load(key).draft.texts, ["": "Private draft"])
         for other in [
@@ -351,6 +352,17 @@ import XCTest
         ] {
             XCTAssertTrue(disk.load(other).draft.texts.isEmpty)
         }
+    }
+
+    func testSuspendingPersistsTypingBeforeTheDebounceFires() {
+        let reader = makeReader(RoomWire(), draftSaveDelay: .seconds(3600))
+        reader.setDraft("typing", in: nil)
+        XCTAssertEqual(reader.draft, "typing")
+        XCTAssertTrue(disk.load(key).draft.texts.isEmpty)
+
+        reader.suspend()
+        XCTAssertEqual(disk.load(key).draft.texts, ["": "typing"])
+        XCTAssertEqual(makeReader(RoomWire()).draft, "typing")
     }
 
     func testDisbandAndExpiryPurgeDraftsAndUncertainSends() async {
@@ -428,9 +440,10 @@ import XCTest
     }
 
     private func makeReader(_ wire: RoomWire, store: BotRoomDraftStore? = nil, key: BotRoomKey? = nil,
-                            now: @escaping () -> Date = Date.init) -> BotRoomReader {
+                            now: @escaping () -> Date = Date.init,
+                            draftSaveDelay: Duration = .milliseconds(200)) -> BotRoomReader {
         BotRoomReader(key: key ?? self.key, connection: connection, room: room, cache: BotHistoryCache(),
-                      drafts: store ?? disk, makeWire: { _ in wire }, attachmentNow: now)
+                      drafts: store ?? disk, makeWire: { _ in wire }, attachmentNow: now, draftSaveDelay: draftSaveDelay)
     }
 
     private func attachmentWire() -> RoomWire {
