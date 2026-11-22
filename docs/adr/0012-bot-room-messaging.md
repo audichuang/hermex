@@ -52,6 +52,9 @@ that outcome as unknown and keeps the original IDs for Retry. Accepted sends
 and matching log events clear the corresponding saved send. Disband, expiry,
 connection removal or replacement, sign-out, and server removal purge the
 corresponding drafts and prevent readers already open from recreating them.
+A complete room-list refresh purges drafts for rooms missing from the list,
+including rooms disbanded on another device. Typing waits for a 200 ms pause
+before writing, and leaving the room or backgrounding the app flushes immediately.
 
 Only the sent attachment manifest is needed for a retry. A restored manifest
 can refer to a message the host already committed, so its age cannot decide

@@ -1332,6 +1332,40 @@ import SwiftUI
         XCTAssertEqual(inbox.rooms(matching: ""), [], "the live read replaces the copy")
     }
 
+    func testOnlyACompleteRoomListRefreshPurgesMissingDrafts() async throws {
+        let connections = try connectedStore()
+        let connectionID = try XCTUnwrap(connections.load(server: server)).id
+        let kept = BotRoomKey(server: server, connectionID: connectionID, roomID: "room-a")
+        let removed = BotRoomKey(server: server, connectionID: connectionID, roomID: "room-b")
+        let store = BotRoomDraftStore(directory: rosterRoot.appendingPathComponent("drafts", isDirectory: true))
+        for key in [kept, removed] {
+            let generation = store.load(key).generation
+            try store.save(.init(texts: ["": key.roomID]), for: key, generation: generation)
+        }
+
+        let room = BotJSON.object(["room_id": .string(kept.roomID)])
+        let incomplete = BotInboxFixtureWire(roster: [row("triage")])
+        incomplete.rooms = [room]
+        incomplete.roomList = { params in
+            guard params["offset"]?.integer == 0 else { throw BotFailure.transport }
+            return .object(["rooms": .array([room]), "next_offset": .number(1)])
+        }
+        let complete = BotInboxFixtureWire(roster: [row("triage")])
+        complete.rooms = [room]
+        let inbox = try makeInbox(wires: [incomplete, complete], store: connections, draftStore: store)
+        defer { inbox.close() }
+
+        await inbox.open()
+        XCTAssertEqual(incomplete.calls.filter { $0.0 == "groups.list" }.count, 2)
+        XCTAssertEqual(store.load(kept).draft.texts, ["": kept.roomID])
+        XCTAssertEqual(store.load(removed).draft.texts, ["": removed.roomID])
+
+        await inbox.open()
+        XCTAssertEqual(inbox.rooms.map(\.id), [kept.roomID])
+        XCTAssertEqual(store.load(kept).draft.texts, ["": kept.roomID])
+        XCTAssertTrue(store.load(removed).draft.texts.isEmpty)
+    }
+
     func testRoomsRemainListedWhenTheDriverIsDownButCreationIsDisabled() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.rooms = [RoomFixture.room(latest: 0)]
@@ -1439,7 +1473,8 @@ import SwiftUI
     }
 
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil,
-                           rosterCache: BotRosterCache? = nil, statusPollInterval: Duration = .seconds(3600),
+                           rosterCache: BotRosterCache? = nil, draftStore: BotRoomDraftStore? = nil,
+                           statusPollInterval: Duration = .seconds(3600),
                            rosterRefreshInterval: Duration = .seconds(3600), reconnectDelays: [Duration] = [.zero],
                            wireFor: ((BotConnection) -> BotInboxFixtureWire)? = nil,
                            isNetworkAvailable: @escaping @MainActor () -> Bool = { true }) throws -> BotInbox {
@@ -1450,6 +1485,7 @@ import SwiftUI
                         roomStore: BotRoomOrganizeStore(defaults: defaults),
                         sectionOrderStore: BotSectionOrderStore(defaults: defaults),
                         avatarStore: BotAvatarStore(), rosterCache: rosterCache ?? makeRosterCache(),
+                        draftStore: draftStore,
                         profileNames: HermesProfileNameCache(defaults: defaults),
                         reloadSpacing: .zero, reconnectDelays: reconnectDelays,
                         statusPollInterval: statusPollInterval, rosterRefreshInterval: rosterRefreshInterval, makeWire: { wireFor?($0) ?? queue.removeFirst() },
@@ -1541,6 +1577,7 @@ import SwiftUI
     var roomMethods = ["groups.list", "groups.state", "groups.log"]
     var roomAuthority: String?
     var roomCommand: ((String, [String: BotJSON]) throws -> BotJSON)?
+    var roomList: (([String: BotJSON]) throws -> BotJSON)?
     var configure: (([String: BotJSON]) -> BotJSON)?
     var delete: ((String) throws -> Void)?
     var deleted: [String] = []
@@ -1596,6 +1633,7 @@ import SwiftUI
             guard let roomCommand else { throw BotFailure.unsupported }
             return try roomCommand(method, params)
         case "groups.list":
+            if let roomList { return try roomList(params) }
             return .object(["rooms": .array(rooms ?? [])])
         case "profiles.list":
             if holdsList { await withCheckedContinuation { held.append($0) } }

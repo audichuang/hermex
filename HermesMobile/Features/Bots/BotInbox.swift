@@ -172,6 +172,7 @@ import UIKit
     private let sectionOrderStore: BotSectionOrderStore
     private let avatarStore: BotAvatarStore
     private let historyCache: BotHistoryCache
+    private let draftStore: BotRoomDraftStore
     private let rosterCache: BotRosterCache
     private let profileNames: HermesProfileNameCache
     private let widgets: BotWidgetPublisher
@@ -186,6 +187,7 @@ import UIKit
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
          sectionOrderStore: BotSectionOrderStore = BotSectionOrderStore(),
          avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, rosterCache: BotRosterCache = .shared,
+         draftStore: BotRoomDraftStore? = nil,
          profileNames: HermesProfileNameCache = .shared, widgets: BotWidgetPublisher? = nil,
          reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
@@ -200,6 +202,7 @@ import UIKit
         reconnect = BotReconnectSchedule(delays: reconnectDelays, isNetworkAvailable: isNetworkAvailable)
         self.isNetworkAvailable = isNetworkAvailable
         self.historyCache = historyCache; self.rosterCache = rosterCache; self.profileNames = profileNames
+        self.draftStore = draftStore ?? .shared
         self.widgets = widgets ?? .shared
         self.statusPollInterval = statusPollInterval
         self.rosterRefreshInterval = rosterRefreshInterval
@@ -714,7 +717,7 @@ import UIKit
             roomFlags.pinned.remove(room.id); roomFlags.hidden.remove(room.id); persistRoomFlags()
         }
         if disbanded {
-            BotRoomDraftStore.shared.removeRoom(key)
+            draftStore.removeRoom(key)
             try? await historyCache.removeRoom(key)
         }
     }
@@ -783,6 +786,7 @@ import UIKit
                                                    hidden: roomFlags.hidden.intersection(ids))
             if pruned != roomFlags { roomFlags = pruned; persistRoomFlags() }
             if let connectionID = connection?.id {
+                draftStore.retainRooms(ids, server: server, connectionID: connectionID)
                 try? await historyCache.retainRooms(ids, scope: .init(server: server, connectionID: connectionID))
             }
         } catch {
