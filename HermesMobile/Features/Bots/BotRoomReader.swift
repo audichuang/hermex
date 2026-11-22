@@ -652,17 +652,19 @@ enum BotRoomStopControl: Equatable {
             self.publishLog()
             self.feedback = BotFeedback(.sent, after: self.feedback)
             self.sentAt = .now
-        }, reconcileAttachmentRetry: retry && !request.attachments.isEmpty ? {
+        }, reconcileSendRetry: retry ? {
             self.sending = nil
             _ = self.settleLandedSends()
             if self.uncertainSend(in: threadID) == nil {
                 self.commandMessage = nil
             } else {
                 self.uncertainSends.removeAll { $0.eventID == request.eventID }
-                self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
+                if !request.attachments.isEmpty {
+                    self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
+                    self.commandMessage = String(localized: "Attachments expired. Add them again before sending.")
+                }
                 self.drafts[context] = request.text.isEmpty ? nil : request.text
                 self.persistDrafts()
-                self.commandMessage = String(localized: "Attachments expired. Add them again before sending.")
             }
             self.publishLog()
         } : nil)
@@ -736,7 +738,7 @@ enum BotRoomStopControl: Equatable {
     }
 
     private func command(_ call: HermesCall, validate: @escaping () throws -> Void,
-                         accept: (BotJSON) throws -> Void, reconcileAttachmentRetry: (() -> Void)? = nil) async {
+                         accept: (BotJSON) throws -> Void, reconcileSendRetry: (() -> Void)? = nil) async {
         guard let client = wire, allows(call.method), !busy else { sending = nil; return }
         let token = UUID(), epoch = room.epoch
         commandID = token; busy = true; dispatched = false; commandMessage = nil
@@ -767,10 +769,10 @@ enum BotRoomStopControl: Equatable {
                     self.sending = nil
                     persistDrafts()
                 }
-                if rejection.rejectsSendBeforeAdmission, let reconcileAttachmentRetry {
+                if rejection.rejectsSendBeforeAdmission, let reconcileSendRetry {
                     let refreshed = await poll(client)
                     guard commandID == token, wire === client else { return }
-                    if refreshed && room.epoch == epoch && allows(call.method) { reconcileAttachmentRetry() }
+                    if refreshed && room.epoch == epoch && allows(call.method) { reconcileSendRetry() }
                     reconciled = true
                 }
             } else if dispatched {

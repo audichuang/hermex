@@ -152,6 +152,68 @@ import XCTest
         XCTAssertEqual(restored.draft, "Keep rejected text")
     }
 
+    func testRejectedRestoredTextRetryUnlocksTheDraftAcrossRelaunches() async throws {
+        let refusals = [BotRoomFailure(code: 4001, reason: "invalid_params"),
+                        BotRoomFailure(code: 5112, reason: nil, admitted: false)]
+        for refusal in refusals {
+            let store = BotRoomDraftStore(directory: directory.appendingPathComponent(String(refusal.code)))
+            let wire = RoomWire(), reader = makeReader(wire, store: store)
+            await reader.open()
+            reader.draft = "Edit and send again"
+            wire.writeFailure = BotFailure.transport
+            await reader.send()
+            let original = try XCTUnwrap(reader.uncertainSend)
+            reader.close()
+
+            let restored = makeReader(wire, store: store)
+            await restored.open()
+            defer { restored.close() }
+            XCTAssertEqual(restored.primaryAction(in: nil), .retry(enabled: true))
+            wire.writeFailure = refusal
+            await restored.send(retry: true)
+
+            XCTAssertEqual(wire.writes.last?.1["event_id"]?.text, original.eventID)
+            XCTAssertTrue(restored.mayEditDraft(in: nil), "Refusal \(refusal.code) must unlock the composer")
+            XCTAssertEqual(restored.primaryAction(in: nil), .send(enabled: true))
+            XCTAssertEqual(restored.commandMessage, refusal.localizedDescription)
+
+            let reopened = makeReader(RoomWire(), store: store)
+            XCTAssertNil(reopened.uncertainSend)
+            XCTAssertEqual(reopened.draft, original.text)
+            XCTAssertTrue(reopened.mayEditDraft(in: nil))
+        }
+    }
+
+    func testRejectedRestoredTextRetryConfirmsTheMessageIfItLanded() async throws {
+        let wire = RoomWire(), reader = makeReader(wire)
+        await reader.open()
+        reader.draft = "Already delivered"
+        reader.setDraft("Keep this reply", in: "another-thread")
+        wire.loseWrite = true
+        await reader.send()
+        let original = try XCTUnwrap(reader.uncertainSend)
+        reader.close()
+
+        wire.latest = 0
+        wire.loseWrite = false
+        let restored = makeReader(wire)
+        await restored.open()
+        defer { restored.close() }
+        XCTAssertTrue(restored.mayResend(in: nil))
+        wire.latest = 1
+        wire.writeFailure = BotRoomFailure(code: 4001, reason: "invalid_params")
+        await restored.send(retry: true)
+
+        XCTAssertEqual(restored.events.map(\.eventID), [original.serverEventID])
+        XCTAssertEqual(restored.primaryAction(in: nil), .send(enabled: false))
+        XCTAssertNil(restored.commandMessage)
+
+        let reopened = makeReader(RoomWire())
+        XCTAssertNil(reopened.uncertainSend)
+        XCTAssertTrue(reopened.draft.isEmpty)
+        XCTAssertEqual(reopened.draft(in: "another-thread"), "Keep this reply")
+    }
+
     func testExpiredRestoredAttachmentRetryRestoresTextWhenTheEventNeverLanded() async throws {
         let (wire, restored, original) = try await restoreAttachmentSend(delivered: false)
         defer { restored.close() }

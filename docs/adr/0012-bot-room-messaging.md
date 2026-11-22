@@ -22,7 +22,7 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
 ## Never resend room commands automatically
 
-`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail. Only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure. A matching server event id in the loaded log settles an uncertain send without resending. For an attachment send, a retry rejection before admission triggers the log check below.
+`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail. Only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure. A matching server event id in the loaded log settles an uncertain send without resending. A retry rejection before admission triggers the log check below.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
@@ -114,16 +114,17 @@ original ID and the prepared bytes for an explicit retry.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomAttachments.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`, `HermesMobile/Networking/Hermes/HermesGateway.swift`
 
-## Check the room log before restoring an uncertain attachment send
+## Check the room log before restoring an uncertain send to the composer
 
 Unsent attachment chips expire locally after 55 minutes, five minutes before
 the host can remove them. A committed event retains its attachments, so an
-explicit retry may still be safe after that deadline. The canonical gateway
-reports expired manifests as `invalid_params`. A standalone gateway reports
-`5112` with `data.admitted: false`. After either rejection, a successful poll
-lets the reader reconcile a matching event through the same log check. If the
-event is absent, restore the text and ask the user to attach the files again.
-A failed poll leaves the send uncertain while delivery is unconfirmed.
+explicit retry may still be safe after that deadline. The room treats canonical
+`invalid_params` and standalone `5112` with `data.admitted: false` as pre-admission
+rejections. Either can leave the original send's delivery unresolved. A successful
+poll settles it if the event is present. If the event is absent, clear the saved
+send and return its text to the composer. For an attachment send, ask the user
+to attach the files again. A failed poll leaves the send uncertain while delivery
+is unconfirmed.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
