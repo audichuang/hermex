@@ -523,10 +523,11 @@ import Observation
             self.publishLog()
             self.feedback = BotFeedback(.sent, after: self.feedback)
             self.sentAt = .now
-        }, reconcileInvalidParams: retry && !request.attachments.isEmpty ? {
+        }, reconcileAttachmentRetry: retry && !request.attachments.isEmpty ? {
             self.uncertainSends[context] = nil; self.sending = nil
             self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
             if self.log.events.contains(where: { $0.eventID == request.serverEventID }) {
+                if self.draft(in: threadID) == request.text { self.setDraft("", in: threadID) }
                 self.commandMessage = nil
                 self.feedback = BotFeedback(.sent, after: self.feedback)
                 self.sentAt = .now
@@ -585,7 +586,7 @@ import Observation
     }
 
     private func command(_ call: HermesCall, validate: @escaping () throws -> Void,
-                         accept: (BotJSON) throws -> Void, reconcileInvalidParams: (() -> Void)? = nil) async {
+                         accept: (BotJSON) throws -> Void, reconcileAttachmentRetry: (() -> Void)? = nil) async {
         guard let client = wire, allows(call.method), !busy else { sending = nil; return }
         let token = UUID(), epoch = room.epoch
         commandID = token; busy = true; dispatched = false; commandMessage = nil
@@ -608,10 +609,10 @@ import Observation
                 commandMessage = rejection.localizedDescription
                 if rejection.reason == "authority_conflict" { foreignAuthority = true }
                 if rejection.expired { discardHistory(); close(); onExpired(); return }
-                if rejection.reason == "invalid_params", let reconcileInvalidParams {
+                if rejection.rejectsSendBeforeAdmission, let reconcileAttachmentRetry {
                     let refreshed = await poll(client)
                     guard commandID == token, wire === client else { return }
-                    if refreshed && room.epoch == epoch && allows(call.method) { reconcileInvalidParams() }
+                    if refreshed && room.epoch == epoch && allows(call.method) { reconcileAttachmentRetry() }
                     reconciled = true
                 }
             } else if dispatched {

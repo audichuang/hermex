@@ -307,15 +307,18 @@ enum BotRoomRPC {
 struct BotRoomFailure: Error, LocalizedError {
     let code: Int
     let reason: String?
+    let admitted: Bool?
     let message: String?
 
-    init(code: Int, reason: String?, message: String? = nil) {
+    init(code: Int, reason: String?, admitted: Bool? = nil, message: String? = nil) {
         self.code = code
         self.reason = reason
+        self.admitted = admitted
         self.message = message
     }
 
     var expired: Bool { code == 4114 || reason == "room_history_expired" }
+    var rejectsSendBeforeAdmission: Bool { reason == "invalid_params" || (code == 5112 && admitted == false) }
     var errorDescription: String? {
         if expired { return String(localized: "This room’s history is no longer available.") }
         if code == 4123 { return String(localized: "Restart the Hermes gateway on your Mac, then reconnect.") }

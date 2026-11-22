@@ -127,7 +127,7 @@ struct BotRoomAttachmentPicker: ViewModifier {
                     HermexAttachmentPickerView(
                         imageCapacity: BotRoomFiles.maximumCount - reader.attachmentChips(in: threadID).count,
                         onChooseFiles: { chooseFiles = true },
-                        prepareOriginalPhoto: { media in
+                        preparePickedImage: { media in
                             guard media.data.count <= BotRoomFiles.maximumFileBytes else { throw BotRoomFiles.Failure.fileSize }
                             return media
                         },

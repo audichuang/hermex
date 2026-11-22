@@ -2296,6 +2296,8 @@ A host that advertises `groups.attachment.upload` enables photos, camera, files
 and attachment paste in the room composer. Each draft keeps its own attachment
 list. Send waits for every upload and accepts a message with only attachments.
 A message can carry up to eight files, 15 MB per file and 25 MB combined.
+The photo picker reads the current Photos rendition so crops and redactions
+carry through. Room uploads bypass chat image compression.
 
 A lost reply preserves the draft and reports an unknown outcome. Reconnect only
 reads state/history. Only the explicit Retry send button reuses the original id,

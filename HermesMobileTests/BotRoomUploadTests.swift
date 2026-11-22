@@ -205,6 +205,89 @@ import XCTest
         XCTAssertEqual(wire.writes.count, 2)
     }
 
+    func testRejectedAttachmentRetryClearsTheDeliveredDraftSoSendCannotDuplicateIt() async throws {
+        let wire = RoomWire(), reader = try makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        reader.draft = "Already delivered"
+        await reader.addAttachments([input()], in: nil)
+        wire.loseWrite = true
+        await reader.send()
+        let pending = try XCTUnwrap(reader.uncertainSend)
+        wire.loseWrite = false
+        wire.latest = 0
+        await reader.open()
+        wire.latest = 1
+        wire.writeFailure = BotRoomFailure(code: 4001, reason: "invalid_params")
+        await reader.send(retry: true)
+
+        XCTAssertEqual(reader.events.map(\.eventID), [pending.serverEventID])
+        XCTAssertNil(reader.uncertainSend)
+        XCTAssertTrue(reader.draft.isEmpty)
+        XCTAssertFalse(reader.maySend)
+        wire.writeFailure = nil
+        await reader.send()
+        XCTAssertEqual(wire.writes.count, 2)
+    }
+
+    func testStandaloneAttachmentRetryUnlocksDraftOnlyForARefusalBeforeAdmission() async throws {
+        let socket = BotScriptedSocket()
+        let server = URL(string: "https://room-upload-fixture.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let http = HermesConnection(connection: connection, configuration: HermesHostFixture.configuration { _ in nil },
+                                   gateway: .init(socketFactory: { _ in socket }))
+        defer { HermesHostFixture.reset() }
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0)))
+        let key = BotRoomKey(server: server, connectionID: connection.id, roomID: room.id)
+        var now = Date(timeIntervalSince1970: 10_000)
+        let reader = BotRoomReader(key: key, connection: connection, room: room, cache: BotHistoryCache(),
+                                   makeWire: { _ in BotClient(http: http) }, attachmentNow: { now })
+        let capabilities = uploadCapabilities
+        let bytes = Data("Room attachment".utf8)
+        var sendError: BotJSON?
+        socket.reply = { request in
+            let result: BotJSON
+            switch request["method"].text {
+            case "groups.capabilities": result = capabilities
+            case "groups.state": result = .object(["room": RoomFixture.room(latest: 0)])
+            case "groups.log": result = RoomFixture.page([], cursor: 0)
+            case BotRoomFiles.uploadMethod:
+                let params = request["params"]
+                result = .object(["attachment_id": .string("att_0123456789abcdef0123456789abcdef"),
+                                  "kind": params["kind"], "name": params["name"], "mime": params["mime"],
+                                  "size": .number(Double(bytes.count))])
+            case "groups.send":
+                if let sendError { return .object(["id": request["id"], "error": sendError]) }
+                result = .object([:])
+            default:
+                XCTFail("Unexpected room method: \(request["method"])")
+                result = .null
+            }
+            return .object(["id": request["id"], "result": result])
+        }
+        await reader.open()
+        defer { reader.close() }
+        reader.draft = "Retry these words"
+        await reader.addAttachments([input(bytes: bytes)], in: nil)
+        await reader.send()
+        let pending = try XCTUnwrap(reader.uncertainSend)
+        now += 7_200
+        reader.expireAttachments(in: nil)
+
+        sendError = .object(["code": .number(5112)])
+        await reader.send(retry: true)
+        XCTAssertEqual(reader.uncertainSend, pending)
+        XCTAssertFalse(reader.mayEditDraft(in: nil))
+
+        sendError = .object(["code": .number(5112), "message": .string("attachment has expired"),
+                             "data": .object(["admitted": .bool(false)])])
+        await reader.send(retry: true)
+        XCTAssertNil(reader.uncertainSend)
+        XCTAssertTrue(reader.attachmentChips(in: nil).isEmpty)
+        XCTAssertEqual(reader.draft, "Retry these words")
+        XCTAssertTrue(reader.mayAddAttachments(in: nil))
+    }
+
     func testRejectedAttachmentRetryStaysUncertainIfTheLogCannotBeChecked() async throws {
         let wire = RoomWire(), reader = try makeReader(wire)
         await reader.open()
@@ -244,7 +327,7 @@ import XCTest
         await reader.addAttachments([input()], in: nil)
         XCTAssertTrue(wire.uploadCalls.isEmpty)
 
-        enableUpload(on: wire)
+        wire.capabilities = uploadCapabilities
         await reader.open()
         XCTAssertNotNil(composer.attachmentButton)
     }
@@ -253,16 +336,16 @@ import XCTest
         let server = URL(string: "https://room-upload-fixture.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
         let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: wire.latest)))
-        if uploadEnabled { enableUpload(on: wire) }
+        if uploadEnabled { wire.capabilities = uploadCapabilities }
         let key = BotRoomKey(server: server, connectionID: connection.id, roomID: room.id)
         return BotRoomReader(key: key, connection: connection, room: room, cache: BotHistoryCache(), makeWire: { _ in wire },
                              attachmentNow: now)
     }
 
-    private func enableUpload(on wire: RoomWire) {
+    private var uploadCapabilities: BotJSON {
         var capabilities = RoomFixture.capabilities.fields!
         capabilities["methods"] = .array((RoomFixture.methods + [BotRoomFiles.uploadMethod]).map(BotJSON.string))
-        wire.capabilities = .object(capabilities)
+        return .object(capabilities)
     }
 
     private func input(name: String = "note.txt", bytes: Data = Data("Hello from the room".utf8)) -> BotRoomFiles.Input {

@@ -407,7 +407,8 @@ import OSLog
             switch entry.rejection {
             case .room:
                 let message = entry.method == BotRoomFiles.uploadMethod ? frame["error"]["message"].text : nil
-                entry.continuation.resume(throwing: BotRoomFailure(code: code, reason: data["reason"].text, message: message))
+                entry.continuation.resume(throwing: BotRoomFailure(code: code, reason: data["reason"].text,
+                                                                  admitted: data["admitted"].flag, message: message))
             case .setting:
                 entry.continuation.resume(throwing: BotSettingFailure.rejected(
                     code, frame["error"]["message"].text ?? BotFailure.rejected(code).localizedDescription))
