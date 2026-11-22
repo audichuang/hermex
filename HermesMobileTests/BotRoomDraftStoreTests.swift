@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import HermesMobile
 
@@ -67,7 +68,7 @@ import XCTest
         XCTAssertEqual(retry["payload"]?["thread_id"].text, original.threadID)
         XCTAssertNil(restored.uncertainSend(in: "discussion"))
         XCTAssertEqual(disk.load(key).draft.texts, ["": "Overview draft"])
-        XCTAssertNil(disk.load(key).draft.pending)
+        XCTAssertTrue(disk.load(key).draft.pending.isEmpty)
     }
 
     func testFirstLogReadSettlesTheRestoredSendWithoutRetry() async throws {
@@ -92,12 +93,13 @@ import XCTest
         XCTAssertNil(restored.commandMessage)
         XCTAssertEqual(restored.events.map(\.eventID), [original.serverEventID])
         XCTAssertEqual(wire.writes.count, 1)
-        XCTAssertNil(disk.load(key).draft.pending)
+        XCTAssertTrue(disk.load(key).draft.pending.isEmpty)
         XCTAssertEqual(disk.load(key).draft.texts, ["another-thread": "Keep this draft"])
     }
 
-    func testOldestUncertainSendKeepsItsSavedSlotUntilItSettles() async throws {
-        let wire = RoomWire(), reader = makeReader(wire)
+    func testOverviewAndDiscussionRestoreTheirUncertainSendsAndRetryTheOriginal() async throws {
+        let store = disk
+        let wire = RoomWire(), reader = makeReader(wire, store: store)
         wire.latest = 1
         wire.roomEvents[1] = RoomFixture.attachmentEvent(1, text: "Thread root", threadID: "discussion", files: [])
         await reader.open()
@@ -109,34 +111,108 @@ import XCTest
         let first = try XCTUnwrap(reader.uncertainSend)
         await reader.send(threadID: "discussion")
         let second = try XCTUnwrap(reader.uncertainSend(in: "discussion"))
-        XCTAssertEqual(disk.load(key).draft.pending, first)
+        reader.close()
 
         wire.writeFailure = nil
-        await reader.send(retry: true)
+        let restored = makeReader(wire, store: store)
+        await restored.open()
+        defer { restored.close() }
+        XCTAssertEqual(restored.uncertainSend?.eventID, first.eventID)
+        XCTAssertEqual(restored.uncertainSend(in: "discussion")?.eventID, second.eventID)
+        XCTAssertEqual(restored.primaryAction(in: nil), .retry(enabled: true))
+        XCTAssertEqual(restored.primaryAction(in: "discussion"), .retry(enabled: true))
+        await restored.send(retry: true, threadID: "discussion")
 
-        XCTAssertEqual(disk.load(key).draft.pending, second)
-        XCTAssertEqual(disk.load(key).draft.texts, ["discussion": "Second send"])
+        XCTAssertEqual(wire.writes.count, 3)
+        let retry = try XCTUnwrap(wire.writes.last?.1)
+        XCTAssertEqual(retry["event_id"]?.text, second.eventID)
+        XCTAssertEqual(retry["payload"]?["thread_id"].text, second.threadID)
+        XCTAssertNil(restored.uncertainSend(in: "discussion"))
+        XCTAssertEqual(restored.uncertainSend?.eventID, first.eventID)
+        XCTAssertEqual(store.load(key).draft.texts, ["": "First send"])
+    }
+
+    func testLegacyDraftRestoresItsSinglePendingSendAndAllTexts() async throws {
+        func digest(_ text: String) -> String {
+            SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+        }
+        let folder = directory.appendingPathComponent(digest(key.server.absoluteString))
+            .appendingPathComponent(key.connectionID.uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let legacy = """
+        {
+          "texts": {"": "Overview draft", "discussion": "Reply draft"},
+          "pending": {
+            "text": "Reply draft", "eventID": "original-event", "attachments": [],
+            "threadID": "discussion", "contextThreadID": "discussion"
+          }
+        }
+        """
+        try Data(legacy.utf8).write(to: folder.appendingPathComponent(digest(key.roomID) + ".json"))
+
+        let draft = disk.load(key).draft
+        XCTAssertEqual(draft.texts, ["": "Overview draft", "discussion": "Reply draft"])
+        XCTAssertEqual(draft.pending.count, 1)
+        let restored = try XCTUnwrap(draft.pending.first)
+        XCTAssertEqual(restored.eventID, "original-event")
+        XCTAssertEqual(restored.threadID, "discussion")
+        XCTAssertEqual(restored.contextThreadID, "discussion")
+        XCTAssertEqual(restored.text, "Reply draft")
+    }
+
+    func testForwardedSendWithoutAnOwnerReplyRestoresAndRetriesTheOriginal() async throws {
+        let store = disk
+        let wire = RoomWire(), reader = makeReader(wire, store: store)
+        await reader.open()
+        defer { reader.close() }
+        reader.draft = "Message sent through a forwarder"
+        wire.writeFailure = BotRoomFailure(code: 5124, reason: nil)
+        await reader.send()
+        let eventID = try XCTUnwrap(wire.writes.last?.1["event_id"]?.text)
+        XCTAssertEqual(reader.uncertainSend?.eventID, eventID)
+        reader.close()
+
+        let restored = makeReader(wire, store: store)
+        XCTAssertEqual(restored.uncertainSend?.eventID, eventID)
+        wire.writeFailure = nil
+        await restored.open()
+        defer { restored.close() }
+        XCTAssertEqual(restored.primaryAction(in: nil), .retry(enabled: true))
+        await restored.send(retry: true)
+
+        XCTAssertEqual(wire.writes.count, 2)
+        XCTAssertEqual(wire.writes.last?.1["event_id"]?.text, eventID)
     }
 
     func testSendIsRecoverableBeforeTheReplyOrSuspendRuns() async throws {
-        let wire = RoomWire(), reader = makeReader(wire)
+        let store = disk
+        let wire = RoomWire(), reader = makeReader(wire, store: store)
+        wire.latest = 1
+        wire.roomEvents[1] = RoomFixture.attachmentEvent(1, text: "Thread root", threadID: "discussion", files: [])
         await reader.open()
         defer { reader.close() }
-        reader.draft = "In flight"
+        reader.draft = "Earlier send"
+        wire.writeFailure = BotFailure.transport
+        await reader.send()
+        let earlier = try XCTUnwrap(reader.uncertainSend)
+
+        reader.setDraft("In flight", in: "discussion")
+        wire.writeFailure = nil
         wire.holdWrite = true
         let held = expectation(description: "Send dispatched without a reply")
         wire.onWriteHeld = { held.fulfill() }
-        let send = Task { await reader.send() }
+        let send = Task { await reader.send(threadID: "discussion") }
         await fulfillment(of: [held], timeout: 2)
 
-        let restored = makeReader(RoomWire())
+        let restored = makeReader(RoomWire(), store: store)
         let eventID = wire.writes.last?.1["event_id"]?.text
         wire.releaseWrite()
         await send.value
         XCTAssertNotNil(eventID)
-        XCTAssertEqual(restored.uncertainSend?.eventID, eventID)
-        XCTAssertEqual(restored.draft, "In flight")
-        XCTAssertNil(disk.load(key).draft.pending)
+        XCTAssertEqual(restored.uncertainSend, earlier)
+        XCTAssertEqual(restored.uncertainSend(in: "discussion")?.eventID, eventID)
+        XCTAssertEqual(restored.draft(in: "discussion"), "In flight")
+        XCTAssertEqual(store.load(key).draft.pending, [earlier])
     }
 
     func testExplicitRejectionDoesNotRestoreAnUncertainSend() async {
@@ -226,7 +302,7 @@ import XCTest
         XCTAssertTrue(restored.attachmentChips(in: nil).isEmpty)
         XCTAssertTrue(restored.mayAddAttachments(in: nil))
         XCTAssertEqual(restored.commandMessage, String(localized: "Attachments expired. Add them again before sending."))
-        XCTAssertNil(disk.load(key).draft.pending)
+        XCTAssertTrue(disk.load(key).draft.pending.isEmpty)
         XCTAssertEqual(disk.load(key).draft.texts, ["": original.text])
     }
 
@@ -241,7 +317,7 @@ import XCTest
         XCTAssertEqual(restored.events.map(\.eventID), [original.serverEventID])
         XCTAssertNil(restored.commandMessage)
         XCTAssertNil(restored.uncertainSend)
-        XCTAssertNil(disk.load(key).draft.pending)
+        XCTAssertTrue(disk.load(key).draft.pending.isEmpty)
         XCTAssertEqual(disk.load(key).draft.texts, ["": "A different draft"])
     }
 
@@ -259,7 +335,7 @@ import XCTest
         XCTAssertEqual(wire.uploadCalls.count, 1)
         XCTAssertEqual(restored.events.map(\.roomAttachments), [original.attachments])
         XCTAssertNil(restored.uncertainSend)
-        XCTAssertNil(disk.load(key).draft.pending)
+        XCTAssertTrue(disk.load(key).draft.pending.isEmpty)
     }
 
     func testRoomDraftsAreIsolatedByConnectionServerAndRoom() {
@@ -285,7 +361,7 @@ import XCTest
             reader.setDraft("Draft reply", in: "discussion")
             wire.writeFailure = BotFailure.transport
             await reader.send()
-            XCTAssertNotNil(disk.load(key).draft.pending)
+            XCTAssertFalse(disk.load(key).draft.pending.isEmpty)
 
             wire.writeFailure = nil
             if disband {
@@ -322,7 +398,7 @@ import XCTest
         reader.close()
 
         XCTAssertTrue(store.load(removed).draft.texts.isEmpty)
-        XCTAssertNotNil(store.load(kept).draft.pending)
+        XCTAssertFalse(store.load(kept).draft.pending.isEmpty)
     }
 
     func testSignOutAndServerRemovalPurgeOnlyTheirServerDrafts() async throws {
@@ -342,13 +418,13 @@ import XCTest
 
         await auth.signOut()
         XCTAssertTrue(store.load(keys[0]).draft.texts.isEmpty)
-        XCTAssertNil(store.load(keys[0]).draft.pending)
-        XCTAssertNotNil(store.load(keys[1]).draft.pending)
+        XCTAssertTrue(store.load(keys[0]).draft.pending.isEmpty)
+        XCTAssertFalse(store.load(keys[1]).draft.pending.isEmpty)
         await auth.removeServer(try XCTUnwrap(auth.servers.first { $0.id == servers[1].absoluteString }))
 
         XCTAssertTrue(store.load(keys[1]).draft.texts.isEmpty)
-        XCTAssertNil(store.load(keys[1]).draft.pending)
-        XCTAssertNotNil(store.load(keys[2]).draft.pending)
+        XCTAssertTrue(store.load(keys[1]).draft.pending.isEmpty)
+        XCTAssertFalse(store.load(keys[2]).draft.pending.isEmpty)
     }
 
     private func makeReader(_ wire: RoomWire, store: BotRoomDraftStore? = nil, key: BotRoomKey? = nil,
@@ -398,6 +474,6 @@ import XCTest
     private func saveFixture(for key: BotRoomKey, store: BotRoomDraftStore) throws {
         let generation = store.load(key).generation
         let text = "Unconfirmed message"
-        try store.save(.init(texts: ["": text], pending: .init(text: text)), for: key, generation: generation)
+        try store.save(.init(texts: ["": text], pending: [.init(text: text)]), for: key, generation: generation)
     }
 }

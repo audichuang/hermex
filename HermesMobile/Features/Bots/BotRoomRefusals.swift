@@ -1,6 +1,8 @@
 import Foundation
 
 extension BotRoomFailure {
+    var ownerDidNotAnswer: Bool { code == 5124 }
+
     var explanation: String? {
         if reason == "runtime_coordination_required" || code == 4123 {
             return String(localized: "Restart the Hermes gateway on your Mac, then reconnect.")

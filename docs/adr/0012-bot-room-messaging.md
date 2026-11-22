@@ -40,13 +40,16 @@ Desktop lets a send finish through navigation, shows the log event as soon as it
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
-## Persist room drafts and one unresolved send across relaunches
+## Persist room drafts and all unresolved sends across relaunches
 
 Room drafts live in protected Application Support storage, scoped to the server,
 Bot connection and room. Writing the send before socket dispatch preserves its
 original event and thread IDs if the process exits before the reply. The disk
-record keeps the oldest unresolved send while other threads can still send.
-Accepted sends and matching log events clear the saved send. Disband, expiry,
+record keeps one unresolved send per composer so a relaunch preserves Retry
+in every affected thread. `hermes serve` can return `5124` from `groups.send`
+after the room's owning gateway has committed the message. The reader treats
+that outcome as unknown and keeps the original IDs for Retry. Accepted sends
+and matching log events clear the corresponding saved send. Disband, expiry,
 connection removal or replacement, sign-out, and server removal purge the
 corresponding drafts and prevent readers already open from recreating them.
 

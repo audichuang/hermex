@@ -2358,7 +2358,7 @@ Overview and each thread keep separate drafts and uncertain sends while open.
 Pending log suppression matches the exact server event identity, not the thread,
 so earlier user messages in a continued thread remain visible.
 Pending commands are invalidated before a room closes or backgrounds. Draft text
-and the oldest unresolved send survive relaunch, scoped to the server, Bot
+and all unresolved sends survive relaunch, scoped to the server, Bot
 connection and room. Restored sends use the same log reconciliation and Retry.
 
 Sending stays available while members are working. Stop targets every bot in the

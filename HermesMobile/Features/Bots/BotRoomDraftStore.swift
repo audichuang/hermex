@@ -4,8 +4,25 @@ import OSLog
 
 @MainActor final class BotRoomDraftStore {
     struct Draft: Codable {
-        var texts: [String: String] = [:]
-        var pending: BotRoomReader.Send?
+        var texts: [String: String]
+        var pending: [BotRoomReader.Send]
+
+        private enum CodingKeys: String, CodingKey { case texts, pending }
+
+        init(texts: [String: String] = [:], pending: [BotRoomReader.Send] = []) {
+            self.texts = texts
+            self.pending = pending
+        }
+
+        init(from decoder: Decoder) throws {
+            let record = try decoder.container(keyedBy: CodingKeys.self)
+            texts = try record.decode([String: String].self, forKey: .texts)
+            do {
+                pending = try record.decodeIfPresent([BotRoomReader.Send].self, forKey: .pending) ?? []
+            } catch DecodingError.typeMismatch {
+                pending = [try record.decode(BotRoomReader.Send.self, forKey: .pending)]
+            }
+        }
     }
 
     static let shared = BotRoomDraftStore(
@@ -38,7 +55,7 @@ import OSLog
     func save(_ draft: Draft, for key: BotRoomKey, generation: UUID) throws {
         guard generations[key] == generation else { throw BotFailure.stale }
         let file = file(for: key)
-        if draft.texts.isEmpty && draft.pending == nil {
+        if draft.texts.isEmpty && draft.pending.isEmpty {
             try delete(file)
             return
         }

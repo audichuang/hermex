@@ -172,8 +172,8 @@ enum BotRoomStopControl: Equatable {
         reconnect = BotReconnectSchedule(delays: reconnectDelays, limit: reconnectDelays.count,
                                          isNetworkAvailable: isNetworkAvailable)
         self.drafts = saved.draft.texts
-        if let pending = saved.draft.pending {
-            uncertainSends = [pending]
+        uncertainSends = saved.draft.pending
+        if !uncertainSends.isEmpty {
             commandMessage = Self.unknownOutcomeMessage
         }
         if let recent = cache.recent.log(for: .init(key)) {
@@ -700,7 +700,7 @@ enum BotRoomStopControl: Equatable {
                                          threadID: request.threadID, attachments: request.attachments)
         await command(send, validate: {
             if !retry && self.uploadedAttachments(in: threadID) != request.attachments { throw BotFailure.stale }
-            try self.writeDrafts(pending: self.uncertainSends.first ?? request)
+            try self.writeDrafts(including: request)
         }, accept: { result in
             let value = result["event"]
             guard result["accepted"].flag == true, result["client_event_id"].text == request.eventID,
@@ -822,7 +822,8 @@ enum BotRoomStopControl: Equatable {
             try accept(result)
         } catch {
             guard commandID == token, wire === client else { return }
-            if let rejection = error as? BotRoomFailure {
+            if let rejection = error as? BotRoomFailure,
+               !(dispatched && call.method == "groups.send" && rejection.ownerDidNotAnswer) {
                 onReject?()
                 if case .groupsDisband = call { uncertainDisband = false }
                 if case .groupsContinue = call, !rejection.expired {
@@ -978,12 +979,14 @@ enum BotRoomStopControl: Equatable {
         if draft(in: send.contextThreadID) == send.text { drafts[context] = nil }
     }
 
-    private func writeDrafts(pending: Send?) throws {
+    private func writeDrafts(including send: Send?) throws {
+        var pending = uncertainSends
+        if let send, uncertainSend(in: send.contextThreadID) == nil { pending.append(send) }
         try draftStore.save(.init(texts: drafts, pending: pending), for: key, generation: draftGeneration)
     }
 
     private func persistDrafts() {
-        do { try writeDrafts(pending: uncertainSends.first ?? (dispatched ? sending : nil)) }
+        do { try writeDrafts(including: dispatched ? sending : nil) }
         catch BotFailure.stale {}
         catch { Self.draftLogger.error("Could not save room drafts: \(error.localizedDescription, privacy: .private)") }
     }
