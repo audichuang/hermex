@@ -11,7 +11,21 @@ struct ContentView: View {
     @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
 
     var body: some View {
-        content
+        // The app's voice call, above every screen (#1091). Stacked, not a safe-area inset: the
+        // screens under it start below it, so their navigation bars sit under the bar, not
+        // behind it.
+        VStack(spacing: 0) {
+            // Above the screens, so the pill's shadow falls over them.
+            LiveVoiceCallBar().zIndex(1)
+            content
+        }
+            // The call starts full screen; swiping it down leaves the pill above.
+            .sheet(isPresented: Binding(
+                get: { LiveVoiceCall.shared.call != nil && LiveVoiceCall.shared.isExpanded },
+                set: { if !$0 { LiveVoiceCall.shared.minimize() } }
+            )) {
+                LiveVoiceCallScreen()
+            }
             .moveToHermesNotices(authManager)
             .onOpenURL(perform: handleOpenURL)
             .task {
@@ -19,12 +33,23 @@ struct ContentView: View {
                 didCheckInitialPendingShare = true
                 importPendingSharedDraftIfAvailable()
                 drainPendingIntentDeepLink()
+                drainPendingVoiceCall()
                 await UsageReports.shared.appBecameActive()
             }
             .onChange(of: intentRouter.pendingDeepLink) {
                 drainPendingIntentDeepLink()
             }
+            .onChange(of: intentRouter.pendingVoiceCall) {
+                drainPendingVoiceCall()
+            }
+            // Derived, so a webui server replaced by a Hermes one at the same URL flips it too.
+            .onChange(of: activeWebuiServer, initial: true) { LiveVoiceCall.shared.webuiServer = activeWebuiServer }
             .onChange(of: authManager.state) {
+                if case .loggedIn(let server) = authManager.state {
+                    LiveVoiceCall.shared.endUnless(server: server)
+                } else {
+                    LiveVoiceCall.shared.endUnless(server: nil)
+                }
                 switchServer(pendingLinks.reroute(state: authManager.state, servers: authManager.servers,
                                                   isBotModeEnabled: isBotModeEnabled))
                 shares.endReview()
@@ -52,6 +77,7 @@ struct ContentView: View {
             .onChange(of: scenePhase) {
                 if scenePhase == .background { HermesConnections.shared.closeForBackground() }
                 guard scenePhase == .active else { return }
+                HermesConnections.shared.returnedFromBackground()
                 Task { await UsageReports.shared.appBecameActive() }
                 importPendingSharedDraftIfAvailable()
                 Task { await reconcileOrphanedLiveActivities(notifiesOnCompletion: false) }
@@ -81,6 +107,12 @@ struct ContentView: View {
                   let items = (try? await wire.call(.sessionActiveList))?["sessions"].list else { return nil }
             return LeftoverLiveActivitySettlement.runningKeys(items)
         }
+    }
+
+    /// The signed-in server when it is a legacy webui server: its Bots chats offer no call (#1091).
+    private var activeWebuiServer: URL? {
+        guard case .loggedIn(let server) = authManager.state, authManager.kind(of: server) == .webui else { return nil }
+        return server
     }
 
     @ViewBuilder
@@ -120,11 +152,7 @@ struct ContentView: View {
 
     private func handleOpenURL(_ url: URL) {
         Task { await AgentLiveActivityManager.shared.dismissFinishedActivity(from: url) }
-        pendingLinks.webuiPush = nil
-        pendingLinks.hermesSession = nil
-        pendingLinks.hermesNewChat = nil
-        pendingLinks.hermesUsage = nil
-        pendingLinks.botWidget = nil
+        clearPendingLinks()
         if let destination = WebuiPushDestination(url: url) {
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
             return
@@ -206,9 +234,10 @@ struct ContentView: View {
         if let account { authManager.switchActiveServer(to: account) }
     }
 
-    private func openNewChat(autoStartsVoiceInput: Bool) {
+    private func openNewChat(autoStartsVoiceInput: Bool, autoStartsVoiceCall: Bool = false) {
         if let hermes = HermesNewChatDestination.onActiveServer(state: authManager.state, servers: authManager.servers,
-                                                                autoStartsVoiceInput: autoStartsVoiceInput) {
+                                                                autoStartsVoiceInput: autoStartsVoiceInput && !autoStartsVoiceCall,
+                                                                autoStartsVoiceCall: autoStartsVoiceCall) {
             switchServer(pendingLinks.open(hermes, state: authManager.state, servers: authManager.servers))
         } else if reachWebuiServer() {
             pendingLinks.newChatRequest = NewChatRequest(autoStartsVoiceInput: autoStartsVoiceInput)
@@ -239,6 +268,26 @@ struct ContentView: View {
         guard let url = intentRouter.pendingDeepLink else { return }
         intentRouter.pendingDeepLink = nil
         handleOpenURL(url)
+    }
+
+    /// Start Voice Call (#1091), in-process only: a new Hermes session that starts a call once its
+    /// host offers one. A webui server has no calls, so it opens New Chat with Voice there.
+    private func drainPendingVoiceCall() {
+        guard intentRouter.pendingVoiceCall != nil else { return }
+        intentRouter.pendingVoiceCall = nil
+        // One call per app: the Shortcut goes back to the call that is on.
+        if LiveVoiceCall.shared.call != nil { return LiveVoiceCall.shared.requestReopen() }
+        clearPendingLinks()
+        openNewChat(autoStartsVoiceInput: true, autoStartsVoiceCall: true)
+    }
+
+    /// A new link or request replaces whatever an earlier one still waits to open.
+    private func clearPendingLinks() {
+        pendingLinks.webuiPush = nil
+        pendingLinks.hermesSession = nil
+        pendingLinks.hermesNewChat = nil
+        pendingLinks.hermesUsage = nil
+        pendingLinks.botWidget = nil
     }
 
     private func importPendingSharedDraftIfAvailable() {
@@ -608,6 +657,7 @@ struct HermesServerHome: View {
             if sessions == nil { pendingSessionDestination = nil; return }
             tab = .sessions; settings = nil; isPresentingAddServer = false
         }
+        .onChange(of: LiveVoiceCall.shared.reopenRequest) { reopenVoiceCallChat() }
         .onChange(of: pendingNewChat, initial: true) {
             guard pendingNewChat != nil else { return }
             if sessions == nil { pendingNewChat = nil; return }
@@ -655,9 +705,37 @@ struct HermesServerHome: View {
         .onAppear(perform: readConnection)
     }
 
+    private func reopenVoiceCallChat() {
+        let call = LiveVoiceCall.shared
+        guard let seat = call.reopensTo, seat.server == server else { return }
+        settings = nil
+        isPresentingAddServer = false
+        if let bot = seat.bot {
+            tab = .bots
+            switch call.reopenStep(isOpen: inbox.selection.profile?.id == bot.id) {
+            case .stay: return
+            case .open: inbox.selection.profile = bot
+            case .reopen:
+                inbox.selection.profile = nil
+                Task { @MainActor in inbox.selection.profile = bot }
+            }
+        } else if let navigation = sessions?.navigation {
+            tab = .sessions
+            let step = call.reopenStep(isOpen: navigation.covers.chat?.id == seat.id)
+            guard step != .stay else { return }
+            navigation.covers.bringForward()
+            if step == .reopen {
+                Task { @MainActor in navigation.covers.chat = seat }
+            } else {
+                navigation.covers.chat = seat
+            }
+        }
+    }
+
     private func readConnection() {
         let saved = try? BotConnectionStore().load(server: server)
         guard saved != sessions?.entry.connection else { return }
+        LiveVoiceCall.shared.endUnless(connectionID: saved?.id, on: server)
         if let reviewing = shortcutReview.chat { shortcutReview.end(reviewing) }
         sessions = saved.map { HermesSessionsSide(server: server, connection: $0) }
     }

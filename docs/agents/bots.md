@@ -1579,8 +1579,8 @@ Server; its list pops its chat and pushed screens and closes its sheets and conf
 
 ## Shortcuts on Hermes (#1180)
 
-New Chat and New Chat with Voice on an active Hermes server, signed in or not, open a new session
-there (`HermesNewChatDestination.onActiveServer`), never a webui server; on a webui server they are
+New Chat, New Chat with Voice and Start Voice Call (`docs/agents/voice-call.md`) on an active Hermes
+server, signed in or not, open a new session there (`HermesNewChatDestination.onActiveServer`), never a webui server; on a webui server they are
 unchanged. New Chat in Profile takes a `ProfileEntity`: a Hermes server's Profile is
 `<server URL>|<profile>`, so the same name on two servers is two choices, and queues
 `new-chat-profile?server=…&profile=…`; one whose server or Profile doesn't parse opens nothing

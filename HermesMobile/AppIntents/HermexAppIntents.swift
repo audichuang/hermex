@@ -8,7 +8,16 @@ final class AppIntentRouter {
 
     var pendingDeepLink: URL?
 
+    /// Start Voice Call's request (#1091), drained by `ContentView` like `pendingDeepLink`. It has
+    /// no URL: any app or link can open one without asking, and a call opens the microphone and
+    /// bills the user's OpenAI key. New on every request, so a repeat press opens another chat.
+    var pendingVoiceCall: UUID?
+
     private init() {}
+
+    func requestVoiceCall() {
+        pendingVoiceCall = UUID()
+    }
 
     func requestDeepLink(_ url: URL?) {
         guard let url else { return }
@@ -59,6 +68,23 @@ struct NewChatVoiceIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         UsageReports.shared.record(.appIntents)
         AppIntentRouter.shared.requestDeepLink(HermesDeepLink.newChatVoiceURL)
+        return .result()
+    }
+}
+
+struct NewVoiceCallIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Voice Call"
+    static var description = IntentDescription("Open Hermex on a new chat and start a voice call.")
+
+    static var openAppWhenRun: Bool = true
+
+    @available(iOS 26.0, *)
+    static var supportedModes: IntentModes { .foreground(.immediate) }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        UsageReports.shared.record(.appIntents)
+        AppIntentRouter.shared.requestVoiceCall()
         return .result()
     }
 }
@@ -168,6 +194,16 @@ struct HermexShortcuts: AppShortcutsProvider {
             systemImageName: "mic.badge.plus"
         )
         AppShortcut(
+            intent: NewVoiceCallIntent(),
+            phrases: [
+                "Start a voice call in \(.applicationName)",
+                "Start a \(.applicationName) voice call",
+                "New \(.applicationName) voice call"
+            ],
+            shortTitle: "Start Voice Call",
+            systemImageName: "phone"
+        )
+        AppShortcut(
             intent: NewChatInProfileIntent(),
             phrases: [
                 "New \(\.$profile) chat in \(.applicationName)",
@@ -200,6 +236,7 @@ struct HermesNewChatDestination: Hashable {
     let server: URL
     let profile: String?
     var autoStartsVoiceInput = false
+    var autoStartsVoiceCall = false
     let id = UUID()
 
     enum Route: Equatable {
@@ -209,10 +246,11 @@ struct HermesNewChatDestination: Hashable {
         case open
     }
 
-    init(server: URL, profile: String?, autoStartsVoiceInput: Bool = false) {
+    init(server: URL, profile: String?, autoStartsVoiceInput: Bool = false, autoStartsVoiceCall: Bool = false) {
         self.server = server
         self.profile = profile
         self.autoStartsVoiceInput = autoStartsVoiceInput
+        self.autoStartsVoiceCall = autoStartsVoiceCall
     }
 
     init?(url: URL) {
@@ -231,10 +269,11 @@ struct HermesNewChatDestination: Hashable {
     }
 
     @MainActor static func onActiveServer(state: AuthManager.State, servers: [ServerAccount],
-                                          autoStartsVoiceInput: Bool) -> Self? {
+                                          autoStartsVoiceInput: Bool, autoStartsVoiceCall: Bool = false) -> Self? {
         guard let active = state.server,
               servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes else { return nil }
-        return Self(server: active, profile: nil, autoStartsVoiceInput: autoStartsVoiceInput)
+        return Self(server: active, profile: nil, autoStartsVoiceInput: autoStartsVoiceInput,
+                    autoStartsVoiceCall: autoStartsVoiceCall)
     }
 
     @MainActor func route(state: AuthManager.State, servers: [ServerAccount]) -> Route {
@@ -249,6 +288,6 @@ struct HermesNewChatDestination: Hashable {
     @MainActor func chat(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesSessionChat? {
         guard entry.server == server, isLive, let profile = profile ?? listed else { return nil }
         return HermesSessionChat(server: server, connection: entry.connection, target: .new(profile: profile),
-                                 autoStartsVoiceInput: autoStartsVoiceInput)
+                                 autoStartsVoiceInput: autoStartsVoiceInput, autoStartsVoiceCall: autoStartsVoiceCall)
     }
 }

@@ -14,6 +14,20 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertNil(try HermesCall.promptSubmit(sessionID: "runtime", text: "hi").params()["title_preview"])
     }
 
+    /// A voice call's delegation tells the host it came from a call and hands the model the spoken
+    /// exchange, bounded as the host bounds it; an ordinary send says neither (#1091).
+    func testPromptSubmitMarksAVoiceCallsDelegationWithItsSpokenContext() throws {
+        let spoken = String(repeating: "說", count: 6_100)
+        let voice = try HermesCall.promptSubmit(sessionID: "runtime", text: "Check the build", voiceContext: spoken).params()
+        XCTAssertEqual(voice["text"]?.text, "Check the build", "the stored prompt stays the delegated words")
+        XCTAssertEqual(voice["surface"]?.text, "voice-live")
+        XCTAssertEqual(voice["voice_context"]?.text, String(repeating: "說", count: 6_000))
+
+        let typed = try HermesCall.promptSubmit(sessionID: "runtime", text: "Check the build").params()
+        XCTAssertNil(typed["surface"])
+        XCTAssertNil(typed["voice_context"])
+    }
+
     func testApprovalSummarySendsTheFlaggedCommandOutsideTheConversation() throws {
         let input = "Why it was flagged: Deletes files\nCommand: rm ./draft.txt\nWorking directory: /work"
         let call = HermesCall.approvalSummary(input: input, language: ApprovalSummaries.language("ja"), sessionID: "runtime", profile: "dev")
@@ -438,6 +452,13 @@ final class HermesRequestTests: XCTestCase {
              .object(["content": .string("Be direct.")]), json),
             (.speak(text: "Hi there.", profile: "research"), "POST", "https://hermes.example:9120/api/audio/speak?profile=research",
              .object(["text": .string("Hi there.")]), json),
+            (.voiceLiveStatus(profile: "research"), "GET",
+             "https://hermes.example:9120/api/audio/voice-live/status?profile=research", nil, [:]),
+            (.voiceLiveSession(profile: "research", sdp: "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n",
+                               history: [.object(["type": .string("message"), "role": .string("user")])]), "POST",
+             "https://hermes.example:9120/api/audio/voice-live/session?profile=research",
+             .object(["sdp": .string("v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n"),
+                      "history": .array([.object(["type": .string("message"), "role": .string("user")])])]), json),
             (.kanbanConfig, "GET", "https://hermes.example:9120/api/plugins/kanban/config", nil, [:]),
             (.kanbanBoards, "GET", "https://hermes.example:9120/api/plugins/kanban/boards", nil, [:]),
             (.kanbanBoard(board: "default", tenant: nil, includeArchived: false), "GET",

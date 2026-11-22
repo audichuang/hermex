@@ -86,6 +86,32 @@ import OSLog
         ([liveGateway] + profileGateways.values.map(\.gateway)).compactMap { $0 }
     }
 
+    var keepsAliveForCall: Bool { callsKeepingAlive > 0 }
+    private var callsKeepingAlive = 0 {
+        didSet { if callsKeepingAlive == 0, owesBackgroundClose { closeForBackground() } }
+    }
+
+    func callStarted() { callsKeepingAlive += 1 }
+    /// Hangs up the voice call on this connection once it is retired (#1091): its saved record
+    /// changed or went, so the call's chat can't reach the host any more.
+    var onRetire: (() -> Void)?
+    func callEnded() { callsKeepingAlive = max(0, callsKeepingAlive - 1) }
+    private(set) var owesBackgroundClose = false
+
+    func closeForBackground() {
+        guard !keepsAliveForCall else {
+            if !owesBackgroundClose { HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): kept open in background, voice call") }
+            owesBackgroundClose = true
+            return
+        }
+        owesBackgroundClose = false
+        liveGateways.forEach { $0.closeForBackground() }
+    }
+
+    func returnedFromBackground() {
+        owesBackgroundClose = false
+    }
+
     func makeConsumerID() -> Int {
         consumerCount += 1
         return consumerCount
@@ -447,6 +473,9 @@ import OSLog
         signInTask?.cancel()
         signInTask = nil
         liveGateways.forEach { $0.retire() }
+        let retired = onRetire
+        onRetire = nil
+        retired?()
     }
 
     private func decoded(_ rest: HermesREST, on session: URLSession) async throws -> BotJSON {
@@ -551,7 +580,12 @@ import OSLog
     }
 
     func closeForBackground() {
-        current?.liveGateways.forEach { $0.closeForBackground() }
+        current?.closeForBackground()
+    }
+
+    /// The app is active again: a voice call that ends now leaves the socket open (#1091).
+    func returnedFromBackground() {
+        current?.returnedFromBackground()
     }
 
     func networkPathDidChange() {

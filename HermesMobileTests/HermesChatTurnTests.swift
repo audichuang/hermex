@@ -779,6 +779,166 @@ import SwiftUI
         XCTAssertEqual(chat.model.queuedPromptMessages.map(\.content), ["Run the quick check."])
     }
 
+    func testAVoiceSendHearsOnlyItsOwnTurn() async throws {
+        var receipt = try XCTUnwrap(try canonical("canonical-receipts")["idle"].fields)
+        receipt["admission_id"] = .string("voice")
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.host.always("session.interrupt", .init(result: .object(["status": .string("interrupted")])))
+        var heard: [HermesVoiceTurnEvent] = []
+        chat.turn.voiceTurnObserver = { heard.append($0) }
+        chat.receive(canonicalEvent(1, "message.start", admission: "earlier", generation: 1))
+        chat.receive(canonicalEvent(2, "message.delta", ["text": .string("Working on")], admission: "earlier", generation: 1))
+
+        let stopped = await chat.model.cancelActiveStream()
+        XCTAssertTrue(stopped)
+        chat.receive(canonicalEvent(3, "message.delta", ["text": .string(" it")], admission: "earlier", generation: 1))
+        chat.receive(canonicalEvent(4, "message.complete", ["status": .string("interrupted"), "text": .string("Working on it")],
+                                    admission: "earlier", generation: 1))
+        chat.receive(canonicalEvent(5, "session.info", ["running": .bool(false)], admission: "earlier", generation: 1))
+        XCTAssertEqual(heard, [.turnEnded])
+
+        chat.host.next("prompt.submit", .init(result: .object(receipt), before: [
+            canonicalEvent(6, "message.start", admission: "voice", generation: 2)
+        ]))
+        let started = await chat.model.submitVoicePrompt("Check the build.", context: "User: Check the build.")
+        XCTAssertTrue(started)
+        let params = try XCTUnwrap(chat.writes("prompt.submit").first)
+        XCTAssertEqual(params["surface"], .string("voice-live"))
+        XCTAssertEqual(params["voice_context"], .string("User: Check the build."))
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.last?.content, "Check the build.")
+
+        chat.receive(canonicalEvent(7, "tool.start", ["name": .string("terminal")], admission: "earlier", generation: 1))
+        chat.receive(canonicalEvent(8, "message.delta", ["text": .string("It builds. ")], admission: "voice", generation: 2))
+        chat.receive(canonicalEvent(9, "message.interim", ["text": .string("Tests pass.")], admission: "voice", generation: 2))
+        chat.receive(canonicalEvent(10, "message.complete", ["status": .string("complete"), "text": .string("Tests pass.")],
+                                    admission: "voice", generation: 2))
+        chat.receive(canonicalEvent(11, "session.info", ["running": .bool(false)], admission: "voice", generation: 2))
+
+        XCTAssertEqual(heard, [.turnEnded, .reply("It builds. "), .interim("Tests pass."), .settled(lostTrack: false), .turnEnded])
+        XCTAssertEqual(chat.model.voiceTurnReply, "It builds. \n\nTests pass.")
+    }
+
+    func testAVoiceCallKeepsTheChatAttachedInTheBackgroundUntilItEnds() async {
+        let chat = await openChat()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()?.value
+        XCTAssertTrue(chat.model.isOnVoiceCall)
+
+        chat.client.http.closeForBackground()
+        chat.model.suspendStreamForBackground()
+        XCTAssertTrue(chat.turn.engine.isActive)
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+
+        chat.model.endVoiceCall()
+        XCTAssertFalse(chat.turn.engine.isActive)
+        XCTAssertFalse(chat.client.http.keepsAliveForCall)
+        XCTAssertFalse(chat.client.http.owesBackgroundClose)
+    }
+
+    func testAScreenPushedOverTheChatKeepsItsVoiceCall() async {
+        let chat = await openChat()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()?.value
+
+        chat.model.suspendStreamForNavigation()
+        XCTAssertTrue(chat.model.isOnVoiceCall)
+        XCTAssertEqual(transport.closes, 0)
+        XCTAssertTrue(chat.turn.engine.isActive)
+
+        chat.model.endVoiceCall()
+        XCTAssertFalse(chat.turn.engine.isActive)
+        XCTAssertFalse(chat.client.http.keepsAliveForCall)
+    }
+
+    func testCallShowsWhenTheChatsHostRunsGPTLive() async {
+        // Its own Profile, so a status read an earlier test's chat left in flight can't count here.
+        let chat = await openChat(profile: "voice",
+                                  voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        await chat.model.voiceCallOfferRead?.value
+
+        XCTAssertTrue(chat.model.offersVoiceCall)
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/audio/voice-live/status" }
+            .compactMap { $0.url?.query }.filter { $0 == "profile=voice" }.count, 1)
+    }
+
+    func testStartVoiceCallStartsOneCallOnlyWhenTheHostOffersIt() async {
+        let offered = await openChat(profile: "voice-on", target: .new(profile: "voice-on"),
+                                     voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        var calls = 0
+        offered.model.makeVoiceLiveTransport = { _ in calls += 1; return CallTransport() }
+        offered.model.requestVoiceCall()
+        await offered.model.voiceCallOfferRead?.value
+        XCTAssertTrue(offered.model.isRequestedVoiceCallReady)
+
+        await offered.model.startRequestedVoiceCall()?.value
+        await offered.model.startRequestedVoiceCall()?.value
+        XCTAssertEqual(calls, 1)
+        XCTAssertTrue(offered.model.isOnVoiceCall)
+        offered.model.endVoiceCall()
+
+        let chained = await openChat(profile: "voice-off",
+                                     voiceLive: .object(["ok": .bool(true), "mode": .string("chained"), "available": .bool(true)]))
+        chained.model.makeVoiceLiveTransport = { _ in calls += 1; return CallTransport() }
+        chained.model.requestVoiceCall()
+        await chained.model.voiceCallOfferRead?.value
+        await chained.model.startRequestedVoiceCall()?.value
+        XCTAssertEqual(calls, 1)
+        XCTAssertFalse(chained.model.isOnVoiceCall)
+        XCTAssertNotNil(chained.model.sendErrorMessage)
+    }
+
+    func testACallRequestedOnASavedSessionIsSeededWithItsTurns() async throws {
+        let chat = await openChat(profile: "voice-seed", history: [userRow("Check the build", id: 1), assistantRow("It passed.", id: 2)],
+                                  voiceLive: .object(["ok": .bool(true), "mode": .string("gpt-live"), "available": .bool(true)]))
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        chat.model.requestVoiceCall()
+        await chat.model.voiceCallOfferRead?.value
+
+        await chat.model.startRequestedVoiceCall()?.value
+
+        let seeded = transport.history.compactMap { $0["content"].list?.first?["text"].text }
+        XCTAssertEqual(seeded, ["Check the build", "It passed."])
+        chat.model.endVoiceCall()
+    }
+
+    func testAVoiceCallHearsTheChatLoseAndRegainHermes() async {
+        let chat = await openChat()
+        var heard: [HermesVoiceTurnEvent] = []
+        chat.turn.voiceTurnObserver = { heard.append($0) }
+
+        chat.turn.engine.disconnect(BotFailure.rejected(400))
+        XCTAssertEqual(heard, [.hermesLost])
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertEqual(heard.filter { $0 == .hermesLost || $0 == .hermesRestored }, [.hermesLost, .hermesRestored])
+    }
+
+    func testAFailedCallGateReadEndsStartVoiceCallsRequest() async {
+        let chat = await openChat(profile: "voice-down", target: .new(profile: "voice-down"),
+                                  voiceLiveReply: .json(500, .object(["detail": .string("Internal Server Error")])))
+        chat.model.requestVoiceCall()
+        await chat.model.voiceCallOfferRead?.value
+
+        XCTAssertFalse(chat.model.isRequestedVoiceCallReady)
+        XCTAssertEqual(chat.model.sendErrorMessage, VoiceLiveTransportError.peerConnectionFailed.errorDescription)
+    }
+
+    func testARefusedVoiceCallShowsTheHostsReasonInTheCallBar() async {
+        let chat = await openChat()
+        let transport = CallTransport()
+        let detail = "GPT-Live needs an OpenAI API key (OPENAI_API_KEY or voice.gpt_live.api_key)"
+        transport.startError = HermesVoiceLiveRefusal(status: 503, detail: detail)
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+
+        await chat.model.startVoiceCall()?.value
+
+        XCTAssertNil(chat.model.voiceCallInProgress)
+        XCTAssertEqual(chat.model.liveCall.drop?.message, detail)
+    }
+
     func testCanonicalQueuedSendsStaySeparateAdmissions() async throws {
         let rows = try XCTUnwrap(try canonical("canonical-resume-queued")["pending"].list)
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(running: true, pending: rows), canonical: true)
@@ -1284,6 +1444,26 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime-2")])
     }
 
+    func testAVoiceCallEndsWhenItsBotChatIsReplaced() async {
+        let chat = await openChat(target: .canonicalChat(profile: "default"), history: [userRow("Old question")])
+        chat.model.suspendStreamForBackground()
+        let transport = CallTransport()
+        chat.model.makeVoiceLiveTransport = { _ in transport }
+        await chat.model.startVoiceCall()?.value
+        chat.host.always("session.list", .init(result: .object(["sessions": .array([
+            .object(["id": .string("new-root"), "resolved_id": .string("new-tip")])
+        ])])))
+        chat.host.always("session.resume", .init(result: resume(running: false, runtime: "runtime-2", key: "new-tip")))
+        serveHistory([assistantRow("Fresh start", id: 1)], key: "new-tip")
+
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.root, "new-root")
+        XCTAssertEqual(chat.model.voiceCall?.status, .ended(.chatReplaced))
+        XCTAssertNotNil(chat.model.liveCall.drop, "the bar says why the call ended")
+        XCTAssertEqual(transport.closes, 1)
+    }
+
+
     func testAPlanParsesTolerantlyAndSkipsMalformedItems() {
         let plan = HermesPlan(.object([
             "revision": .number(3),
@@ -1683,7 +1863,8 @@ import SwiftUI
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
                           rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
                           botChatRoot: String? = nil, ratingPromptState: RatingPromptState? = nil,
-                          replay: BotJSON? = nil, noticeTimer: HermesHostNotices.Timer? = nil) async -> Chat {
+                          replay: BotJSON? = nil, noticeTimer: HermesHostNotices.Timer? = nil,
+                          voiceLive: BotJSON? = nil, voiceLiveReply: HermesHostFixture.Reply? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
@@ -1694,7 +1875,7 @@ import SwiftUI
             "messages": .array([]), "info": .object(["profile_name": .string(profile)])
         ])))
         let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline, canonical: canonical))
-        serveHistory(history, key: key)
+        serveHistory(history, key: key, voiceLive: voiceLiveReply ?? voiceLive.map { .json(200, $0) })
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: target ?? .session(profile: profile, key: key), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, lineageRoot: lineageRoot,
@@ -1708,6 +1889,8 @@ import SwiftUI
             draftStore: drafts ?? ChatDraftStore(persistence: InMemoryDraftPersistence(), debounceDuration: .seconds(60)),
             backend: .hermes(turn)
         )
+        // Each chat's own call owner, so no test's call outlives it into the next.
+        model.liveCall = LiveVoiceCall()
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, turn: turn, host: host, client: client, liveActivity: liveActivity)
@@ -1895,8 +2078,9 @@ import SwiftUI
         .object(["id": .number(Double(id)), "role": .string("assistant"), "content": .string(text), "timestamp": .number(timestamp)])
     }
 
-    private func serveHistory(_ rows: [BotJSON], key: String = "tip") {
+    private func serveHistory(_ rows: [BotJSON], key: String = "tip", voiceLive: HermesHostFixture.Reply? = nil) {
         _ = HermesHostFixture.configuration { request in
+            if let voiceLive, request.url?.path == "/api/audio/voice-live/status" { return voiceLive }
             guard request.url?.path == "/api/sessions/\(key)/messages" else { return nil }
             return .json(200, .object(["session_id": .string(key), "messages": .array(rows)]))
         }
@@ -1959,5 +2143,39 @@ private extension BotJSON {
         var fields = self.fields ?? [:]
         fields[key] = value
         return .object(fields)
+    }
+}
+
+/// A voice call's session that opens at once and counts its closes.
+@MainActor private final class CallTransport: VoiceLiveTransport {
+    var onEvent: ((VoiceLiveServerEvent) -> Void)?
+    var onClosed: ((String) -> Void)?
+    var onSpeakingChange: ((Bool) -> Void)?
+    var onAudioLevel: ((Double) -> Void)?
+    var onConnection: ((VoiceLiveConnectionChange) -> Void)?
+    private(set) var closes = 0
+    var onClose: (() -> Void)?
+    func reconnect(history: [BotJSON]) async throws {}
+    func cancelReconnect() {}
+    var startError: Error?
+    /// Holds `start` open, as a session the host hasn't answered yet, until `close`.
+    var parksStart = false
+    var onStart: (() -> Void)?
+    private var parked: CheckedContinuation<Void, Never>?
+
+    private(set) var history: [BotJSON] = []
+
+    func start(history: [BotJSON]) async throws {
+        self.history = history
+        onStart?()
+        if parksStart { await withCheckedContinuation { parked = $0 } }
+        if let startError { throw startError }
+    }
+    func send(_ event: BotJSON) {}
+    func setMuted(_ muted: Bool) {}
+    func close() {
+        closes += 1
+        parked?.resume(); parked = nil
+        onClose?()
     }
 }

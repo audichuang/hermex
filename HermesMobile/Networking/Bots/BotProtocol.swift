@@ -253,6 +253,8 @@ extension HermesAttemptRecord.Outcome {
     func currentProfile() async throws -> String
     func sessionMessages(_ key: String, profile: String, offset: Int?) async throws -> [BotJSON]?
     func speech(text: String, profile: String) async throws -> Data
+    func voiceLiveStatus(profile: String) async throws -> HermesVoiceLiveStatus?
+    func voiceLiveSession(profile: String, sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
     func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
     func archivedSessionCount(profile: String) async throws -> Int
@@ -307,6 +309,14 @@ extension BotTransport {
     }
 
     func speech(text: String, profile: String) async throws -> Data {
+        throw BotFailure.unsupported
+    }
+
+    func voiceLiveStatus(profile: String) async throws -> HermesVoiceLiveStatus? {
+        throw BotFailure.unsupported
+    }
+
+    func voiceLiveSession(profile: String, sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
         throw BotFailure.unsupported
     }
 

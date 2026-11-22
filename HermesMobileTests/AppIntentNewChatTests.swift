@@ -6,11 +6,11 @@ final class AppIntentNewChatTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil }
+        await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil; AppIntentRouter.shared.pendingVoiceCall = nil }
     }
 
     override func tearDown() async throws {
-        await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil }
+        await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil; AppIntentRouter.shared.pendingVoiceCall = nil }
         try await super.tearDown()
     }
 
@@ -54,6 +54,40 @@ final class AppIntentNewChatTests: XCTestCase {
         _ = try await NewChatVoiceIntent().perform()
         XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatVoiceURL)
     }
+
+
+    @MainActor
+    func testStartVoiceCallOpensANewHermesChatThatStartsACall() async throws {
+        _ = try await NewVoiceCallIntent().perform()
+        XCTAssertNotNil(AppIntentRouter.shared.pendingVoiceCall)
+        XCTAssertNil(AppIntentRouter.shared.pendingDeepLink)
+
+        let destination = try XCTUnwrap(HermesNewChatDestination.onActiveServer(
+            state: .loggedIn(server: studio), servers: servers, autoStartsVoiceInput: false, autoStartsVoiceCall: true))
+        let connection = BotConnection(id: UUID(), name: "Host", address: studio, username: "me", password: "secret")
+        let chat = try XCTUnwrap(destination.chat(on: HermesSessionListEntry(server: studio, connection: connection, profile: nil),
+                                                  listed: "default", isLive: true))
+        XCTAssertEqual(chat.target, .new(profile: "default"))
+        XCTAssertTrue(chat.autoStartsVoiceCall)
+        XCTAssertFalse(chat.autoStartsVoiceInput)
+    }
+
+    @MainActor
+    func testANewVoiceCallURLOpensNothing() throws {
+        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-voice-call"))
+        XCTAssertNil(WebuiPushDestination(url: url))
+        XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(url))
+        XCTAssertNil(HermesNewChatDestination(url: url))
+        XCTAssertFalse(HermesDeepLink.isWebuiNewChatInProfileURL(url))
+        XCTAssertFalse(HermesDeepLink.isNewChatURL(url))
+        XCTAssertNil(HermesDeepLink.botDestination(from: url))
+        XCTAssertNil(BotWidgetDestination(url: url))
+        XCTAssertNil(HermesUsageDestination(url: url))
+        XCTAssertNil(HermesSessionDestination(url: url))
+        XCTAssertNil(HermesDeepLink.sessionID(from: url))
+        XCTAssertFalse(HermesShareDraft.isShareOpenURL(url))
+    }
+
 
     private let hermes = URL(string: "https://hermes.example")!
     private let studio = URL(string: "https://studio.example:9119")!
