@@ -129,7 +129,8 @@ private final class HermexAttachmentPickerModel {
         selectedAssetIDs = []
     }
 
-    func prepareSelection() async throws -> [HermexPickedMedia] {
+    func prepareSelection(version: PHImageRequestOptionsVersion, using prepare: (HermexPickedMedia) async throws -> HermexPickedMedia)
+        async throws -> [HermexPickedMedia] {
         guard !isPreparing else { return [] }
         let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.localIdentifier, $0) })
         let selectedAssets = selectedAssetIDs.compactMap { assetsByID[$0] }
@@ -145,11 +146,8 @@ private final class HermexAttachmentPickerModel {
         prepared.reserveCapacity(selectedAssets.count)
         for asset in selectedAssets {
             try Task.checkCancellation()
-            let picked = try await HermexPhotoLibraryImageLoader.pickedImage(for: asset)
-            prepared.append(try await HermexAttachmentImageProcessor.prepare(
-                data: picked.data,
-                filename: picked.filename
-            ))
+            let picked = try await HermexPhotoLibraryImageLoader.pickedImage(for: asset, version: version)
+            prepared.append(try await prepare(picked))
         }
         selectedAssetIDs = []
         return prepared
@@ -157,11 +155,11 @@ private final class HermexAttachmentPickerModel {
 }
 
 enum HermexPhotoLibraryImageLoader {
-    static func pickedImage(for asset: PHAsset) async throws -> HermexPickedMedia {
+    static func pickedImage(for asset: PHAsset, version: PHImageRequestOptionsVersion = .current) async throws -> HermexPickedMedia {
         let name = PHAssetResource.assetResources(for: asset).first?.originalFilename ?? "Photo.jpg"
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
-        options.version = .current
+        options.version = version
         let request = HermexPhotoLibraryImageRequest()
 
         return try await withTaskCancellationHandler {
@@ -522,6 +520,7 @@ struct HermexAttachmentPickerView: View {
 
     let imageCapacity: Int
     let onChooseFiles: () -> Void
+    var prepareOriginalPhoto: ((HermexPickedMedia) async throws -> HermexPickedMedia)? = nil
     var onRecordVoiceNote: (() -> Void)? = nil
     let onAdd: ([HermexPickedMedia]) -> Void
     let onDismiss: () -> Void
@@ -831,15 +830,20 @@ struct HermexAttachmentPickerView: View {
         guard imageCapacity > 0, !data.isEmpty else { return }
         let filename = "camera_\(Int(Date().timeIntervalSince1970)).jpg"
         startPreparation {
-            [try await HermexAttachmentImageProcessor.prepare(data: data, filename: filename)]
+            [try await preparePhoto(.init(data: data, filename: filename))]
         }
     }
 
     private func addSelection() {
         guard case .ready = model.libraryStatus else { return }
         startPreparation {
-            try await model.prepareSelection()
+            try await model.prepareSelection(version: prepareOriginalPhoto == nil ? .current : .original, using: preparePhoto)
         }
+    }
+
+    private func preparePhoto(_ media: HermexPickedMedia) async throws -> HermexPickedMedia {
+        if let prepareOriginalPhoto { return try await prepareOriginalPhoto(media) }
+        return try await HermexAttachmentImageProcessor.prepare(data: media.data, filename: media.filename)
     }
 
     private func startPreparation(

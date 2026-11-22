@@ -139,7 +139,14 @@ import OSLog
     }
 
     func send(_ call: HermesCall, for consumer: Int?, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
-        var params = try call.params(hostVersion: http.serverVersion)
+        var params: [String: BotJSON]
+        if case .groupsAttachmentUpload = call {
+            let version = http.serverVersion, owner = generation
+            params = try await Task.detached { try call.params(hostVersion: version) }.value
+            guard owner == generation else { throw BotFailure.stale }
+        } else {
+            params = try call.params(hostVersion: http.serverVersion)
+        }
         guard let socket, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
         if speaksCanonicalProtocol { params = call.canonicalParams(params) }
         nextID += 1
@@ -152,10 +159,13 @@ import OSLog
             "method": .string(call.method), "params": .object(params)
         ])
         let text: String
-        if case .fileAttach = call {
+        switch call {
+        case .groupsAttachmentUpload, .fileAttach:
             text = try await Task.detached { String(decoding: try JSONEncoder().encode(frame), as: UTF8.self) }.value
             guard owner == generation, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
-        } else { text = String(decoding: try JSONEncoder().encode(frame), as: UTF8.self) }
+        default:
+            text = String(decoding: try JSONEncoder().encode(frame), as: UTF8.self)
+        }
         let timesOutLocally = call.timesOutLocally, cancellationSafe = call.isCancellationSafe
         let rejection = call.rejection, rpcDeadline = call.deadline(options.rpcDeadline), method = call.method
         let reply: BotJSON = try await withTaskCancellationHandler {
@@ -396,7 +406,8 @@ import OSLog
             }
             switch entry.rejection {
             case .room:
-                entry.continuation.resume(throwing: BotRoomFailure(code: code, reason: frame["error"]["data"]["reason"].text))
+                let message = entry.method == BotRoomFiles.uploadMethod ? frame["error"]["message"].text : nil
+                entry.continuation.resume(throwing: BotRoomFailure(code: code, reason: data["reason"].text, message: message))
             case .setting:
                 entry.continuation.resume(throwing: BotSettingFailure.rejected(
                     code, frame["error"]["message"].text ?? BotFailure.rejected(code).localizedDescription))
@@ -463,7 +474,7 @@ private extension HermesCall {
 
     var isCancellationSafe: Bool {
         switch self {
-        case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
+        case .groupsAttachmentUpload, .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
              .subagentRoster,
              .sessionActiveList, .approvalPending, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
              .commitMessage, .approvalSummary, .displayStatus, .displayObserve, .pluginsList, .rollbackList,
@@ -479,7 +490,7 @@ private extension HermesCall {
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
              .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,
              .displayStart, .displayStop, .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove, .pluginsUpdate,
-             .pluginsSettings, .rollbackList, .rollbackDiff, .groupsAttachmentDownload: return true
+             .pluginsSettings, .rollbackList, .rollbackDiff, .groupsAttachmentDownload, .groupsAttachmentUpload: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }

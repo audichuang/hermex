@@ -22,7 +22,7 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
 ## Never resend room commands automatically
 
-`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail; only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure, and a lost reply never starts another command. A dispatched command with no reply stays in `uncertainSends`, and a rejected retry does not erase the uncertainty of the original send.
+`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail; only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure, and a lost reply never starts another command. A dispatched command with no reply stays in `uncertainSends`. For an attachment send, an `invalid_params` retry rejection triggers the log check below.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
@@ -73,3 +73,28 @@ own file summary from the parent instead of reading `attachmentLists`, so a new
 attachment elsewhere does not invalidate every row.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomAttachments.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Keep the uploaded bytes stable across retries
+
+The host deduplicates uploads by room and upload ID. It rejects an ID reused
+with different bytes or metadata. Use the host's byte signatures for its five
+image types, and convert other decodable image formats to JPEG once. The room
+uses the shared picker’s selected image data before chat-specific compression so
+it can retain formats like animated GIF. Keep the resulting bytes through an upload failure so an explicit retry can reuse them.
+A successful upload needs only the returned manifest. A removed chip leaves
+its uncommitted data for the host to reclaim after an hour.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomAttachments.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Check the room log before restoring an uncertain attachment send
+
+Unsent attachment chips expire locally after 55 minutes, five minutes before
+the host can remove them. A committed event retains its attachments, so an
+explicit retry may still be safe after that deadline. The host reports expired
+manifests as `invalid_params`, the same reason it uses for other invalid
+requests. After that rejection, a successful poll checks the exact server
+event ID. If the event exists, reveal it and leave the draft text alone. If
+the event is absent, restore its text and ask the user to attach the files
+again. A failed poll leaves the send uncertain.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`

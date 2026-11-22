@@ -296,8 +296,8 @@ enum BotRoomRPC {
     static func validID(_ id: String) -> Bool {
         id.range(of: "\\A[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\\z", options: .regularExpression) != nil
     }
-    static func validText(_ text: String) -> Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.utf8.count <= 64 * 1024
+    static func validText(_ text: String, attachments: Int = 0) -> Bool {
+        (attachments > 0 || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && text.utf8.count <= 64 * 1024
     }
     static func validName(_ name: String) -> Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.unicodeScalars.count <= 200
@@ -307,11 +307,19 @@ enum BotRoomRPC {
 struct BotRoomFailure: Error, LocalizedError {
     let code: Int
     let reason: String?
+    let message: String?
+
+    init(code: Int, reason: String?, message: String? = nil) {
+        self.code = code
+        self.reason = reason
+        self.message = message
+    }
+
     var expired: Bool { code == 4114 || reason == "room_history_expired" }
     var errorDescription: String? {
         if expired { return String(localized: "This room’s history is no longer available.") }
         if code == 4123 { return String(localized: "Restart the Hermes gateway on your Mac, then reconnect.") }
         if reason == "stale_generation" { return String(localized: "This chat changed on the server. Reopen it and try again.") }
-        return BotFailure.rejected(code).localizedDescription
+        return message ?? BotFailure.rejected(code).localizedDescription
     }
 }

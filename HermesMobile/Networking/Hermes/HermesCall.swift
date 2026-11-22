@@ -116,7 +116,8 @@ enum HermesCall: Equatable, Sendable {
     case groupsList(offset: Int)
     case groupsState(roomID: String)
     case groupsLog(roomID: String, sinceSeq: Int, limit: Int)
-    case groupsSend(roomID: String, eventID: String, text: String, threadID: String)
+    case groupsSend(roomID: String, eventID: String, text: String, threadID: String, attachments: [BotRoomAttachment] = [])
+    case groupsAttachmentUpload(roomID: String, uploadID: String, file: BotRoomUpload)
     case groupsAttachmentDownload(roomID: String, eventID: String, attachmentID: String)
     case groupsStop(roomID: String, cancelID: String)
     case groupsApprove(roomID: String, memberID: String, taskID: String, executionGeneration: Int,
@@ -372,6 +373,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsState: return "groups.state"
         case .groupsLog: return "groups.log"
         case .groupsSend: return "groups.send"
+        case .groupsAttachmentUpload: return BotRoomFiles.uploadMethod
         case .groupsAttachmentDownload: return "groups.attachment.download"
         case .groupsStop: return "groups.stop"
         case .groupsApprove: return "groups.approve"
@@ -616,9 +618,13 @@ enum HermesCall: Equatable, Sendable {
         case .groupsState(let roomID), .groupsDisband(let roomID): return ["room_id": .string(roomID)]
         case .groupsLog(let roomID, let sinceSeq, let limit):
             return ["room_id": .string(roomID), "since_seq": .number(Double(sinceSeq)), "limit": .number(Double(limit))]
-        case .groupsSend(let roomID, let eventID, let text, let threadID):
-            return ["room_id": .string(roomID), "event_id": .string(eventID),
-                    "payload": .object(["text": .string(text), "thread_id": .string(threadID)])]
+        case .groupsSend(let roomID, let eventID, let text, let threadID, let attachments):
+            var payload: [String: BotJSON] = ["text": .string(text), "thread_id": .string(threadID)]
+            if !attachments.isEmpty { payload["attachments"] = .array(attachments.map(\.json)) }
+            return ["room_id": .string(roomID), "event_id": .string(eventID), "payload": .object(payload)]
+        case .groupsAttachmentUpload(let roomID, let uploadID, let file):
+            return ["room_id": .string(roomID), "upload_id": .string(uploadID), "kind": .string(file.kind.rawValue),
+                    "name": .string(file.name), "mime": .string(file.mime), "data_base64": .string(file.data.base64EncodedString())]
         case .groupsAttachmentDownload(let roomID, let eventID, let attachmentID):
             return ["room_id": .string(roomID), "event_id": .string(eventID), "attachment_id": .string(attachmentID)]
         case .groupsStop(let roomID, let cancelID): return ["room_id": .string(roomID), "cancel_id": .string(cancelID)]
@@ -751,8 +757,12 @@ enum HermesCall: Equatable, Sendable {
         case .groupsState(let roomID), .groupsDisband(let roomID): valid = BotRoomRPC.validID(roomID)
         case .groupsLog(let roomID, let sinceSeq, let limit):
             valid = BotRoomRPC.validID(roomID) && sinceSeq >= 0 && (1...Self.roomPageSize).contains(limit)
-        case .groupsSend(let roomID, let eventID, let text, let threadID):
-            valid = [roomID, eventID, threadID].allSatisfy(BotRoomRPC.validID) && BotRoomRPC.validText(text)
+        case .groupsSend(let roomID, let eventID, let text, let threadID, let attachments):
+            valid = [roomID, eventID, threadID].allSatisfy(BotRoomRPC.validID)
+                && BotRoomRPC.validText(text, attachments: attachments.count)
+                && BotRoomFiles.admits(attachments)
+        case .groupsAttachmentUpload(let roomID, let uploadID, let file):
+            valid = [roomID, uploadID].allSatisfy(BotRoomRPC.validID) && BotRoomFiles.admits(file)
         case .groupsAttachmentDownload(let roomID, let eventID, let attachmentID):
             valid = [roomID, eventID, attachmentID].allSatisfy(BotRoomRPC.validID)
         case .groupsStop(let roomID, let cancelID): valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(cancelID)

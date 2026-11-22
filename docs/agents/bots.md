@@ -2281,7 +2281,7 @@ pending actions remain room-wide.
 
 ### Room participation
 
-The text-only composer uses room member handles and display names for mention
+The composer uses room member handles and display names for mention
 completion, plus `all` and `everyone`. Text is sent as typed, without the Bot Chat
 identification annotation. Each explicit send mints an `event_id`. The room overview
 starts a fresh `thread_id`; thread detail uses the selected existing `thread_id`.
@@ -2292,10 +2292,16 @@ The result inserts one bubble by sequence without advancing the log read cursor;
 polling cannot duplicate that bubble or skip earlier events. The server may trim
 surrounding whitespace in its acknowledged text.
 
+A host that advertises `groups.attachment.upload` enables photos, camera, files
+and attachment paste in the room composer. Each draft keeps its own attachment
+list. Send waits for every upload and accepts a message with only attachments.
+A message can carry up to eight files, 15 MB per file and 25 MB combined.
+
 A lost reply preserves the draft and reports an unknown outcome. Reconnect only
 reads state/history. Only the explicit Retry send button reuses the original id,
-thread and text; ordinary Send in that composer stays disabled while its outcome
-is unresolved. Overview and each thread keep separate drafts and uncertain sends.
+thread, text and attachment manifest. Ordinary Send stays disabled in that
+composer while its outcome is unresolved. Overview and each thread keep separate
+drafts and uncertain sends.
 Pending log suppression matches the exact server event identity, not the thread,
 so earlier user messages in a continued thread remain visible.
 Pending commands are invalidated before a room closes or backgrounds. Drafts and
