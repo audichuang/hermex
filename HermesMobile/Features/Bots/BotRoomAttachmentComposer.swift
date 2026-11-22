@@ -17,6 +17,13 @@ struct BotRoomAttachmentChip: Identifiable, Equatable {
             }
         }
 
+        var isInFlight: Bool {
+            switch self {
+            case .preparing, .uploading: return true
+            default: return false
+            }
+        }
+
         var expiry: Date? {
             if case .uploaded(_, let expiry) = self { return expiry }
             return nil
@@ -26,12 +33,13 @@ struct BotRoomAttachmentChip: Identifiable, Equatable {
     let id: UUID
     var name: String
     var state: State
+    /// Downsampled preview of an image file, shown in the composer like a chat attachment.
+    var thumbnail: Data?
 }
 
 struct BotRoomAttachmentComposer: View {
     let reader: BotRoomReader
     let threadID: String?
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         let chips = reader.attachmentChips(in: threadID)
@@ -72,44 +80,65 @@ struct BotRoomAttachmentComposer: View {
     }
 
     private func attachmentChip(_ chip: BotRoomAttachmentChip) -> some View {
-        HStack(alignment: .top, spacing: 4) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(chip.name).font(AppFont.caption())
-                Group {
-                    switch chip.state {
-                    case .preparing, .uploading:
-                        Text("Uploading…")
-                    case .uploaded:
-                        Text("Uploaded")
-                    case .failed(_, let message):
-                        Text(message)
-                        Button("Retry upload") { Task { await reader.retryAttachment(chip.id, in: threadID) } }
-                            .disabled(!reader.mayAddAttachments(in: threadID))
-                    case .expired:
-                        Text("Attachment expired. Add it again.")
-                    }
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            ComposerAttachmentThumbnailView(
+                attachment: Self.pending(chip),
+                onRemove: { reader.removeAttachment(chip.id, in: threadID) }
+            )
+            .overlay { if chip.state.isInFlight { uploadingOverlay } }
+            .opacity(chip.state == .expired ? 0.5 : 1)
+            .disabled(!reader.mayEditDraft(in: threadID))
+            status(chip)
+        }
+        .padding(.top, 8)
+        .fixedSize()
+        .accessibilityElement(children: .contain)
+    }
+
+    private var uploadingOverlay: some View {
+        ProgressView()
+            .accessibilityLabel(Text("Uploading…"))
+    }
+
+    @ViewBuilder
+    private func status(_ chip: BotRoomAttachmentChip) -> some View {
+        switch chip.state {
+        case .preparing, .uploading, .uploaded:
+            EmptyView()
+        case .failed(_, let message):
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message)
+                    .foregroundStyle(Color(.appTextSecondary))
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Retry upload") { Task { await reader.retryAttachment(chip.id, in: threadID) } }
+                    .disabled(!reader.mayAddAttachments(in: threadID))
+            }
+            .font(AppFont.caption())
+            .frame(width: 140, alignment: .leading)
+        case .expired:
+            Text("Attachment expired. Add it again.")
                 .font(AppFont.caption())
                 .foregroundStyle(Color(.appTextSecondary))
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            Button {
-                reader.removeAttachment(chip.id, in: threadID)
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-                    .accessibilityHidden(true)
-            }
-            .accessibilityLabel(Text("Remove attachment \(chip.name)"))
-            .disabled(!reader.mayEditDraft(in: threadID))
+                .frame(width: 140, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .buttonStyle(.plain)
-        .padding(.leading, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? 300 : 230, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 14))
-        .accessibilityElement(children: .contain)
+    }
+
+    static func pending(_ chip: BotRoomAttachmentChip) -> PendingAttachment {
+        let isImage: Bool, mime: String
+        switch chip.state {
+        case .uploading(let file), .failed(let file, _):
+            isImage = file.kind == .image; mime = file.mime
+        case .uploaded(let item, _):
+            isImage = item.kind == .image; mime = item.mime ?? ""
+        case .preparing, .expired:
+            isImage = chip.thumbnail != nil
+                || UTType(filenameExtension: (chip.name as NSString).pathExtension)?.conforms(to: .image) == true
+            mime = ""
+        }
+        let size = chip.state.byteCount
+        return PendingAttachment(id: chip.id, name: chip.name, path: "", mime: mime,
+                                 size: size > 0 ? size : nil, isImage: isImage, thumbnailData: chip.thumbnail)
     }
 }
 

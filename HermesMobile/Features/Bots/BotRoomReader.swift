@@ -502,8 +502,14 @@ enum BotRoomStopControl: Equatable {
             guard attachmentIndex(chip.id, context: context) != nil else { continue }
             do {
                 let media = try await input.load()
-                let file = try await Task.detached(priority: .userInitiated) { try BotRoomFiles.prepare(media) }.value
+                let (file, thumbnail) = try await Task.detached(priority: .userInitiated) {
+                    let file = try BotRoomFiles.prepare(media)
+                    let thumbnail = file.kind == .image ? ImagePreviewDownsampler.previewData(
+                        from: file.data, maxPixelSize: ImagePreviewDownsampler.attachmentMaxPixelSize) : nil
+                    return (file, thumbnail)
+                }.value
                 guard let index = attachmentIndex(chip.id, context: context) else { continue }
+                attachmentDrafts[context]?[index].thumbnail = thumbnail
                 let total = attachmentChips(in: threadID).reduce(0) { $0 + $1.state.byteCount }
                 guard total + file.data.count <= BotRoomFiles.maximumMessageBytes else { throw BotRoomFiles.Failure.totalSize }
                 attachmentDrafts[context]?[index].name = file.name
