@@ -40,6 +40,11 @@ import SwiftUI
             ScrollView {
                 ZStack {
                     if showsWelcome { Color.clear.containerRelativeFrame(.vertical) }
+                    if transcriptEvents.isEmpty && reader.link == .connecting {
+                        ProgressView()
+                            .containerRelativeFrame(.vertical)
+                            .accessibilityLabel(Text("Loading…"))
+                    }
                     VStack(spacing: 16) {
                         if !showsThreadOverview && (hasHiddenEvents || reader.hasEarlier) {
                             Button("Load earlier") { loadEarlier(proxy: proxy) }
@@ -663,6 +668,8 @@ struct BotRoomInboxRow: View {
             }
         }
         .padding(.vertical, 12)
+        // A room row has no preview line, so without this only the name and avatars take taps.
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 }
