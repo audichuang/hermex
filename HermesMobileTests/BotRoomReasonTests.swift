@@ -191,18 +191,23 @@ import XCTest
         let room = makeRoom()
         let event = try XCTUnwrap(BotRoomEvent(rawEvent(5, "member.unavailable", actor: ["kind": .string("gateway"), "id": .string("fixture-install")], payload: [
             "reason_code": .string("prepare_failed"),
-            "error": .string("Members could not be woken: launch timed out")
+            "error": .string("Members could not be woken: launch timed out\nline 2")
         ])))
         XCTAssertTrue(event.visible)
         XCTAssertFalse(event.isRoundSignal)
         XCTAssertNil(event.threadID)
-        XCTAssertEqual(event.systemText(in: room), "Member unavailable: The bots could not be started")
+        XCTAssertEqual(event.systemText(in: room), "Member unavailable: Members could not be woken: launch timed out")
 
-        let freeText = try XCTUnwrap(BotRoomEvent(rawEvent(6, "member.unavailable", actor: ["kind": .string("gateway"), "id": .string("fixture-install")], payload: [
-            "reason_code": .string("unknown"),
-            "error": .string("Members could not be woken: launch timed out\nline 2")
+        let missingError = try XCTUnwrap(BotRoomEvent(rawEvent(6, "member.unavailable", actor: ["kind": .string("gateway"), "id": .string("fixture-install")], payload: [
+            "reason_code": .string("prepare_failed")
         ])))
-        XCTAssertEqual(freeText.systemText(in: room), "Member unavailable: Members could not be woken: launch timed out")
+        XCTAssertEqual(missingError.systemText(in: room), "Member unavailable: The bots could not be started")
+
+        let codeShapedError = try XCTUnwrap(BotRoomEvent(rawEvent(7, "member.unavailable", actor: ["kind": .string("gateway"), "id": .string("fixture-install")], payload: [
+            "reason_code": .string("prepare_failed"),
+            "error": .string("prepare_stalled")
+        ])))
+        XCTAssertEqual(codeShapedError.systemText(in: room), "Member unavailable: The bots could not be started")
     }
 
     func testDepartedMembersOmitBlankNamesAcrossTurnNotices() throws {

@@ -28,7 +28,10 @@ it follows the discussion's source message, even if it precedes the bounded
 notice. If the source is outside the loaded window, use the notice's sequence.
 The count includes only loaded member messages carrying the discussion ID.
 Earlier pages and messages restored from disk without that ID can make the
-displayed count lower than the host's.
+displayed count lower than the host's. Used continues take the maximum of the
+loaded `room.continued` count and the highest integer `payload.grant` for that
+discussion, so a windowed log still retires Continue once the host's cap is
+reached.
 
 Stop is room-wide, including when invoked from a pause row while the room
 is idle. It invalidates pauses across threads and asks for confirmation
@@ -76,7 +79,10 @@ This deliberately diverges from Desktop's transcript rows (which check free-text
 first and therefore almost always surface raw English provider errors) and matches
 Desktop's member status precedence (`OUTCOME_OF` / `memberStatusText`) so users get
 localized explanations for known failures while still seeing raw error text when the host
-classifies a failure as `unknown`.
+classifies a failure as `unknown`. Room-level `member.unavailable` is the one exception:
+its `reason_code` is always `prepare_failed`, so Hermex checks the first line of
+free-text `error` first and falls back to the mapped code only when `error` is missing
+or code-shaped, matching Desktop.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReasons.swift` and
 `HermesMobile/Features/Bots/BotGroupRoom.swift`

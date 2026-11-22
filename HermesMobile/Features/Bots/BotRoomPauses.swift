@@ -8,6 +8,7 @@ struct BotRoomPause: Equatable {
     static func pauses(in events: [BotRoomEvent], maxContinues: Int) -> [Int: BotRoomPause] {
         var messageCounts: [String: Int] = [:]
         var continueCounts: [String: Int] = [:]
+        var continueGrants: [String: Int] = [:]
         var countsAtPause: [Int: Int] = [:]
         var sourceSequences: [String: Int] = [:]
         var latestUserInThread: [String: Int] = [:]
@@ -21,7 +22,11 @@ struct BotRoomPause: Equatable {
             }
             guard let discussion = event.payload["discussion_event_id"].text else { continue }
             if event.kind == "message.member" { messageCounts[discussion, default: 0] += 1 }
-            if event.kind == "room.continued" { continueCounts[discussion, default: 0] += 1 }
+            if event.kind == "room.continued" {
+                continueCounts[discussion, default: 0] += 1
+                continueGrants[discussion] = max(continueGrants[discussion, default: 0],
+                                                 event.payload["grant"].integer ?? 0)
+            }
             if event.isBoundedActivity { countsAtPause[event.seq] = messageCounts[discussion, default: 0] }
         }
 
@@ -34,8 +39,9 @@ struct BotRoomPause: Equatable {
             guard event.isBoundedActivity else { continue }
             let source = sourceSequences[discussion] ?? event.seq
             let latestReply = event.threadID.flatMap { latestUserInThread[$0] } ?? 0
+            let continuesUsed = max(continueCounts[discussion, default: 0], continueGrants[discussion, default: 0])
             let actionable = !discussion.isEmpty && isLatest && latestStop <= source && latestReply <= source
-                && continueCounts[discussion, default: 0] < maxContinues
+                && continuesUsed < maxContinues
             result[event.seq] = BotRoomPause(count: countsAtPause[event.seq, default: 0],
                                              actionable: actionable, discussionEventID: discussion)
         }

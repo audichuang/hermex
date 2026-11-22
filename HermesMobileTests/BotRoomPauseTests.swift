@@ -60,6 +60,23 @@ import XCTest
         XCTAssertEqual(pauses(in: history, limit: 6)[7]?.actionable, true)
     }
 
+    func testContinueGrantRetiresPauseWhenEarlierContinuesAreOutsideTheWindow() {
+        let history = [
+            event(50, "room.continued", payload: ["grant": .number(5)]),
+            bounded(51)
+        ]
+        XCTAssertEqual(pauses(in: history, limit: 5)[51]?.actionable, false)
+        XCTAssertEqual(pauses(in: history, limit: 6)[51]?.actionable, true)
+
+        let nonIntegerGrant = [
+            event(60, "room.continued", payload: ["grant": .string("5")]),
+            event(61, "room.continued", payload: ["grant": .number(5.5)]),
+            bounded(62)
+        ]
+        XCTAssertEqual(pauses(in: nonIntegerGrant, limit: 5)[62]?.actionable, true)
+        XCTAssertEqual(pauses(in: nonIntegerGrant, limit: 2)[62]?.actionable, false)
+    }
+
     func testMemberMessagesWithoutADiscussionIDDoNotCount() {
         let pauses = pauses(in: [
             user(1), event(2, "message.member", discussion: nil), event(3, "message.member"), bounded(4)
