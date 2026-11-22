@@ -356,11 +356,17 @@ extension HermesConversationOwner {
     private func identify(_ attempt: Int) async throws {
         switch target {
         case .canonicalChat(let profile):
-            let lookup = try await request(.sessionList(profile: profile), attempt: attempt)
-            guard let rows = lookup["sessions"].list else { throw BotFailure.unsupported }
-            guard rows.count == 1 else { throw BotFailure.missingChat }
-            guard let foundRoot = rows[0]["id"].text, !foundRoot.isEmpty,
-                  let foundTip = rows[0]["resolved_id"].text, !foundTip.isEmpty else { throw BotFailure.unsupported }
+            let validate = { try self.check(attempt) }
+            var rows = try await BotChatMint.findChat(profile: profile, using: wire, validate: validate)
+            if rows.isEmpty {
+                try await BotChatMint.ensureChat(profile: profile, server: server, connectionID: connection.id,
+                                                 using: wire, validate: validate)
+                rows = try await BotChatMint.findChat(profile: profile, using: wire, validate: validate)
+            }
+            guard rows.count <= 1 else { throw BotFailure.missingChat }
+            guard let row = rows.first,
+                  let foundRoot = row["id"].text, !foundRoot.isEmpty,
+                  let foundTip = row["resolved_id"].text, !foundTip.isEmpty else { throw BotFailure.unsupported }
             if let root, root != foundRoot { owner?.conversationDidFollowReplacedChat() }
             root = foundRoot; storedKey = foundTip
             owner?.conversationDidIdentify(root: foundRoot)

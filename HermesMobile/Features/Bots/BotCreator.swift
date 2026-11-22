@@ -333,27 +333,10 @@ enum BotProfileName {
 
     private func ensureChat(_ client: any BotTransport, owner: Int) async throws {
         if outcomes[.chat] == .done { return }
-        if try await findChat(client, owner: owner) { outcomes[.chat] = .done; return }
-        await client.keepPlatformNote(profile: name)
-        let created = try await client.call(.sessionCreate(profile: name), validateDispatch: validate(owner))
-        try ensureOwner(owner, client)
-        guard let runtime = created["session_id"].text, !runtime.isEmpty else { throw BotFailure.unsupported }
-        if client.speaksCanonicalProtocol { outcomes[.chat] = .done; return }
-        do {
-            _ = try await client.call(.sessionTitle(sessionID: runtime), validateDispatch: validate(owner))
-            try ensureOwner(owner, client)
-        } catch BotFailure.rejected(4022) {
-            try ensureOwner(owner, client)
-            guard try await findChat(client, owner: owner) else { throw BotFailure.unsupported }
+        try await BotChatMint.ensureChat(profile: name, server: server, connectionID: connection.id, using: client) {
+            try self.ensureOwner(owner, client)
         }
         outcomes[.chat] = .done
-    }
-
-    private func findChat(_ client: any BotTransport, owner: Int) async throws -> Bool {
-        let lookup = try await client.call(.sessionList(profile: name), validateDispatch: validate(owner))
-        try ensureOwner(owner, client)
-        guard let rows = lookup["sessions"].list else { throw BotFailure.unsupported }
-        return !rows.isEmpty
     }
 
     private func validate(_ owner: Int) -> () throws -> Void { { [weak self] in

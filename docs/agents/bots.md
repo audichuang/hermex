@@ -19,16 +19,21 @@ session's frames in `seq` order, with a rebuild signal when some were lost
 (`HermesConversationOwner`). It keeps the stored key, which names a session and keys
 drafts and caches, apart from the runtime id, which keys session-scoped calls and
 `seq`, changes after a reap, and is never kept. The Profile goes on every call.
-Recovery only reads; deliberate writes go through its `write`, which revalidates the
-attach and runtime at the socket write, and nothing is resent. Answers to host requests
-go through its `answer`, which every Hermes chat shares: one `write` per call, and the
-host's verdict (answered, already resolved, or a batch still open). The owner gets the
-replay reply and the snapshot whole and restores open requests from them, with its
-own guard against a newer request on screen (see the blocking requests below). Targets:
+Recovery reads the host's state and never resends a turn. Deliberate session writes go
+through its `write`, which revalidates the attach and runtime at the socket write.
+Answers to host requests go through its `answer`, which every Hermes chat shares:
+one `write` per call, and the host's verdict (answered, already resolved, or a batch
+still open). The owner gets the replay reply and the snapshot whole and restores
+open requests from them, with its own guard against a newer request on screen
+(see the blocking requests below). Targets:
 - `.canonicalChat(profile)`: the Bot Chat, found by exact title on every attach. Only
-  this target runs the title lookup. A changed root is the host's new Bot Chat: since
-  hermes-agent 0.22.3 a bot delivery moves aside a Bot Chat it can't own (a messaging
-  channel's or an API conversation), retitled `Bot Chat (<platform> <id>)` and unhidden,
+  this target runs the title lookup. An empty result lets `BotChatMint` ensure the
+  chat exists, then the attach looks up the persisted root and tip. The mint is
+  shared with bot creation and rechecks the title before writing so overlapping
+  opens on the same connection and Profile cannot create two chats. A changed root is
+  the host's new Bot Chat. Since hermes-agent 0.22.3 a bot delivery moves aside a Bot
+  Chat it can't own (a messaging channel's or an API conversation), retitled
+  `Bot Chat (<platform> <id>)` and unhidden,
   and makes a new one. The attach follows it: the old chat's turn ends as cancelled, its
   `/btw` and background tasks go, and a notice after the new chat's rows says the earlier
   conversation is in Sessions, as it does when the cached copy, shown or not, is of the old
@@ -1654,9 +1659,9 @@ description, optional `model` + `provider`, `clone_from` when duplicating),
 `profiles.configure` with the drawn look under `ui_meta_expected_revisions` 0,
 then the canonical chat: an exact-title `session.list` first (adopt before
 mint, as Desktop), and only on a confirmed absence `session.create({profile,
-title: "Bot Chat", hidden, follow_profile_config})` followed by `session.title`
-on the runtime id so the lazy row is persisted before any prompt; a `4022`
-title collision re-reads and adopts the winner. No kickoff prompt is sent.
+title: "Bot Chat", hidden, follow_profile_config})`. On a standalone host,
+`session.title` on the runtime id persists the lazy row before any prompt.
+A `4022` title collision re-reads and adopts the winner. No kickoff prompt is sent.
 Try Again repeats only steps that are not done, and a step whose reply was
 lost re-reads the host (`profiles.list`, `session.list`) before writing again,
 so a retry never mints a second Profile or chat. A look failure is reported
