@@ -139,6 +139,10 @@ enum BotRoomStopControl: Equatable {
     @ObservationIgnored private var restoredFromDisk = false
     @ObservationIgnored private var wire: (any BotTransport)?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTask: Task<Bool, Never>?
+    @ObservationIgnored private var changeEvents = false
+    @ObservationIgnored private var eventRefreshPending = false
+    @ObservationIgnored private var recentBroadcastIDs: [String] = []
     @ObservationIgnored private var capabilities = BotRoomCapabilities(.null)
     @ObservationIgnored private var lastAuthority: BotJSON?
     @ObservationIgnored private let makeWire: @MainActor (BotConnection) -> any BotTransport
@@ -204,6 +208,10 @@ enum BotRoomStopControl: Equatable {
         }
         let client = makeWire(connection)
         wire = client; link = .connecting; errorMessage = nil
+        client.onEvent = { [weak self, weak client] event in
+            guard let self, let client, self.wire === client else { return }
+            self.roomDidChange(event, from: client)
+        }
         client.onDisconnect = { [weak self] error in
             guard let self, self.wire === client else { return }
             self.fail(error, client)
@@ -248,6 +256,7 @@ enum BotRoomStopControl: Equatable {
             link = .live; didOpen = true; hasRecentLog = true; restoredFromDisk = false
             reconnect.succeeded()
             saveRecentTranscript()
+            refreshIfRoomChanged(client)
             pollTask = Task { [weak self] in
                 var last = ContinuousClock.now
                 while let self, self.wire === client, !Task.isCancelled {
@@ -273,8 +282,28 @@ enum BotRoomStopControl: Equatable {
     }
 
     var pollInterval: Duration {
-        if let sentAt, ContinuousClock.now - sentAt < .seconds(20) { return .seconds(1) }
-        return status.interval
+        if !changeEvents, let sentAt, ContinuousClock.now - sentAt < .seconds(20) { return .seconds(1) }
+        let interval = status.interval
+        return changeEvents && interval == .seconds(10) ? .seconds(15) : interval
+    }
+
+    private func roomDidChange(_ event: BotJSON, from client: any BotTransport) {
+        guard event["type"].text == "groups.changed", changeEvents || link == .connecting else { return }
+        let payload = event["payload"]
+        if let rooms = payload["room_ids"].list, !rooms.isEmpty, !rooms.contains(.string(key.roomID)) { return }
+        if let id = payload["broadcast_id"].text, !id.isEmpty {
+            guard !recentBroadcastIDs.contains(id) else { return }
+            if recentBroadcastIDs.count == 64 { recentBroadcastIDs.removeFirst() }
+            recentBroadcastIDs.append(id)
+        }
+        eventRefreshPending = true
+        refreshIfRoomChanged(client)
+    }
+
+    private func refreshIfRoomChanged(_ client: any BotTransport) {
+        guard wire === client, link == .live, changeEvents, eventRefreshPending,
+              refreshTask == nil, !loadingEarlier else { return }
+        _ = startRefresh(client)
     }
 
     func poll() async {
@@ -290,6 +319,27 @@ enum BotRoomStopControl: Equatable {
     }
 
     private func poll(_ client: any BotTransport) async -> Bool {
+        if let refreshTask { _ = await refreshTask.value }
+        guard wire === client, link == .live, !Task.isCancelled else { return false }
+        return await (refreshTask ?? startRefresh(client)).value
+    }
+
+    private func startRefresh(_ client: any BotTransport) -> Task<Bool, Never> {
+        let task = Task { [weak self] in
+            guard let self, self.wire === client, !Task.isCancelled else { return false }
+            if !self.loadingEarlier { self.eventRefreshPending = false }
+            let refreshed = await self.readChanges(client)
+            if self.wire === client, !Task.isCancelled {
+                self.refreshTask = nil
+                self.refreshIfRoomChanged(client)
+            }
+            return refreshed
+        }
+        refreshTask = task
+        return task
+    }
+
+    private func readChanges(_ client: any BotTransport) async -> Bool {
         guard wire === client, link == .live else { return false }
         do {
             let revision = stateRevision + 1
@@ -312,6 +362,8 @@ enum BotRoomStopControl: Equatable {
     func loadEarlier() async {
         guard let client = wire, link == .live, hasEarlier, !loadingEarlier else { return }
         loadingEarlier = true
+        if let refreshTask { _ = await refreshTask.value }
+        guard wire === client else { return }
         let boundary = log.earlierBoundary
         let start = BotRoomLog.windowStart(before: boundary)
         do {
@@ -319,6 +371,7 @@ enum BotRoomStopControl: Equatable {
             try check(client)
             for page in pages { log.apply(page) }
             log.loadedEarlier(from: start); publishLog(); loadingEarlier = false
+            refreshIfRoomChanged(client)
         } catch { fail(error, client) }
     }
 
@@ -340,6 +393,8 @@ enum BotRoomStopControl: Equatable {
         commandID = nil; busy = false; sending = nil; dispatched = false; renaming = false
         let old = wire; wire = nil
         pollTask?.cancel(); pollTask = nil
+        refreshTask?.cancel(); refreshTask = nil
+        changeEvents = false; eventRefreshPending = false; recentBroadcastIDs.removeAll()
         old?.onDisconnect = nil; old?.onEvent = nil
         old?.close(); loadingEarlier = false; link = .idle
     }
@@ -803,6 +858,8 @@ enum BotRoomStopControl: Equatable {
         guard let updated = BotGroupRoom(value["room"]), updated.id == key.roomID else { throw BotFailure.unsupported }
         guard revision == stateRevision else { return room.latestSeq }
         if updated.disbanded { throw BotRoomFailure(code: 4114, reason: nil) }
+        changeEvents = value["change_events"].flag == true
+        if !changeEvents { eventRefreshPending = false }
         let previousSummaryScope = summaryScope
         var membersChanged = false
         if !renaming && room != updated {

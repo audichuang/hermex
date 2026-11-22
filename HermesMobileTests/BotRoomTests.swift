@@ -1257,6 +1257,7 @@ enum RoomFixture {
     var failure: Error?
     var driverStatus = RoomFixture.status()
     var includesDriverStatus = true
+    var changeEvents: Bool?
     var context: BotJSON?
     var writes: [(String, [String: BotJSON])] = []
     var writeCalls: [HermesCall] = []
@@ -1402,6 +1403,7 @@ enum RoomFixture {
             room["authority_gateway_id"] = .string(authority); room["authority_epoch"] = .number(Double(epoch))
             var state: [String: BotJSON] = ["room": .object(room)]
             if includesDriverStatus { state["driver_status"] = driverStatus }
+            state["change_events"] = changeEvents.map(BotJSON.bool)
             state["context"] = context
             return .object(state)
         case "groups.log":
@@ -1427,6 +1429,7 @@ enum RoomFixture {
     func releaseState(latest: Int, context: BotJSON? = nil) {
         var state = ["room": RoomFixture.room(latest: latest)]
         if includesDriverStatus { state["driver_status"] = driverStatus }
+        state["change_events"] = changeEvents.map(BotJSON.bool)
         state["context"] = context
         held?.resume(returning: .object(state)); held = nil
     }
