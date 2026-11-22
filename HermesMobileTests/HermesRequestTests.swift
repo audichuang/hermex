@@ -207,6 +207,31 @@ final class HermesRequestTests: XCTestCase {
         }
     }
 
+    func testRoomUploadSendsRawBase64AndStableIdentity() throws {
+        let file = BotRoomUpload(data: Data([0x00, 0x7F, 0xFF]), name: "note.bin", kind: .file, mime: "application/octet-stream")
+        let call = HermesCall.groupsAttachmentUpload(roomID: "room:1", uploadID: "upload:2", file: file)
+        XCTAssertEqual(call.method, "groups.attachment.upload")
+        let params = try call.params()
+        XCTAssertEqual(params["room_id"]?.text, "room:1")
+        XCTAssertEqual(params["upload_id"]?.text, "upload:2")
+        XCTAssertEqual(params["kind"]?.text, "file")
+        XCTAssertEqual(params["name"]?.text, "note.bin")
+        XCTAssertEqual(params["mime"]?.text, "application/octet-stream")
+        XCTAssertEqual(params["data_base64"]?.text, "AH//")
+    }
+
+    func testRoomSendEmbedsAttachmentManifestAlongsideBlankText() throws {
+        let json = RoomFixture.attachment("att_3", kind: "pdf", name: "brief.pdf", size: 500)
+        let attachment = try XCTUnwrap(BotRoomAttachment(json))
+        let call = HermesCall.groupsSend(roomID: "room:1", eventID: "event:2", text: "", threadID: "thread:3",
+                                         attachments: [attachment])
+        let params = try call.params()
+        XCTAssertEqual(params["event_id"]?.text, "event:2")
+        XCTAssertEqual(params["payload"]?["thread_id"].text, "thread:3")
+        XCTAssertEqual(params["payload"]?["text"].text, "")
+        XCTAssertEqual(params["payload"]?["attachments"].list, [json])
+    }
+
     func testRoomDownloadSendsTheOwningEventAndAttachmentIDs() throws {
         let call = HermesCall.groupsAttachmentDownload(roomID: "room:1", eventID: "event:2", attachmentID: "att_3")
         XCTAssertEqual(call.method, "groups.attachment.download")

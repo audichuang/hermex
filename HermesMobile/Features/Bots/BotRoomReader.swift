@@ -23,6 +23,9 @@ import Observation
     private(set) var loadingEarlier = false
     private(set) var foreignAuthority = false
     private var drafts: [String: String] = [:]
+    private var attachmentDrafts: [String: [BotRoomAttachmentChip]] = [:]
+    private var attachmentNotices: [String: String] = [:]
+    @ObservationIgnored private let attachmentNow: () -> Date
     private var uncertainSends: [String: Send] = [:]
     private(set) var threads: [BotRoomThread] = []
     var draft: String {
@@ -43,10 +46,12 @@ import Observation
     struct Send: Equatable {
         let text: String
         let eventID: String
+        let attachments: [BotRoomAttachment]
         let threadID: String
         let contextThreadID: String?
-        init(text: String, threadID: String? = nil) {
+        init(text: String, threadID: String? = nil, attachments: [BotRoomAttachment] = []) {
             self.text = text; eventID = UUID().uuidString
+            self.attachments = attachments
             self.threadID = threadID ?? UUID().uuidString; contextThreadID = threadID
         }
         var serverEventID: String {
@@ -79,7 +84,9 @@ import Observation
          onChanged: @escaping (BotGroupRoom) -> Void = { _ in },
          onDisbanded: @escaping () -> Void = {},
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
-         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
+         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied },
+         attachmentNow: @escaping () -> Date = Date.init) {
+        self.attachmentNow = attachmentNow
         self.key = key; self.connection = connection; self.room = room
         self.cache = cache; self.initialSequence = initialSequence
         self.onChanged = onChanged; self.onDisbanded = onDisbanded
@@ -187,16 +194,27 @@ import Observation
 
     func poll() async {
         guard let client = wire, link == .live else { return }
+        _ = await poll(client)
+    }
+
+    private func poll(_ client: any BotTransport) async -> Bool {
+        guard wire === client, link == .live else { return false }
         do {
+            let revision = stateRevision + 1
             let latest = try await readState(client)
+            let readCurrentState = revision == stateRevision
             if try await readContextIfNeeded(client) { publishLog() }
-            guard latest > log.cursor else { return }
+            guard latest > log.cursor else { return readCurrentState }
             let pages = try await readPages(client, since: log.cursor)
             try check(client)
             for page in pages { log.apply(page) }
             publishLog()
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
-        } catch { fail(error, client) }
+            return readCurrentState
+        } catch {
+            fail(error, client)
+            return false
+        }
     }
 
     func loadEarlier() async {
@@ -222,6 +240,7 @@ import Observation
 
     func suspend() {
         attachmentPreviews.suspend()
+        interruptUploads()
         reconnect.cancel()
         ApprovalSummaries.shared.leave(summaryScope)
         saveRecentTranscript()
@@ -253,7 +272,9 @@ import Observation
     var maySend: Bool { maySend(in: nil) }
     func mayEditDraft(in threadID: String?) -> Bool { !busy && uncertainSend(in: threadID) == nil }
     func maySend(in threadID: String?) -> Bool {
-        allows("groups.send") && mayEditDraft(in: threadID) && BotRoomRPC.validText(draft(in: threadID))
+        guard allows("groups.send"), mayEditDraft(in: threadID), let attachments = uploadedAttachments(in: threadID)
+        else { return false }
+        return BotRoomRPC.validText(draft(in: threadID), attachments: attachments.count)
             && (threadID == nil || threads.contains { $0.id == threadID })
     }
     func mayResend(in threadID: String?) -> Bool {
@@ -261,6 +282,127 @@ import Observation
     }
     private func allows(_ method: String) -> Bool { canParticipate && capabilities.methods.contains(method) }
     var mayDownload: Bool { allows(BotRoomAttachment.downloadMethod) }
+
+    var showsAttachmentPicker: Bool { allows(BotRoomFiles.uploadMethod) }
+
+    func mayAddAttachments(in threadID: String?) -> Bool {
+        showsAttachmentPicker && mayEditDraft(in: threadID)
+    }
+
+    func attachmentChips(in threadID: String?) -> [BotRoomAttachmentChip] {
+        attachmentDrafts[threadID ?? ""] ?? []
+    }
+
+    func attachmentNotice(in threadID: String?) -> String? { attachmentNotices[threadID ?? ""] }
+    func setAttachmentNotice(_ message: String?, in threadID: String?) { attachmentNotices[threadID ?? ""] = message }
+
+    func expireAttachments(in threadID: String?) {
+        let context = threadID ?? "", now = attachmentNow()
+        guard var chips = attachmentDrafts[context] else { return }
+        var changed = false
+        for index in chips.indices {
+            if case .uploaded(_, let expiry) = chips[index].state, expiry <= now {
+                chips[index].state = .expired
+                changed = true
+            }
+        }
+        if changed { attachmentDrafts[context] = chips }
+    }
+
+    func removeAttachment(_ id: UUID, in threadID: String?) {
+        guard mayEditDraft(in: threadID) else { return }
+        attachmentDrafts[threadID ?? ""]?.removeAll { $0.id == id }
+        setAttachmentNotice(nil, in: threadID)
+    }
+
+    func addAttachments(_ inputs: [BotRoomFiles.Input], in threadID: String?) async {
+        guard !inputs.isEmpty, mayAddAttachments(in: threadID), let client = wire else { return }
+        setAttachmentNotice(nil, in: threadID)
+        let context = threadID ?? "", epoch = room.epoch
+        let capacity = BotRoomFiles.maximumCount - attachmentChips(in: threadID).count
+        if inputs.count > capacity { setAttachmentNotice(BotRoomFiles.Failure.count.localizedDescription, in: threadID) }
+        let additions = inputs.prefix(capacity).map { BotRoomAttachmentChip(id: UUID(), name: $0.name, state: .preparing) }
+        guard !additions.isEmpty else { return }
+        attachmentDrafts[context, default: []].append(contentsOf: additions)
+        for (input, chip) in zip(inputs, additions) {
+            guard uploadIndex(chip.id, context: context, client: client, epoch: epoch) != nil else { continue }
+            do {
+                let media = try await input.load()
+                let file = try await Task.detached(priority: .userInitiated) { try BotRoomFiles.prepare(media) }.value
+                guard let index = uploadIndex(chip.id, context: context, client: client, epoch: epoch) else { continue }
+                let total = attachmentChips(in: threadID).reduce(0) { $0 + $1.state.byteCount }
+                guard total + file.data.count <= BotRoomFiles.maximumMessageBytes else { throw BotRoomFiles.Failure.totalSize }
+                attachmentDrafts[context]?[index].name = file.name
+                await upload(file, id: chip.id, context: context, client: client, epoch: epoch)
+            } catch {
+                guard let index = uploadIndex(chip.id, context: context, client: client, epoch: epoch) else { continue }
+                attachmentDrafts[context]?.remove(at: index)
+                setAttachmentNotice(error.localizedDescription, in: threadID)
+            }
+        }
+    }
+
+    func retryAttachment(_ id: UUID, in threadID: String?) async {
+        let context = threadID ?? ""
+        guard mayAddAttachments(in: threadID), let client = wire,
+              let chip = attachmentDrafts[context]?.first(where: { $0.id == id }),
+              case .failed(let file, _) = chip.state else { return }
+        await upload(file, id: id, context: context, client: client, epoch: room.epoch)
+    }
+
+    private func uploadedAttachments(in threadID: String?) -> [BotRoomAttachment]? {
+        let now = attachmentNow()
+        var manifest: [BotRoomAttachment] = []
+        for chip in attachmentChips(in: threadID) {
+            guard case .uploaded(let item, let expiry) = chip.state, now < expiry else { return nil }
+            manifest.append(item)
+        }
+        return manifest
+    }
+
+    private func uploadIndex(_ id: UUID, context: String, client: any BotTransport, epoch: Int?) -> Int? {
+        guard wire === client, room.epoch == epoch else { return nil }
+        return attachmentDrafts[context]?.firstIndex { $0.id == id }
+    }
+
+    private func upload(_ file: BotRoomUpload, id: UUID, context: String, client: any BotTransport, epoch: Int?) async {
+        guard let index = uploadIndex(id, context: context, client: client, epoch: epoch) else { return }
+        attachmentDrafts[context]?[index].state = .uploading(file)
+        let call = HermesCall.groupsAttachmentUpload(roomID: key.roomID, uploadID: id.uuidString, file: file)
+        let state: BotRoomAttachmentChip.State
+        do {
+            let result = try await client.call(call, validateDispatch: {
+                try self.check(client)
+                guard self.showsAttachmentPicker, self.uploadIndex(id, context: context, client: client, epoch: epoch) != nil
+                else { throw BotFailure.stale }
+            })
+            guard let item = BotRoomAttachment(result), let attachmentID = item.attachmentID,
+                  BotRoomRPC.validID(attachmentID), item.kind == file.kind, item.name == file.name,
+                  item.mime == file.mime, item.size == file.data.count else { throw BotFailure.unsupported }
+            state = .uploaded(item, expiresAt: attachmentNow().addingTimeInterval(BotRoomFiles.draftLifetime))
+        } catch {
+            state = .failed(file, error.localizedDescription)
+        }
+        guard let updated = uploadIndex(id, context: context, client: client, epoch: epoch) else { return }
+        attachmentDrafts[context]?[updated].state = state
+    }
+
+    private func interruptUploads() {
+        for context in Array(attachmentDrafts.keys) {
+            guard let chips = attachmentDrafts[context] else { continue }
+            let remaining = chips.compactMap { chip -> BotRoomAttachmentChip? in
+                switch chip.state {
+                case .preparing: return nil
+                case .uploading(let file):
+                    var updated = chip
+                    updated.state = .failed(file, BotFailure.transport.localizedDescription)
+                    return updated
+                default: return chip
+                }
+            }
+            if remaining != chips { attachmentDrafts[context] = remaining }
+        }
+    }
 
     func downloadAttachment(_ request: BotRoomAttachment.Request) async throws -> Data {
         guard let client = wire, mayDownload else { throw BotFailure.stale }
@@ -353,24 +495,48 @@ import Observation
     }
 
     func send(retry: Bool = false, threadID: String? = nil) async {
-        guard retry ? mayResend(in: threadID) : maySend(in: threadID) else { return }
-        let request = retry ? uncertainSend(in: threadID)! : Send(text: draft(in: threadID), threadID: threadID)
+        let request: Send
+        if retry {
+            guard mayResend(in: threadID), let pending = uncertainSend(in: threadID) else { return }
+            request = pending
+        } else {
+            guard maySend(in: threadID), let attachments = uploadedAttachments(in: threadID) else { return }
+            request = Send(text: draft(in: threadID), threadID: threadID, attachments: attachments)
+        }
+        let context = threadID ?? ""
         sending = request
-        let send = HermesCall.groupsSend(roomID: key.roomID, eventID: request.eventID, text: request.text, threadID: request.threadID)
-        await command(send, validate: {}, accept: { result in
+        let send = HermesCall.groupsSend(roomID: key.roomID, eventID: request.eventID, text: request.text,
+                                         threadID: request.threadID, attachments: request.attachments)
+        await command(send, validate: {
+            if !retry && self.uploadedAttachments(in: threadID) != request.attachments { throw BotFailure.stale }
+        }, accept: { result in
+            let value = result["event"]
             guard result["accepted"].flag == true, result["client_event_id"].text == request.eventID,
-                  result["event"]["room_id"].text == self.key.roomID,
-                  result["event"]["kind"].text == "message.user",
-                  result["event"]["payload"]["thread_id"].text == request.threadID,
-                  result["event"]["payload"]["text"].text != nil,
-                  BotRoomEvent(result["event"]) != nil else { throw BotFailure.unsupported }
-            self.log.acknowledge(result["event"])
-            self.uncertainSends[request.contextThreadID ?? ""] = nil; self.sending = nil
-            if self.draft(in: request.contextThreadID) == request.text { self.setDraft("", in: request.contextThreadID) }
+                  value["room_id"].text == self.key.roomID, let event = BotRoomEvent(value),
+                  event.kind == "message.user", event.threadID == request.threadID,
+                  event.payload["text"].text != nil || !event.roomAttachments.isEmpty,
+                  request.attachments == event.roomAttachments else { throw BotFailure.unsupported }
+            self.log.acknowledge(value)
+            self.uncertainSends[context] = nil; self.sending = nil
+            self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
+            if self.draft(in: threadID) == request.text { self.setDraft("", in: threadID) }
             self.publishLog()
             self.feedback = BotFeedback(.sent, after: self.feedback)
             self.sentAt = .now
-        })
+        }, reconcileAttachmentRetry: retry && !request.attachments.isEmpty ? {
+            self.uncertainSends[context] = nil; self.sending = nil
+            self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
+            if self.log.events.contains(where: { $0.eventID == request.serverEventID }) {
+                if self.draft(in: threadID) == request.text { self.setDraft("", in: threadID) }
+                self.commandMessage = nil
+                self.feedback = BotFeedback(.sent, after: self.feedback)
+                self.sentAt = .now
+            } else {
+                self.setDraft(request.text, in: threadID)
+                self.commandMessage = String(localized: "Attachments expired. Add them again before sending.")
+            }
+            self.publishLog()
+        } : nil)
     }
 
     func stop() async {
@@ -420,10 +586,11 @@ import Observation
     }
 
     private func command(_ call: HermesCall, validate: @escaping () throws -> Void,
-                         accept: (BotJSON) throws -> Void) async {
+                         accept: (BotJSON) throws -> Void, reconcileAttachmentRetry: (() -> Void)? = nil) async {
         guard let client = wire, allows(call.method), !busy else { sending = nil; return }
         let token = UUID(), epoch = room.epoch
         commandID = token; busy = true; dispatched = false; commandMessage = nil
+        var reconciled = false
         do {
             let result = try await client.call(call, validateDispatch: { [weak self] in
                 guard let self, self.commandID == token, self.wire === client, self.allows(call.method),
@@ -442,6 +609,12 @@ import Observation
                 commandMessage = rejection.localizedDescription
                 if rejection.reason == "authority_conflict" { foreignAuthority = true }
                 if rejection.expired { discardHistory(); close(); onExpired(); return }
+                if rejection.rejectsSendBeforeAdmission, let reconcileAttachmentRetry {
+                    let refreshed = await poll(client)
+                    guard commandID == token, wire === client else { return }
+                    if refreshed && room.epoch == epoch && allows(call.method) { reconcileAttachmentRetry() }
+                    reconciled = true
+                }
             } else if dispatched {
                 if let sending { uncertainSends[sending.contextThreadID ?? ""] = sending }
                 commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
@@ -453,7 +626,7 @@ import Observation
             do { if try await reconcileDisband(client) { return } }
             catch { fail(error, client); return }
         }
-        await poll()
+        if !reconciled { await poll() }
     }
 
     private func check(_ client: any BotTransport) throws {
@@ -470,7 +643,10 @@ import Observation
         if updated.disbanded { throw BotRoomFailure(code: 4114, reason: nil) }
         let previousSummaryScope = summaryScope
         if !renaming && room != updated { room = updated; onChanged(updated) }
-        if previousSummaryScope != summaryScope { ApprovalSummaries.shared.retain([], in: previousSummaryScope) }
+        if previousSummaryScope != summaryScope {
+            interruptUploads()
+            ApprovalSummaries.shared.retain([], in: previousSummaryScope)
+        }
         let nextStatus = BotRoomStatus(value["driver_status"])
         let pendingSummaries = nextStatus.actions.filter { $0.approval != nil }.map {
             ApprovalSummaries.Key(scope: summaryScope, request: .room($0.id))

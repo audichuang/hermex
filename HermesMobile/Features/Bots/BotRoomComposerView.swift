@@ -15,6 +15,7 @@ struct BotRoomComposerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selection = ComposerSelection()
     @State private var focused = false
+    @State private var showsAttachmentPicker = false
     @State private var inputHeight: CGFloat = 22
     @State private var measuredHeight: CGFloat = 0
     @State private var voiceInput = ComposerVoiceInputController()
@@ -43,7 +44,11 @@ struct BotRoomComposerView: View {
                         .layoutPriority(-1)
                     }
                 }
+                if !reader.attachmentChips(in: threadID).isEmpty || reader.attachmentNotice(in: threadID) != nil {
+                    BotRoomAttachmentComposer(reader: reader, threadID: threadID)
+                }
                 HStack(spacing: 4) {
+                    if !isDictating { attachmentButton }
                     ComposerTextInputView(
                         text: Binding(get: { reader.draft(in: threadID) }, set: { reader.setDraft($0, in: threadID) }), selection: $selection, isFocused: $focused,
                         inputHeight: $inputHeight, measuredHeight: $measuredHeight,
@@ -51,10 +56,12 @@ struct BotRoomComposerView: View {
                         keyboardCommands: ComposerKeyboardCommands(send: reader.maySend(in: threadID) && !isDictating
                             ? .init(title: String(localized: "Send Message"), perform: send) : nil),
                         verticalPadding: 12, chipSkills: [], chipFilePaths: [], quotes: [],
-                        onPasteFileProviders: { _ in }, onPasteFileURLs: { _ in },
-                        onPasteImageProviders: { _ in }, onPasteImages: { _ in },
+                        onPasteFileProviders: { addAttachments($0.map(BotRoomAttachmentPicker.fileProvider)) },
+                        onPasteFileURLs: { addAttachments($0.map(BotRoomAttachmentPicker.file)) },
+                        onPasteImageProviders: { addAttachments($0.map(BotRoomAttachmentPicker.imageProvider)) },
+                        onPasteImages: { addAttachments($0.map(BotRoomAttachmentPicker.image)) },
                         onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },
-                        placeholder: threadID == nil ? String(localized: "Message \(reader.room.name)") : String(localized: "Reply in thread"), acceptsAttachments: false
+                        placeholder: threadID == nil ? String(localized: "Message \(reader.room.name)") : String(localized: "Reply in thread"), acceptsAttachments: reader.mayAddAttachments(in: threadID) && !isDictating
                     )
                     if !isDictating {
                         ComposerVoiceControlButton(
@@ -78,6 +85,7 @@ struct BotRoomComposerView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isDictating)
         }
         .padding(.horizontal, 16).padding(.bottom, 8)
+        .modifier(BotRoomAttachmentPicker(reader: reader, threadID: threadID, isPresented: $showsAttachmentPicker))
         .task(id: AppLock.shared.isLocked) {
             if AppLock.shared.isLocked { voiceInput.suspend() } else if scenePhase == .active { voiceInput.resume() }
         }
@@ -87,6 +95,27 @@ struct BotRoomComposerView: View {
         .onChange(of: threadID) { _, _ in stopDictation() }
         .onChange(of: isDictating) { _, dictating in if !dictating { restoreFocusAfterDictation() } }
         .onDisappear(perform: stopDictation)
+    }
+
+    var attachmentButton: (some View)? {
+        let button = Button {
+            showsAttachmentPicker = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: iconSize, weight: .medium))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .accessibilityHidden(true)
+        }
+        .buttonStyle(.chatTactile(.icon))
+        .foregroundStyle(Color(.appTextSecondary))
+        .accessibilityLabel("Attach files")
+        .disabled(!reader.mayAddAttachments(in: threadID))
+        return reader.showsAttachmentPicker ? button : nil
+    }
+
+    private func addAttachments(_ inputs: [BotRoomFiles.Input]) {
+        Task { await reader.addAttachments(inputs, in: threadID) }
     }
 
     private func toggleVoiceInput() {

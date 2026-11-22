@@ -1039,6 +1039,9 @@ enum RoomFixture {
     var kind = "message.user"
     var roomEvents: [Int: BotJSON] = [:]
     var attachmentCalls: [HermesCall] = []
+    var uploadCalls: [HermesCall] = []
+    var beforeUploadReply: (() async -> Void)?
+    var uploadFailure: Error?
     var attachmentReply: ((String) async -> BotJSON)?
     var failure: Error?
     var driverStatus = RoomFixture.status()
@@ -1120,6 +1123,17 @@ enum RoomFixture {
         case "profiles.list": return .object(["profiles": .array([])])
         case "session.active_list": return .object(["sessions": .array([])])
         case "groups.capabilities": return capabilities
+        case "groups.attachment.upload":
+            uploadCalls.append(call)
+            await beforeUploadReply?()
+            if let uploadFailure { throw uploadFailure }
+            guard let uploadID = params["upload_id"]?.text,
+                  let encoded = params["data_base64"]?.text, let data = Data(base64Encoded: encoded) else {
+                throw BotFailure.unsupported
+            }
+            return .object(["attachment_id": .string("att_" + uploadID.replacingOccurrences(of: "-", with: "").lowercased()),
+                            "kind": params["kind"]!, "name": params["name"]!, "mime": params["mime"]!,
+                            "size": .number(Double(data.count))])
         case "groups.attachment.download":
             attachmentCalls.append(call)
             guard let id = params["attachment_id"]?.text, let attachmentReply else { throw BotFailure.unsupported }

@@ -129,7 +129,8 @@ private final class HermexAttachmentPickerModel {
         selectedAssetIDs = []
     }
 
-    func prepareSelection() async throws -> [HermexPickedMedia] {
+    func prepareSelection(using prepare: (HermexPickedMedia) async throws -> HermexPickedMedia)
+        async throws -> [HermexPickedMedia] {
         guard !isPreparing else { return [] }
         let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.localIdentifier, $0) })
         let selectedAssets = selectedAssetIDs.compactMap { assetsByID[$0] }
@@ -146,10 +147,7 @@ private final class HermexAttachmentPickerModel {
         for asset in selectedAssets {
             try Task.checkCancellation()
             let picked = try await HermexPhotoLibraryImageLoader.pickedImage(for: asset)
-            prepared.append(try await HermexAttachmentImageProcessor.prepare(
-                data: picked.data,
-                filename: picked.filename
-            ))
+            prepared.append(try await prepare(picked))
         }
         selectedAssetIDs = []
         return prepared
@@ -522,6 +520,7 @@ struct HermexAttachmentPickerView: View {
 
     let imageCapacity: Int
     let onChooseFiles: () -> Void
+    var preparePickedImage: ((HermexPickedMedia) async throws -> HermexPickedMedia)? = nil
     var onRecordVoiceNote: (() -> Void)? = nil
     let onAdd: ([HermexPickedMedia]) -> Void
     let onDismiss: () -> Void
@@ -831,15 +830,20 @@ struct HermexAttachmentPickerView: View {
         guard imageCapacity > 0, !data.isEmpty else { return }
         let filename = "camera_\(Int(Date().timeIntervalSince1970)).jpg"
         startPreparation {
-            [try await HermexAttachmentImageProcessor.prepare(data: data, filename: filename)]
+            [try await preparePhoto(.init(data: data, filename: filename))]
         }
     }
 
     private func addSelection() {
         guard case .ready = model.libraryStatus else { return }
         startPreparation {
-            try await model.prepareSelection()
+            try await model.prepareSelection(using: preparePhoto)
         }
+    }
+
+    private func preparePhoto(_ media: HermexPickedMedia) async throws -> HermexPickedMedia {
+        if let preparePickedImage { return try await preparePickedImage(media) }
+        return try await HermexAttachmentImageProcessor.prepare(data: media.data, filename: media.filename)
     }
 
     private func startPreparation(
