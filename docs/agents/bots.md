@@ -880,7 +880,7 @@ and ids the roster no longer has are ignored. "Reset to A–Z" forgets the
 placement; removing the connection deletes it.
 `groups` are executable group rooms, not Desktop organization sections. Their read-only viewer is described below. A
 description of 24 characters or fewer reads as a role chip beside the name when
-the chat has a preview; the activity label is the time today, the weekday within
+the chat has a preview; `BotPreviewText` flattens Markdown syntax in bot row previews and turns bot-to-bot `Message from …:` prefixes into an italic line prefixed with the sender’s roster display name (falling back to the prefix name); the activity label is the time today, the weekday within
 the past week, otherwise month and day (`BotInboxDateLabel`). A pin, hide or
 section write is `profiles.configure` with the whole `hermes-bots` object as
 received plus the changed fields, under `ui_meta_expected_revisions` set to the

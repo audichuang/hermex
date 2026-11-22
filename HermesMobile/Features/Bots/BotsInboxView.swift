@@ -335,8 +335,9 @@ import SwiftUI
 
     private func row(_ profile: BotProfile, dimmed: Bool) -> some View {
         Button { inbox.selection.profile = profile } label: {
-            BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                        status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
+            BotInboxRow(profile: profile, roster: inbox.profiles, avatar: inbox.avatars[profile.id],
+                        unread: inbox.isUnread(profile), status: inbox.liveStatuses[profile.id],
+                        statusIsStale: inbox.liveStatusesAreStale)
         }
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
@@ -837,6 +838,7 @@ private struct BotRoomHeroTile: View {
 private struct BotInboxRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let profile: BotProfile
+    let roster: [BotProfile]
     let avatar: UIImage?
     let unread: Bool
     let status: BotLiveStatus?
@@ -846,11 +848,15 @@ private struct BotInboxRow: View {
               profile.preview?.isEmpty == false else { return nil }
         return description
     }
-    private var subline: String {
-        if let preview = profile.preview, !preview.isEmpty { return preview }
-        return profile.description ?? profile.id
+    private var subline: (text: String, isFromBot: Bool) {
+        let parsed = BotPreviewText.parse(profile.preview, roster: roster)
+        if parsed.fromBot != nil || !parsed.text.isEmpty {
+            return (parsed.displayLine, parsed.fromBot != nil)
+        }
+        return (profile.description ?? profile.id, false)
     }
     var body: some View {
+        let line = subline
         HStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 44)
             VStack(alignment: .leading, spacing: 4) {
@@ -865,7 +871,8 @@ private struct BotInboxRow: View {
                     }
                 }
                 HStack(spacing: 8) {
-                    Text(subline).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
+                    Text(verbatim: line.text).font(AppFont.body()).italic(line.isFromBot)
+                        .foregroundStyle(.appSecondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if unread { BotUnreadDot() }
                 }
