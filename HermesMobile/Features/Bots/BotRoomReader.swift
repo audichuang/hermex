@@ -24,6 +24,7 @@ enum BotRoomStopControl: Equatable {
     private(set) var roundEvents: [BotRoomEvent] = []
     private(set) var pauses: [Int: BotRoomPause] = [:]
     private(set) var pausedThreadIDs: Set<String> = []
+    private(set) var handoffs: [Int: [BotRoomHandoff]] = [:]
     private(set) var attachmentLists: [Int: BotRoomAttachmentList] = [:]
     @ObservationIgnored private let attachmentPreviews = BotRoomPreviewQueue()
     @ObservationIgnored private var sentAt: ContinuousClock.Instant?
@@ -126,6 +127,7 @@ enum BotRoomStopControl: Equatable {
             if !attachmentLists.isEmpty { attachmentLists = [:] }
             if !pauses.isEmpty { pauses = [:] }
             if !pausedThreadIDs.isEmpty { pausedThreadIDs = [] }
+            if !handoffs.isEmpty { handoffs = [:] }
         }
         recentOwner = cache.recent.begin(.init(key))
         if needsSignIn {
@@ -275,6 +277,7 @@ enum BotRoomStopControl: Equatable {
         if !attachmentLists.isEmpty { attachmentLists = [:] }
         if !pauses.isEmpty { pauses = [:] }
         if !pausedThreadIDs.isEmpty { pausedThreadIDs = [] }
+        if !handoffs.isEmpty { handoffs = [:] }
         hasRecentLog = false; restoredFromDisk = false
         status = BotRoomStatus(.null); lastAuthority = nil
     }
@@ -694,7 +697,11 @@ enum BotRoomStopControl: Equatable {
         guard revision == stateRevision else { return room.latestSeq }
         if updated.disbanded { throw BotRoomFailure(code: 4114, reason: nil) }
         let previousSummaryScope = summaryScope
-        if !renaming && room != updated { room = updated; onChanged(updated) }
+        var membersChanged = false
+        if !renaming && room != updated {
+            membersChanged = room.members != updated.members
+            room = updated; onChanged(updated)
+        }
         if previousSummaryScope != summaryScope {
             interruptUploads()
             ApprovalSummaries.shared.retain([], in: previousSummaryScope)
@@ -704,11 +711,12 @@ enum BotRoomStopControl: Equatable {
             ApprovalSummaries.Key(scope: summaryScope, request: .room($0.id))
         }
         ApprovalSummaries.shared.retain(Set(pendingSummaries), in: summaryScope)
+        var shouldRepublish = membersChanged
         if status != nextStatus {
-            let limitChanged = status.maxContinues != nextStatus.maxContinues
+            if status.maxContinues != nextStatus.maxContinues { shouldRepublish = true }
             status = nextStatus
-            if limitChanged && link == .live && updated.latestSeq <= log.cursor { publishLog() }
         }
+        if shouldRepublish && link == .live && updated.latestSeq <= log.cursor { publishLog() }
         if !busy && nextStatus.stopping == 0 { awaitingStop = false }
         let pendingIDs = Set(nextStatus.actions.map(\.id))
         inactiveActions = inactiveActions.filter { !["retry", "discard"].contains($0.kind) || pendingIDs.contains($0) }
@@ -787,17 +795,20 @@ enum BotRoomStopControl: Equatable {
     private func publishLog() {
         _ = settleLandedSends()
         let pendingIDs = Set((Array(uncertainSends.values) + [sending].compactMap { $0 }).map(\.serverEventID))
-        let visible = log.events.filter { event in
+        let unpending = log.events.filter { event in
             event.kind != "message.user" || !pendingIDs.contains(event.eventID ?? "")
         }
+        let visible = unpending.filter { !$0.isRoutingEvent || $0.routingText(in: room) != nil }
         if events != visible {
             events = visible
             var lists: [Int: BotRoomAttachmentList] = [:]
             for event in visible { lists[event.seq] = BotRoomAttachmentList(event) }
             if attachmentLists != lists { attachmentLists = lists }
         }
-        let round = (visible + log.signals).sorted { $0.seq < $1.seq }
+        let round = (unpending + log.signals).sorted { $0.seq < $1.seq }
         if roundEvents != round { roundEvents = round }
+        let nextHandoffs = BotRoomHandoffs.find(in: round, members: room.members)
+        if handoffs != nextHandoffs { handoffs = nextHandoffs }
         let nextPauses: [Int: BotRoomPause]
         if capabilities.methods.contains("groups.continue"), let limit = status.maxContinues {
             nextPauses = BotRoomPause.pauses(in: log.events, maxContinues: limit)

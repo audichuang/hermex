@@ -38,3 +38,21 @@ Desktop allows Stop during those requests.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomPauses.swift` and
 `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Render routing lines and discussion-scoped handoffs
+
+`room.assignment` and `room.routed` are visible transcript events (not hidden
+round signals), so each appears once in `roundEvents`. `BotRoomReader.publishLog()`
+drops routing events whose `routingText(in:)` is `nil` (such as a `room.routed`
+naming only departed members) so no blank row renders.
+
+Member-to-member handoffs are derived in `BotRoomReader.publishLog()` from
+`roundEvents` (which includes `turn.settled`) and compared before assignment so
+unchanged polls do not invalidate views. Unlike Desktop's legacy fallback for
+events without `discussion_event_id`, Hermex requires a non-empty
+`discussion_event_id` on both the member message and the subsequent terminal turn;
+messages restored from disk cache omit that ID and must not match unrelated turns.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomRouting.swift`,
+`HermesMobile/Features/Bots/BotGroupRoom.swift`, and
+`HermesMobile/Features/Bots/BotRoomReader.swift`

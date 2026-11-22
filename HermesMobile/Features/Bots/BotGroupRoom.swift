@@ -109,6 +109,7 @@ struct BotRoomRound: Equatable {
 
         var planned = room.members.map(\.id)
         let assigned = ofDiscussion.last { $0.kind == "room.assignment" }?.payload["member_ids"].list?.compactMap(\.text)
+        let routed = ofDiscussion.last { $0.kind == "room.routed" }?.payload
         let context = events.last { $0.kind == "room.context_set" }?.payload
         let text = message?.payload["text"].text ?? ""
         let mentioned = room.members.filter { member in
@@ -119,6 +120,12 @@ struct BotRoomRound: Equatable {
         var routingBy: String?
         if let assigned, !assigned.isEmpty {
             planned = assigned
+        } else if let routed {
+            if routed["everyone"].flag == true {
+                planned = room.members.map(\.id)
+            } else if let picked = routed["member_ids"].list?.compactMap(\.text), !picked.isEmpty {
+                planned = picked
+            }
         } else if !mentioned.isEmpty && !broadcast {
             planned = mentioned
         } else if context?["routing"].text == "lead", let lead = context?["lead_member_id"].text,
@@ -203,9 +210,10 @@ struct BotRoomEvent: Identifiable, Equatable {
     }
     var visible: Bool {
         isBoundedActivity || ["message.user", "message.member", "turn.failed", "turn.cancelled",
-                              "room.stop_requested", "room.renamed", "room.continued"].contains(kind)
+                              "room.stop_requested", "room.renamed", "room.continued",
+                              "room.assignment", "room.routed"].contains(kind)
     }
-    var isRoundSignal: Bool { ["room.context_set", "room.assignment", "turn.settled"].contains(kind) }
+    var isRoundSignal: Bool { ["room.context_set", "turn.settled"].contains(kind) }
     func member(in room: BotGroupRoom) -> BotGroupRoom.Member? {
         let id = payload["member_id"].text ?? actor["id"].text
         return room.members.first { $0.id == id }
