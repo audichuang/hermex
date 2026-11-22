@@ -74,6 +74,66 @@ import XCTest
         XCTAssertEqual(reader.draft(in: "thread-1"), "@ada can you double check?")
     }
 
+    func testSwitchingReplyTargetReplacesPreviouslyInsertedHandle() throws {
+        let room = makeRoom([
+            (id: "ada", name: "Ada", handle: "ada"),
+            (id: "linus", name: "Linus", handle: "linus"),
+            (id: "nora", name: "Nora", handle: nil)
+        ])
+        let reader = makeReader(wire: RoomWire(), room: room)
+        let adaEvent = try XCTUnwrap(BotRoomEvent(memberMessage(2, from: "ada", text: "Ada update", threadID: "thread-1")))
+        let linusEvent = try XCTUnwrap(BotRoomEvent(memberMessage(3, from: "linus", text: "Linus update", threadID: "thread-1")))
+        let noraEvent = try XCTUnwrap(BotRoomEvent(memberMessage(4, from: "nora", text: "Nora update", threadID: "thread-1")))
+
+        reader.setDraft("please review", in: "thread-1")
+        reader.beginReply(to: adaEvent, in: "thread-1")
+        XCTAssertEqual(reader.draft(in: "thread-1"), "@ada please review")
+
+        reader.beginReply(to: linusEvent, in: "thread-1")
+        XCTAssertEqual(reader.replyTarget(in: "thread-1"), BotRoomReplyTarget(name: "Linus", handle: "linus", excerpt: "Linus update"))
+        XCTAssertEqual(reader.draft(in: "thread-1"), "@linus please review")
+
+        reader.beginReply(to: noraEvent, in: "thread-1")
+        XCTAssertEqual(reader.replyTarget(in: "thread-1"), BotRoomReplyTarget(name: "Nora", handle: nil, excerpt: "Nora update"))
+        XCTAssertEqual(reader.draft(in: "thread-1"), "please review")
+
+        reader.beginReply(to: adaEvent, in: "thread-2")
+        reader.beginReply(to: linusEvent, in: "thread-2")
+        XCTAssertEqual(reader.draft(in: "thread-2"), "@linus ")
+
+        reader.setDraft("@ada please check", in: "thread-3")
+        reader.beginReply(to: linusEvent, in: "thread-3")
+        XCTAssertEqual(reader.draft(in: "thread-3"), "@linus @ada please check",
+                       "a mention typed by the user must not be stripped when replying to another member")
+    }
+
+    func testCancelReplyThenReplyToAnotherMemberReplacesInsertedHandle() throws {
+        let room = makeRoom([
+            (id: "ada", name: "Ada", handle: "ada"),
+            (id: "linus", name: "Linus", handle: "linus")
+        ])
+        let reader = makeReader(wire: RoomWire(), room: room)
+        let adaEvent = try XCTUnwrap(BotRoomEvent(memberMessage(2, from: "ada", text: "Ada update", threadID: "thread-1")))
+        let linusEvent = try XCTUnwrap(BotRoomEvent(memberMessage(3, from: "linus", text: "Linus update", threadID: "thread-1")))
+
+        reader.beginReply(to: adaEvent, in: "thread-1")
+        reader.setDraft(reader.draft(in: "thread-1") + "can you check?", in: "thread-1")
+        reader.cancelReply(in: "thread-1")
+        XCTAssertNil(reader.replyTarget(in: "thread-1"))
+        XCTAssertEqual(reader.draft(in: "thread-1"), "@ada can you check?")
+
+        reader.beginReply(to: linusEvent, in: "thread-1")
+        XCTAssertEqual(reader.replyTarget(in: "thread-1"), BotRoomReplyTarget(name: "Linus", handle: "linus", excerpt: "Linus update"))
+        XCTAssertEqual(reader.draft(in: "thread-1"), "@linus can you check?")
+
+        reader.cancelReply(in: "thread-1")
+        reader.setDraft("", in: "thread-1")
+        reader.setDraft("@linus manual note", in: "thread-1")
+        reader.beginReply(to: adaEvent, in: "thread-1")
+        XCTAssertEqual(reader.draft(in: "thread-1"), "@ada @linus manual note",
+                       "clearing the draft forgets the previously inserted handle")
+    }
+
     func testBeginReplyIgnoresUserMessagesAndKeepsThreadsSeparate() throws {
         let room = makeRoom([(id: "ada", name: "Ada", handle: "ada")])
         let reader = makeReader(wire: RoomWire(), room: room)

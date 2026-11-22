@@ -2313,7 +2313,8 @@ starts a fresh `thread_id`; thread detail uses the selected existing `thread_id`
 Inside a thread, replying to a member message shows a dismissible reply chip above
 the composer, focuses the draft, and prepends `@handle ` unless the draft already
 starts with that handle (matched case-insensitively across the host's handle
-characters). Members without a handle set only the chip. Cancelling the chip clears
+characters), replacing any `@handle ` prefix inserted by an earlier reply in that
+thread. Members without a handle set only the chip. Cancelling the chip clears
 only the reply target and preserves the user's draft; an accepted send clears it.
 Reply targets stay in memory on the room reader per thread.
 A reply becomes that thread's current discussion instead of queuing an independent

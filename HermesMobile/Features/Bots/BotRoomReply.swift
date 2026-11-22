@@ -22,14 +22,38 @@ struct BotRoomReplyTarget: Equatable {
     static func addressing(_ draft: String, to handle: String) -> String {
         let clean = handle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return draft }
-        let trimmed = draft.drop(while: \.isWhitespace)
-        if trimmed.first == "@" {
-            let token = trimmed.dropFirst().prefix(while: isHandleCharacter)
-            if token.caseInsensitiveCompare(clean) == .orderedSame {
-                return draft
-            }
+        if startsWithMention(clean, in: draft) {
+            return draft
         }
         return "@\(clean) \(draft)"
+    }
+
+    static func strippingLeadingMention(_ handle: String, from draft: String) -> String {
+        let clean = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let match = leadingMention(in: draft),
+              match.handle.caseInsensitiveCompare(clean) == .orderedSame else {
+            return draft
+        }
+        var rest = draft[match.end...]
+        if rest.first == " " {
+            rest = rest.dropFirst()
+        }
+        return String(rest)
+    }
+
+    static func startsWithMention(_ handle: String, in draft: String) -> Bool {
+        let clean = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let match = leadingMention(in: draft) else { return false }
+        return match.handle.caseInsensitiveCompare(clean) == .orderedSame
+    }
+
+    private static func leadingMention(in draft: String) -> (handle: Substring, end: String.Index)? {
+        let trimmed = draft.drop(while: \.isWhitespace)
+        guard trimmed.first == "@" else { return nil }
+        let afterAt = trimmed.dropFirst()
+        let token = afterAt.prefix(while: isHandleCharacter)
+        guard !token.isEmpty else { return nil }
+        return (token, token.endIndex)
     }
 
     private static func excerpt(from event: BotRoomEvent) -> String {
