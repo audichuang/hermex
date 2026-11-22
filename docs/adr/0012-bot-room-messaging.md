@@ -40,6 +40,24 @@ Desktop lets a send finish through navigation, shows the log event as soon as it
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
+## Persist room drafts and one unresolved send across relaunches
+
+Room drafts live in protected Application Support storage, scoped to the server,
+Bot connection and room. Writing the send before socket dispatch preserves its
+original event and thread IDs if the process exits before the reply. The disk
+record keeps the oldest unresolved send while other threads can still send.
+Accepted sends and matching log events clear the saved send. Disband, expiry,
+connection removal or replacement, sign-out, and server removal purge the
+corresponding drafts and prevent readers already open from recreating them.
+
+Only the sent attachment manifest is needed for a retry. A restored manifest
+can refer to a message the host already committed, so its age cannot decide
+whether the files need to be attached again. If the host rejects Retry, the
+reader checks the log before asking for the files again. Unsent attachment
+chips, bytes and reply targets end with the reader.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomDraftStore.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`
+
 ## Show a thread's first message as the lead routing it
 
 Under `routing: lead`, a thread's first message goes to the lead alone until the lead names who takes it, so `BotRoomRound` shows the lead choosing rather than counting the whole room. Otherwise a message reaches the lead's `room.assignment` members, else the members it @mentions (unless it says `@all` or `@everyone`), else the whole room.

@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Observation
+import OSLog
 
 enum BotRoomPrimaryAction: Equatable {
     case send(enabled: Bool)
@@ -18,6 +19,8 @@ enum BotRoomStopControl: Equatable {
     let connection: BotConnection
     let initialSequence: Int?
     @ObservationIgnored private let cache: BotHistoryCache
+    @ObservationIgnored private let draftStore: BotRoomDraftStore
+    @ObservationIgnored private let draftGeneration: UUID
     @ObservationIgnored private(set) var historyRemoval: Task<Void, Never>?
     private(set) var room: BotGroupRoom
     private(set) var events: [BotRoomEvent] = []
@@ -44,7 +47,7 @@ enum BotRoomStopControl: Equatable {
     private var attachmentDrafts: [String: [BotRoomAttachmentChip]] = [:]
     private var attachmentNotices: [String: String] = [:]
     @ObservationIgnored private let attachmentNow: () -> Date
-    private var uncertainSends: [String: Send] = [:]
+    private var uncertainSends: [Send] = []
     private(set) var threads: [BotRoomThread] = []
     var draft: String {
         get { draft(in: nil) }
@@ -53,7 +56,8 @@ enum BotRoomStopControl: Equatable {
     func draft(in threadID: String?) -> String { drafts[threadID ?? ""] ?? "" }
     func setDraft(_ text: String, in threadID: String?) {
         let context = threadID ?? ""
-        drafts[context] = text
+        guard draft(in: threadID) != text else { return }
+        drafts[context] = text.isEmpty ? nil : text
         if let inserted = insertedReplyHandles[context],
            !BotRoomReplyTarget.startsWithMention(inserted, in: text) {
             insertedReplyHandles[context] = nil
@@ -62,6 +66,7 @@ enum BotRoomStopControl: Equatable {
            !BotRoomReplyTarget.startsWithMention(handle, in: text) {
             replyTargets[context] = nil
         }
+        persistDrafts()
     }
     func setDictating(_ dictating: Bool, in threadID: String?) {
         let context = threadID ?? ""
@@ -86,16 +91,18 @@ enum BotRoomStopControl: Equatable {
             }
             let base = previous.map { BotRoomReplyTarget.strippingLeadingMention($0, from: current) } ?? current
             let updated = BotRoomReplyTarget.addressing(base, to: handle)
-            drafts[context] = updated
+            setDraft(updated, in: threadID)
             insertedReplyHandles[context] = updated == base ? nil : handle
         } else if let previous {
-            drafts[context] = BotRoomReplyTarget.strippingLeadingMention(previous, from: current)
+            setDraft(BotRoomReplyTarget.strippingLeadingMention(previous, from: current), in: threadID)
             insertedReplyHandles[context] = nil
         }
     }
     func cancelReply(in threadID: String?) { replyTargets[threadID ?? ""] = nil }
-    func uncertainSend(in threadID: String?) -> Send? { uncertainSends[threadID ?? ""] }
+    func uncertainSend(in threadID: String?) -> Send? { uncertainSends.first { $0.contextThreadID == threadID } }
     private static let unknownOutcomeMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
+    private static let draftLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile", category: "BotRoomDraftStore")
     private(set) var commandMessage: String?
     var uncertainSend: Send? { uncertainSend(in: nil) }
     private(set) var uncertainDisband = false
@@ -104,7 +111,7 @@ enum BotRoomStopControl: Equatable {
     private(set) var awaitingStop = false
     private(set) var inactiveActions = Set<BotRoomAction.Identity>()
     private(set) var feedback: BotFeedback?
-    struct Send: Equatable {
+    struct Send: Codable, Equatable {
         let text: String
         let eventID: String
         let attachments: [BotRoomAttachment]
@@ -140,7 +147,7 @@ enum BotRoomStopControl: Equatable {
     @ObservationIgnored private let reconnect: BotReconnectSchedule
 
     init(key: BotRoomKey, connection: BotConnection, room: BotGroupRoom,
-         cache: BotHistoryCache = .shared, initialSequence: Int? = nil,
+         cache: BotHistoryCache = .shared, drafts: BotRoomDraftStore? = nil, initialSequence: Int? = nil,
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          onExpired: @escaping () -> Void = {},
          onChanged: @escaping (BotGroupRoom) -> Void = { _ in },
@@ -151,10 +158,19 @@ enum BotRoomStopControl: Equatable {
         self.attachmentNow = attachmentNow
         self.key = key; self.connection = connection; self.room = room
         self.cache = cache; self.initialSequence = initialSequence
+        let draftStore = drafts ?? .shared
+        let saved = draftStore.load(key)
+        self.draftStore = draftStore
+        draftGeneration = saved.generation
         self.onChanged = onChanged; self.onDisbanded = onDisbanded
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: key.server) }; self.onExpired = onExpired
         reconnect = BotReconnectSchedule(delays: reconnectDelays, limit: reconnectDelays.count,
                                          isNetworkAvailable: isNetworkAvailable)
+        self.drafts = saved.draft.texts
+        if let pending = saved.draft.pending {
+            uncertainSends = [pending]
+            commandMessage = Self.unknownOutcomeMessage
+        }
         if let recent = cache.recent.log(for: .init(key)) {
             log = recent; publishLog()
             hasRecentLog = true
@@ -621,6 +637,7 @@ enum BotRoomStopControl: Equatable {
                                          threadID: request.threadID, attachments: request.attachments)
         await command(send, validate: {
             if !retry && self.uploadedAttachments(in: threadID) != request.attachments { throw BotFailure.stale }
+            try self.writeDrafts(pending: self.uncertainSends.first ?? request)
         }, accept: { result in
             let value = result["event"]
             guard result["accepted"].flag == true, result["client_event_id"].text == request.eventID,
@@ -629,21 +646,22 @@ enum BotRoomStopControl: Equatable {
                   event.payload["text"].text != nil || !event.roomAttachments.isEmpty,
                   request.attachments == event.roomAttachments else { throw BotFailure.unsupported }
             self.log.acknowledge(value)
-            self.uncertainSends[context] = nil; self.sending = nil
-            self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
-            self.replyTargets[context] = nil; self.insertedReplyHandles[context] = nil
-            if self.draft(in: threadID) == request.text { self.setDraft("", in: threadID) }
+            self.sending = nil
+            self.clearDeliveredSend(request)
+            self.persistDrafts()
             self.publishLog()
             self.feedback = BotFeedback(.sent, after: self.feedback)
             self.sentAt = .now
         }, reconcileAttachmentRetry: retry && !request.attachments.isEmpty ? {
             self.sending = nil
-            if self.settleLandedSends(), self.uncertainSends[context] == nil {
+            _ = self.settleLandedSends()
+            if self.uncertainSend(in: threadID) == nil {
                 self.commandMessage = nil
             } else {
-                self.uncertainSends[context] = nil
+                self.uncertainSends.removeAll { $0.eventID == request.eventID }
                 self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
-                self.setDraft(request.text, in: threadID)
+                self.drafts[context] = request.text.isEmpty ? nil : request.text
+                self.persistDrafts()
                 self.commandMessage = String(localized: "Attachments expired. Add them again before sending.")
             }
             self.publishLog()
@@ -745,6 +763,10 @@ enum BotRoomStopControl: Equatable {
                 }
                 if rejection.reason == "authority_conflict" { foreignAuthority = true }
                 if rejection.expired { discardHistory(); close(); onExpired(); return }
+                if let sending, uncertainSend(in: sending.contextThreadID) == nil {
+                    self.sending = nil
+                    persistDrafts()
+                }
                 if rejection.rejectsSendBeforeAdmission, let reconcileAttachmentRetry {
                     let refreshed = await poll(client)
                     guard commandID == token, wire === client else { return }
@@ -858,29 +880,47 @@ enum BotRoomStopControl: Equatable {
         commandMessage = Self.unknownOutcomeMessage
         guard let send else { return }
         sending = nil
-        uncertainSends[send.contextThreadID ?? ""] = send
-        if settleLandedSends() { publishLog() }
+        if uncertainSend(in: send.contextThreadID) == nil { uncertainSends.append(send) }
+        if settleLandedSends() { publishLog() } else { persistDrafts() }
     }
 
     private func settleLandedSends() -> Bool {
         var settled = false
-        for (context, send) in uncertainSends {
+        for send in uncertainSends {
             guard send.eventID != sending?.eventID else { continue }
             let eventID = send.serverEventID
             guard log.events.contains(where: { $0.kind == "message.user" && $0.eventID == eventID }) else { continue }
-            uncertainSends[context] = nil
-            attachmentDrafts[context] = nil; attachmentNotices[context] = nil
-            replyTargets[context] = nil; insertedReplyHandles[context] = nil
-            if draft(in: send.contextThreadID) == send.text { setDraft("", in: send.contextThreadID) }
+            clearDeliveredSend(send)
             settled = true
         }
-        if settled && uncertainSends.isEmpty && commandMessage == Self.unknownOutcomeMessage { commandMessage = nil }
+        if settled {
+            if uncertainSends.isEmpty && commandMessage == Self.unknownOutcomeMessage { commandMessage = nil }
+            persistDrafts()
+        }
         return settled
+    }
+
+    private func clearDeliveredSend(_ send: Send) {
+        let context = send.contextThreadID ?? ""
+        uncertainSends.removeAll { $0.eventID == send.eventID }
+        attachmentDrafts[context] = nil; attachmentNotices[context] = nil
+        replyTargets[context] = nil; insertedReplyHandles[context] = nil
+        if draft(in: send.contextThreadID) == send.text { drafts[context] = nil }
+    }
+
+    private func writeDrafts(pending: Send?) throws {
+        try draftStore.save(.init(texts: drafts, pending: pending), for: key, generation: draftGeneration)
+    }
+
+    private func persistDrafts() {
+        do { try writeDrafts(pending: uncertainSends.first ?? (dispatched ? sending : nil)) }
+        catch BotFailure.stale {}
+        catch { Self.draftLogger.error("Could not save room drafts: \(error.localizedDescription, privacy: .private)") }
     }
 
     private func publishLog() {
         _ = settleLandedSends()
-        let pendingIDs = Set((Array(uncertainSends.values) + [sending].compactMap { $0 }).map(\.serverEventID))
+        let pendingIDs = Set((uncertainSends + [sending].compactMap { $0 }).map(\.serverEventID))
         let unpending = log.events.filter { event in
             event.kind != "message.user" || !pendingIDs.contains(event.eventID ?? "")
         }
@@ -916,6 +956,8 @@ enum BotRoomStopControl: Equatable {
 
     private func discardHistory() {
         let cache = cache, key = key
+        draftStore.removeRoom(key)
+        drafts = [:]; uncertainSends = []; sending = nil
         cache.recent.remove { $0 == .init(key) }
         recentOwner = nil
         historyRemoval = Task { try? await cache.removeRoom(key) }

@@ -713,7 +713,10 @@ import UIKit
             rooms.removeAll { $0.id == room.id }
             roomFlags.pinned.remove(room.id); roomFlags.hidden.remove(room.id); persistRoomFlags()
         }
-        if disbanded { try? await historyCache.removeRoom(key) }
+        if disbanded {
+            BotRoomDraftStore.shared.removeRoom(key)
+            try? await historyCache.removeRoom(key)
+        }
     }
 
     @discardableResult

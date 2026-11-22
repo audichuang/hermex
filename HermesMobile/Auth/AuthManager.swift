@@ -386,6 +386,7 @@ final class AuthManager {
 
         await ScreenHolds.handBackAll(server: active)
         if kind(of: active) == .hermes {
+            BotRoomDraftStore.shared.remove(server: active)
             try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
             await ChatDraftStore.shared.discardBotDrafts(server: active)
             await forgetPush(active)
@@ -401,6 +402,7 @@ final class AuthManager {
             await attemptBestEffortServerLogout(server: active)
         }
 
+        BotRoomDraftStore.shared.remove(server: active)
         try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
         SessionUnreadStore().remove(for: active)
         await ChatDraftStore.shared.discardBotDrafts(server: active)
@@ -418,6 +420,7 @@ final class AuthManager {
         dropStaleMoveSheets()
         await ScreenHolds.handBackAll(server: serverURL)
         let movedSources = (servers.first { $0.id == account.id } ?? account).movedWebuiServers.map(\.sourceServerID)
+        BotRoomDraftStore.shared.remove(server: serverURL)
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)
         SessionUnreadStore().remove(for: serverURL)
         HermesProfileNameCache.shared.remove(server: serverURL)

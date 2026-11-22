@@ -2353,11 +2353,12 @@ unknown outcome, shows the message, and clears that composer's draft if it
 still matches. Only the explicit Retry send action (both the composer primary button and the
 Retry send pill) reuses the original id, thread, text and attachment manifest.
 Ordinary Send stays disabled in that composer while its outcome is unresolved.
-Overview and each thread keep separate drafts and uncertain sends.
+Overview and each thread keep separate drafts and uncertain sends while open.
 Pending log suppression matches the exact server event identity, not the thread,
 so earlier user messages in a continued thread remain visible.
-Pending commands are invalidated before a room closes or backgrounds. Drafts and
-uncertain commands stay with that room reader in memory, never another connection.
+Pending commands are invalidated before a room closes or backgrounds. Draft text
+and the oldest unresolved send survive relaunch, scoped to the server, Bot
+connection and room. Restored sends use the same log reconciliation and Retry.
 
 Sending stays available while members are working. Stop targets every bot in the
 room without confirmation from the navigation bar's trailing toolbar item on both
