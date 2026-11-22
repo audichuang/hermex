@@ -113,10 +113,65 @@ import XCTest
         XCTAssertFalse(reader.runtimeDown)
     }
 
+    func testRefusedRetryAndDiscardUnlockAndCanBeActedOnAgain() async throws {
+        let wire = RoomWire()
+        let reader = try makeReader(wire)
+        wire.driverStatus = RoomFixture.status(actions: [
+            pendingAction("retry", task: "task:1"),
+            pendingAction("discard", task: "task:2")
+        ])
+        await reader.open()
+        defer { reader.close() }
+        let retry = reader.status.actions[0], discard = reader.status.actions[1]
+
+        let busy = BotRoomFailure(code: 5118, reason: "session_busy")
+        wire.writeFailure = busy
+        await reader.act(retry)
+        XCTAssertEqual(reader.commandMessage, busy.explanation)
+        XCTAssertTrue(reader.mayAct(retry))
+        wire.writeFailure = nil
+        await reader.act(retry)
+        XCTAssertEqual(wire.writes.map(\.0), ["groups.retry", "groups.retry"])
+
+        let unreachable = BotRoomFailure(code: 4001, reason: "peer_unreachable")
+        wire.writeFailure = unreachable
+        await reader.act(discard)
+        XCTAssertEqual(reader.commandMessage, unreachable.explanation)
+        XCTAssertTrue(reader.mayAct(discard))
+        wire.writeFailure = BotRoomFailure(code: 5124, reason: nil)
+        await reader.act(discard)
+        XCTAssertTrue(reader.mayAct(discard))
+        wire.writeFailure = nil
+        await reader.act(discard)
+        XCTAssertEqual(wire.writes.filter { $0.0 == "groups.discard" }.count, 3)
+    }
+
+    func testActionWithUnknownOutcomeStaysLocked() async throws {
+        let wire = RoomWire()
+        let reader = try makeReader(wire)
+        wire.driverStatus = RoomFixture.status(actions: [pendingAction("retry", task: "task:1")])
+        await reader.open()
+        defer { reader.close() }
+        let retry = try XCTUnwrap(reader.status.actions.first)
+
+        wire.writeFailure = BotFailure.transport
+        await reader.act(retry)
+        XCTAssertFalse(reader.mayAct(retry))
+
+        wire.writeFailure = nil
+        await reader.act(retry)
+        XCTAssertEqual(wire.writes.count, 1)
+    }
+
+    private func pendingAction(_ kind: String, task: String, member: String = "chief") -> BotJSON {
+        .object(["kind": .string(kind), "member_id": .string(member), "task_id": .string(task),
+                 "execution_generation": .number(3)])
+    }
+
     private func makeReader(_ wire: RoomWire, driver: Bool = true) throws -> BotRoomReader {
         var capabilities = try XCTUnwrap(RoomFixture.capabilities.fields)
         capabilities["driver"] = .bool(driver)
-        capabilities["methods"] = .array((RoomFixture.methods + [BotRoomAttachment.downloadMethod]).map(BotJSON.string))
+        capabilities["methods"] = .array((RoomFixture.methods + ["groups.discard", BotRoomAttachment.downloadMethod]).map(BotJSON.string))
         wire.capabilities = .object(capabilities)
         wire.driverStatus = RoomFixture.status(running: 1)
         let server = URL(string: "https://room-fixture.example")!

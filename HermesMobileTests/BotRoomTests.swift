@@ -822,7 +822,7 @@ import XCTest
         reader.close()
     }
 
-    func testApprovalRejectionRereadsAndLeavesExactTupleInert() async throws {
+    func testApprovalRejectionRereadsAndUnlocksWhileStillPending() async throws {
         let wire = RoomWire(); wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
         let reader = makeReader(wire); await reader.open()
         let action = try XCTUnwrap(reader.status.actions.first)
@@ -832,12 +832,28 @@ import XCTest
         withObservationTracking { _ = reader.status } onChange: { refreshed.fulfill() }
         await reader.act(action, choice: .once)
         await fulfillment(of: [refreshed], timeout: 2)
-        XCTAssertFalse(reader.mayAct(action))
-        await reader.act(action, choice: .deny)
-        XCTAssertEqual(wire.writes.count, 1)
+        XCTAssertTrue(reader.mayAct(action))
         XCTAssertEqual(wire.writes[0].1["execution_generation"], .number(1))
         XCTAssertEqual(wire.writes[0].1["request_id"], .string("approval:1"))
+
+        wire.writeFailure = nil
+        await reader.act(action, choice: .deny)
+        XCTAssertEqual(wire.writes.count, 2)
+        XCTAssertFalse(reader.mayAct(action), "an accepted approval stays inert even if a stale snapshot repeats it")
         reader.close()
+
+        let clearedWire = RoomWire(); clearedWire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
+        let clearedReader = makeReader(clearedWire); await clearedReader.open()
+        let pending = try XCTUnwrap(clearedReader.status.actions.first)
+        clearedWire.writeFailure = BotRoomFailure(code: 5119, reason: "room approval is no longer pending")
+        clearedWire.beforeWrite = { clearedWire.driverStatus = RoomFixture.status(actions: []) }
+        let cleared = expectation(description: "rejection refresh drops the cleared approval")
+        withObservationTracking { _ = clearedReader.status } onChange: { cleared.fulfill() }
+        await clearedReader.act(pending, choice: .once)
+        await fulfillment(of: [cleared], timeout: 2)
+        XCTAssertTrue(clearedReader.status.actions.isEmpty)
+        XCTAssertFalse(clearedReader.mayAct(pending))
+        clearedReader.close()
     }
 
     func testLostApprovalIsNotResentAfterReconnect() async throws {

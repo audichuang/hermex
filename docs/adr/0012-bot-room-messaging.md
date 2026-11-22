@@ -22,7 +22,7 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
 ## Never resend room commands automatically
 
-`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail. Only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure. A matching server event id in the loaded log settles an uncertain send without resending. A retry rejection before admission triggers the log check below.
+`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail. Only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure. A matching server event id in the loaded log settles an uncertain send without resending. A retry rejection before admission triggers the log check below. An action explicitly rejected by the host (`BotRoomFailure`) unlocks so the user can tap it again if it remains pending after the state refresh; an action with an unknown outcome stays locked.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 

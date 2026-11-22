@@ -2382,8 +2382,9 @@ preparation is every member it couldn't wake (`"chief, coder"`). A canonical tas
 is unknown after a host restart comes as a `discard` action instead: its card offers Discard,
 never Retry, behind an action sheet, and sends `groups.discard` with the same four fields. A
 stale retry or discard (4001 `stale_generation`) says to reopen. Codes 5119 and 5118 re-read state;
-an addressed approval tuple stays inert, including across reconnect after an
-unknown outcome. Commands are never automatically resent. A retry becomes
+an explicitly rejected action unlocks if the refreshed state still lists it, while
+an accepted approval or an action with an unknown outcome stays inert, including across reconnect after an
+unknown outcome. Commands are never automatically resent. An accepted retry or discard becomes
 available for a later stalled attempt only after the previous pending action
 has disappeared. Unknown or incomplete pending kinds show Desktop attention.
 
