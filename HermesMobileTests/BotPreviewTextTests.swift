@@ -2,13 +2,23 @@ import XCTest
 @testable import HermesMobile
 
 final class BotPreviewTextTests: XCTestCase {
-    private func profile(id: String, title: String? = nil) throws -> BotProfile {
+    private func profile(
+        id: String,
+        title: String? = nil,
+        description: String? = nil,
+        preview: String? = nil
+    ) throws -> BotProfile {
         var look: [String: BotJSON] = [:]
         if let title { look["title"] = .string(title) }
-        return try XCTUnwrap(BotProfile(.object([
+        if let description { look["description"] = .string(description) }
+        var fields: [String: BotJSON] = [
             "name": .string(id),
             "ui_meta": .object(["hermes-bots": .object(look)]),
-        ])))
+        ]
+        if let preview {
+            fields["canonical_session"] = .object(["preview": .string(preview)])
+        }
+        return try XCTUnwrap(BotProfile(.object(fields)))
     }
 
     func testBotEmojiPrefixStripsPrefixAndResolvesSender() throws {
@@ -113,5 +123,54 @@ final class BotPreviewTextTests: XCTestCase {
         XCTAssertEqual(BotPreviewText.parse(""), BotPreviewText(text: "", fromBot: nil))
         XCTAssertEqual(BotPreviewText.parse(nil), BotPreviewText(text: "", fromBot: nil))
         XCTAssertEqual(BotPreviewText.parse("   \n\t "), BotPreviewText(text: "", fromBot: nil))
+    }
+
+    @MainActor func testInboxRowHidesChipWhenPreviewFlattensToEmpty() throws {
+        let manager = try profile(id: "manager", title: "Project Manager")
+        let emptyFlatteningPreviews = [
+            "```swift\nlet x = 1\n```",
+            "![](https://x.y/a.png)",
+            "[](https://x.y/z)",
+            ">",
+            "   \n\t ",
+        ]
+
+        for raw in emptyFlatteningPreviews {
+            let bot = try profile(id: "ops", description: "Ops helper", preview: raw)
+            let row = BotInboxRow(profile: bot, roster: [manager, bot], avatar: nil, unread: false,
+                                  status: nil, statusIsStale: false)
+            XCTAssertEqual(
+                row.summary,
+                BotInboxRow.Summary(chip: nil, subline: "Ops helper", isFromBot: false),
+                "chip must stay hidden when preview \(raw.debugDescription) flattens to empty"
+            )
+        }
+
+        let normalBot = try profile(id: "ops", description: "Ops helper", preview: "**Ready**")
+        let normalRow = BotInboxRow(profile: normalBot, roster: [manager, normalBot], avatar: nil, unread: false,
+                                    status: nil, statusIsStale: false)
+        XCTAssertEqual(normalRow.summary, BotInboxRow.Summary(chip: "Ops helper", subline: "Ready", isFromBot: false))
+
+        let fromBotEmptyBody = try profile(
+            id: "ops",
+            description: "Ops helper",
+            preview: "Message from 🤖 manager (@manager): ```\nx\n```"
+        )
+        let fromBotRow = BotInboxRow(profile: fromBotEmptyBody, roster: [manager, fromBotEmptyBody], avatar: nil,
+                                     unread: false, status: nil, statusIsStale: false)
+        XCTAssertEqual(
+            fromBotRow.summary,
+            BotInboxRow.Summary(chip: "Ops helper", subline: "Project Manager: …", isFromBot: true)
+        )
+
+        let longDescBot = try profile(id: "ops", description: String(repeating: "a", count: 25), preview: "Ready")
+        let longDescRow = BotInboxRow(profile: longDescBot, roster: [longDescBot], avatar: nil, unread: false,
+                                      status: nil, statusIsStale: false)
+        XCTAssertEqual(longDescRow.summary, BotInboxRow.Summary(chip: nil, subline: "Ready", isFromBot: false))
+
+        let noDescBot = try profile(id: "ops", preview: ">")
+        let noDescRow = BotInboxRow(profile: noDescBot, roster: [noDescBot], avatar: nil, unread: false,
+                                    status: nil, statusIsStale: false)
+        XCTAssertEqual(noDescRow.summary, BotInboxRow.Summary(chip: nil, subline: "ops", isFromBot: false))
     }
 }

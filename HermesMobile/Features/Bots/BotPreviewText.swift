@@ -4,6 +4,10 @@ struct BotPreviewText: Equatable {
     let text: String
     let fromBot: String?
 
+    var hasContent: Bool {
+        fromBot != nil || !text.isEmpty
+    }
+
     var displayLine: String {
         guard let fromBot else { return text }
         return text.isEmpty ? "\(fromBot): …" : "\(fromBot): \(text)"

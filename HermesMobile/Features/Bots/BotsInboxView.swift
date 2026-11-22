@@ -835,7 +835,13 @@ private struct BotRoomHeroTile: View {
     }
 }
 
-private struct BotInboxRow: View {
+struct BotInboxRow: View {
+    struct Summary: Equatable {
+        let chip: String?
+        let subline: String
+        let isFromBot: Bool
+    }
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let profile: BotProfile
     let roster: [BotProfile]
@@ -843,35 +849,31 @@ private struct BotInboxRow: View {
     let unread: Bool
     let status: BotLiveStatus?
     let statusIsStale: Bool
-    private var chip: String? {
-        guard let description = profile.description, description.count <= 24,
-              profile.preview?.isEmpty == false else { return nil }
-        return description
-    }
-    private var subline: (text: String, isFromBot: Bool) {
+    var summary: Summary {
         let parsed = BotPreviewText.parse(profile.preview, roster: roster)
-        if parsed.fromBot != nil || !parsed.text.isEmpty {
-            return (parsed.displayLine, parsed.fromBot != nil)
+        if parsed.hasContent {
+            let chip = profile.description.flatMap { $0.count <= 24 ? $0 : nil }
+            return Summary(chip: chip, subline: parsed.displayLine, isFromBot: parsed.fromBot != nil)
         }
-        return (profile.description ?? profile.id, false)
+        return Summary(chip: nil, subline: profile.description ?? profile.id, isFromBot: false)
     }
     var body: some View {
-        let line = subline
+        let summary = self.summary
         HStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 if dynamicTypeSize.isAccessibilitySize {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) { nameAndChip }
+                    HStack(alignment: .firstTextBaseline, spacing: 8) { nameAndChip(summary.chip) }
                     trailingSlot
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        nameAndChip
+                        nameAndChip(summary.chip)
                         Spacer(minLength: 8)
                         trailingSlot
                     }
                 }
                 HStack(spacing: 8) {
-                    Text(verbatim: line.text).font(AppFont.body()).italic(line.isFromBot)
+                    Text(verbatim: summary.subline).font(AppFont.body()).italic(summary.isFromBot)
                         .foregroundStyle(.appSecondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if unread { BotUnreadDot() }
@@ -881,7 +883,7 @@ private struct BotInboxRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    @ViewBuilder private var nameAndChip: some View {
+    @ViewBuilder private func nameAndChip(_ chip: String?) -> some View {
         Text(profile.name).font(AppFont.headline()).lineLimit(1)
         if let chip {
             Text(chip).font(AppFont.footnote()).foregroundStyle(.appSecondary).lineLimit(1)
