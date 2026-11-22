@@ -52,6 +52,8 @@ struct BotRoomAttachmentComposer: View {
                             attachmentChip(chip)
                         }
                     }
+                    // Room for the remove button, which sits past each tile's corner.
+                    .padding(.trailing, 8)
                 }
                 .scrollIndicators(.hidden)
                 .fixedSize(horizontal: false, vertical: true)
