@@ -129,6 +129,31 @@ import Foundation
         }
     }
 
+    func voiceLiveStatus(profile: String) async throws -> HermesVoiceLiveStatus? {
+        let attempt = self.attempt
+        let reply = try await http.reply(.voiceLiveStatus(profile: profile), validateDispatch: { try self.checkOwner(attempt) })
+        try checkOwner(attempt)
+        if reply.status == 404 { return nil }
+        guard (200..<300).contains(reply.status) else { throw BotFailure.rejected(reply.status) }
+        return HermesVoiceLiveStatus((try? JSONDecoder().decode(BotJSON.self, from: reply.body)) ?? .null)
+    }
+
+    func voiceLiveSession(profile: String, sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
+        let attempt = self.attempt
+        let reply = try await http.reply(.voiceLiveSession(profile: profile, sdp: sdp, history: history),
+                                         deadline: .provisioning, validateDispatch: { try self.checkOwner(attempt) })
+        try checkOwner(attempt)
+        let body = try? JSONDecoder().decode(BotJSON.self, from: reply.body)
+        guard (200..<300).contains(reply.status) else {
+            if let detail = body?["detail"].text?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty {
+                throw HermesVoiceLiveRefusal(status: reply.status, detail: detail)
+            }
+            throw BotFailure.rejected(reply.status)
+        }
+        guard let answer = body?["transport"]["sdp"].text, !answer.isEmpty else { throw BotFailure.unsupported }
+        return HermesVoiceLiveSession(sessionID: body?["session"]["id"].text, answerSDP: answer)
+    }
+
     nonisolated static func speechAudio(fromReply body: Data) throws -> Data {
         guard let url = (try? JSONDecoder().decode(BotJSON.self, from: body))?["data_url"].text,
               url.hasPrefix("data:"), let comma = url.firstIndex(of: ","), url[..<comma].hasSuffix(";base64"),

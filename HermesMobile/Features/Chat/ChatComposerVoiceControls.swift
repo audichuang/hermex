@@ -302,3 +302,25 @@ struct ComposerVoiceRecordingBar: View {
         .accessibilityAction(named: Text("Cancel recording"), onCancel)
     }
 }
+
+/// Call, beside the mic in the card's toolbar (#1091), drawn like the mic.
+struct ComposerVoiceCallButton: View {
+    let isDisabled: Bool
+    let color: Color
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Image(systemName: "phone")
+                .font(.system(size: 17, weight: .regular))
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(Color(.appFillTertiary)).frame(width: 34, height: 34))
+                .foregroundStyle(color)
+                .contentShape(Circle())
+                .opacity(isDisabled ? 0.4 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(Text("Start voice call"))
+    }
+}
