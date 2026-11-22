@@ -214,6 +214,24 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesCall.groupsContinue(roomID: "room", discussionEventID: "").params())
     }
 
+    func testRoomContextRejectsInvalidIdentifiersRoutingAndContent() {
+        var context = HermesCall.RoomContext(purpose: "", notes: "", routing: "lead", leadMemberID: "chief")
+        XCTAssertThrowsError(try HermesCall.groupsContext(roomID: "../room", eventID: "event", context).params())
+        XCTAssertThrowsError(try HermesCall.groupsContext(roomID: "room", eventID: "", context).params())
+        context.leadMemberID = "chief, coder"
+        XCTAssertThrowsError(try HermesCall.groupsContext(roomID: "room", eventID: "event", context).params())
+        context.leadMemberID = nil
+        XCTAssertThrowsError(try HermesCall.groupsContext(roomID: "room", eventID: "event", context).params())
+        context.routing = "unknown"
+        XCTAssertThrowsError(try HermesCall.groupsContext(roomID: "room", eventID: "event", context).params())
+        context.routing = nil
+        context.purpose = String(repeating: "👨‍👩‍👧‍👦", count: 72)
+        XCTAssertThrowsError(try HermesCall.groupsContext(roomID: "room", eventID: "event", context).params())
+        context.purpose = ""
+        context.notes = String(repeating: "字", count: 1366)
+        XCTAssertThrowsError(try HermesCall.groupsContext(roomID: "room", eventID: "event", context).params())
+    }
+
     func testRoomUploadSendsRawBase64AndStableIdentity() throws {
         let file = BotRoomUpload(data: Data([0x00, 0x7F, 0xFF]), name: "note.bin", kind: .file, mime: "application/octet-stream")
         let call = HermesCall.groupsAttachmentUpload(roomID: "room:1", uploadID: "upload:2", file: file)

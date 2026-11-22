@@ -97,7 +97,7 @@ struct BotRoomRound: Equatable {
     var finished: Int { seats.filter { [.passed, .replied, .failed, .cancelled].contains($0.outcome) }.count }
 
     static func build(events: [BotRoomEvent], activity: [BotRoomMemberActivity], room: BotGroupRoom,
-                      threadID: String?) -> BotRoomRound? {
+                      threadID: String?, context: BotRoomContext? = nil) -> BotRoomRound? {
         let rows = threadID.map { id in activity.filter { $0.threadID == id } } ?? activity
         guard !rows.isEmpty else { return nil }
         let live = rows.filter { $0.phase != .queued } + rows.filter { $0.phase == .queued }
@@ -110,7 +110,7 @@ struct BotRoomRound: Equatable {
         var planned = room.members.map(\.id)
         let assigned = ofDiscussion.last { $0.kind == "room.assignment" }?.payload["member_ids"].list?.compactMap(\.text)
         let routed = ofDiscussion.last { $0.kind == "room.routed" }?.payload
-        let context = events.last { $0.kind == "room.context_set" }?.payload
+        let routingContext = context ?? events.last { $0.kind == "room.context_set" }.flatMap { BotRoomContext($0.payload) }
         let text = message?.payload["text"].text ?? ""
         let mentioned = room.members.filter { member in
             member.handle.map { text.range(of: "@\($0)", options: .caseInsensitive) != nil } ?? false
@@ -128,7 +128,7 @@ struct BotRoomRound: Equatable {
             }
         } else if !mentioned.isEmpty && !broadcast {
             planned = mentioned
-        } else if context?["routing"].text == "lead", let lead = context?["lead_member_id"].text,
+        } else if routingContext?.routing == "lead", let lead = routingContext?.leadMemberID,
                   let message, events.first(where: { $0.payload["thread_id"].text == thread && $0.isMessage }) == message,
                   live.contains(where: { $0.memberID == lead }) {
             routingBy = name(lead)
@@ -173,6 +173,7 @@ struct BotRoomStatus: Equatable {
     let maxContinues: Int?
     let actions: [BotRoomAction]
     let activity: [BotRoomMemberActivity]
+    let routingModes: Set<String>
     init(_ value: BotJSON) {
         activity = (value["member_activity"].list ?? []).compactMap(BotRoomMemberActivity.init)
         working = value["working"].flag == true
@@ -180,6 +181,7 @@ struct BotRoomStatus: Equatable {
         stopping = max(0, value["counts"]["stopping"].integer ?? 0)
         stoppable = max(0, value["counts"]["queued"].integer ?? 0) + max(0, value["counts"]["running"].integer ?? 0)
         maxContinues = value["max_continues"].integer
+        routingModes = Set(value["routing_modes"].list?.compactMap(\.text) ?? [])
         actions = (value["pending_actions"].list ?? []).map(BotRoomAction.init)
     }
     var interval: Duration { working || blocked || stopping > 0 ? .seconds(2) : .seconds(10) }

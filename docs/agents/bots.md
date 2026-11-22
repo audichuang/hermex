@@ -2371,7 +2371,8 @@ available for a later stalled attempt only after the previous pending action
 has disappeared. Unknown or incomplete pending kinds show Desktop attention.
 
 Foreign authority hides the composer. Missing authority or unadvertised methods
-cannot dispatch participant commands. No peer or authority administration is exposed. These helpers belong only to the app target; share
+cannot dispatch participant commands. Desktop owns peer and authority administration.
+These helpers belong only to the app target; share
 extension, Live Activities and App Intents do not participate in rooms.
 
 ### Room lifecycle
@@ -2401,6 +2402,13 @@ Inline rename sends `groups.rename {room_id, event_id, name}` with a new event
 UUID. The profile, pill and inbox update after acknowledgment; a concurrent poll
 cannot publish the pending name. At the pin the result is `{room}` with the event
 nested in `room.event`; the log renders `room.renamed` once by sequence.
+
+Room settings appear in the room profile when the local authority advertises
+`groups.context` and `groups.state` includes a context object. Automatic selection
+requires `driver_status.routing_modes` to advertise `auto` or the room to already
+use it. The host applies edits from the next message, keeping the context of
+already admitted work. See [room settings](../adr/0181-bot-room-settings.md) for
+the validation and polling contract.
 
 Disband permanently removes the room and history from every device and stops its
 bots. Its confirmation states those consequences. The control waits while Stop

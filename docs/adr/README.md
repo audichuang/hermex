@@ -9,6 +9,10 @@ it and bring back a user-visible bug.
 What the code does belongs in its names and types. How to work in an area belongs in
 `docs/agents/`. Vocabulary belongs in `CONTEXT.md`.
 
+## Index
+
+- [0181. Bot room settings](0181-bot-room-settings.md)
+
 ## Format
 
 One file per subject (a screen, a client, a protocol), named `NNNN-subject.md` with the

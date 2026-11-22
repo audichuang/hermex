@@ -7,6 +7,7 @@ import SwiftUI
     let avatars: [String: UIImage]
     var onUpdateSignIn: () -> Void = {}
     @State private var name = ""
+    @State private var settings: BotRoomSettingsDraft?
     @State private var confirmingDisband = false
     @State private var visible = false
     @State private var owner = UUID()
@@ -35,6 +36,20 @@ import SwiftUI
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 24)
             }
+            if let context = reader.context, !context.purpose.isEmpty || reader.showsSettings {
+                Section {
+                    if !context.purpose.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Purpose").font(AppFont.caption()).foregroundStyle(.secondary)
+                            Text(context.purpose)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                    if reader.showsSettings {
+                        Button("Room settings") { settings = BotRoomSettingsDraft(context: context) }
+                    }
+                }
+            }
             Section {
                 ForEach(reader.room.members) { member in
                     if let profile = roster.first(where: { $0.id == member.profile }) {
@@ -58,6 +73,9 @@ import SwiftUI
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $settings) { draft in
+            BotRoomSettingsView(reader: reader, draft: draft)
+        }
         .toolbar {
             if reader.showsDisband {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -101,7 +119,13 @@ import SwiftUI
     private func memberRow(_ member: BotGroupRoom.Member) -> some View {
         HStack(spacing: 14) {
             BotRoomMemberAvatar(member: member, roster: roster, avatars: avatars, size: 36)
-            Text(member.name)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(member.name)
+                if reader.context?.routing == "lead", reader.context?.leadMemberID == member.id {
+                    Text("Room lead").font(AppFont.caption()).foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 }

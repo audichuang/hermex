@@ -127,6 +127,7 @@ enum HermesCall: Equatable, Sendable {
     case groupsDiscard(roomID: String, taskID: String, attempt: RoomAttempt)
     case groupsCreate(RoomCreation)
     case groupsRename(roomID: String, eventID: String, name: String)
+    case groupsContext(roomID: String, eventID: String, RoomContext)
     case groupsDisband(roomID: String)
 
     case clientCapabilities
@@ -280,6 +281,13 @@ enum HermesCall: Equatable, Sendable {
         var members: [RoomMember]
     }
 
+    struct RoomContext: Equatable, Sendable {
+        var purpose: String
+        var notes: String
+        var routing: String?
+        var leadMemberID: String?
+    }
+
     struct RoomMember: Equatable, Sendable {
         var memberID: String
         var profile: String
@@ -383,6 +391,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsDiscard: return "groups.discard"
         case .groupsCreate: return "groups.create"
         case .groupsRename: return "groups.rename"
+        case .groupsContext: return "groups.context"
         case .groupsDisband: return "groups.disband"
         case .clientCapabilities: return "client.capabilities"
         }
@@ -642,6 +651,14 @@ enum HermesCall: Equatable, Sendable {
             return ["room_id": .string(room.roomID), "name": .string(room.name), "members": .array(room.members.map(\.json))]
         case .groupsRename(let roomID, let eventID, let name):
             return ["room_id": .string(roomID), "event_id": .string(eventID), "name": .string(name)]
+        case .groupsContext(let roomID, let eventID, let context):
+            var fields: [String: BotJSON] = ["room_id": .string(roomID), "event_id": .string(eventID),
+                                             "purpose": .string(context.purpose), "notes": .string(context.notes)]
+            if let routing = context.routing {
+                fields["routing"] = .string(routing)
+                fields["lead_member_id"] = context.leadMemberID.map(BotJSON.string)
+            }
+            return fields
         case .clientCapabilities: return ["server_requests": .bool(true)]
         }
     }
@@ -780,6 +797,13 @@ enum HermesCall: Equatable, Sendable {
         case .groupsCreate(let room): valid = room.isAdmissible
         case .groupsRename(let roomID, let eventID, let name):
             valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(eventID) && BotRoomRPC.validName(name)
+        case .groupsContext(let roomID, let eventID, let context):
+            let lead = context.leadMemberID ?? ""
+            valid = [roomID, eventID].allSatisfy(BotRoomRPC.validID)
+                && BotRoomContext.purposeLength(context.purpose) <= BotRoomContext.maximumPurposeLength
+                && BotRoomContext.notesBytes(context.notes) <= BotRoomContext.maximumNotesBytes
+                && (context.routing.map { ["everyone", "lead", "auto"].contains($0) } ?? true)
+                && (context.routing == nil || (lead.isEmpty ? context.routing != "lead" : BotRoomRPC.validID(lead)))
         case .profilesList, .profilesGetAsset, .sessionList, .sessionResume, .sessionEventsSince, .sessionActiveList,
              .promptSubmit, .sessionSteer, .sessionRedirect, .sessionInterrupt, .fileAttach, .approvalRespond,
              .promptCancel, .promptResolveUnknown, .clarifyRespond, .sessionMutate,

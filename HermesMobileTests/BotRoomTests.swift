@@ -1251,6 +1251,7 @@ enum RoomFixture {
     var attachmentReply: ((String) async -> BotJSON)?
     var failure: Error?
     var driverStatus = RoomFixture.status()
+    var context: BotJSON?
     var writes: [(String, [String: BotJSON])] = []
     var writeCalls: [HermesCall] = []
     var beforeWrite: (() async -> Void)?
@@ -1271,7 +1272,7 @@ enum RoomFixture {
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         let method = call.method, params = try call.params()
         if ["groups.send", "groups.stop", "groups.continue", "groups.approve", "groups.retry", "groups.discard", "groups.create", "groups.rename",
-            "groups.disband"].contains(method) {
+            "groups.context", "groups.disband"].contains(method) {
             await beforeWrite?()
             try validateDispatch?()
             writes.append((method, params)); writeCalls.append(call)
@@ -1302,6 +1303,19 @@ enum RoomFixture {
                 event["payload"] = .object(["name": .string(roomName)])
                 room["event"] = .object(event); sentEvents[params["event_id"]!.text!] = .object(event)
                 result = .object(["room": .object(room)])
+            case "groups.context":
+                var fields = context?.fields ?? [:]
+                fields["purpose"] = .string(params["purpose"]!.text!.split(whereSeparator: \.isWhitespace).joined(separator: " "))
+                fields["notes"] = .string(params["notes"]!.text!.trimmingCharacters(in: .whitespacesAndNewlines))
+                fields["routing"] = params["routing"] ?? fields["routing"] ?? .string("everyone")
+                fields["lead_member_id"] = fields["routing"]?.text == "lead"
+                    ? params["lead_member_id"] ?? fields["lead_member_id"] : .string("")
+                let updated = BotJSON.object(fields)
+                context = updated; latest += 1
+                var event = RoomFixture.event(latest, kind: "room.context_set").fields!
+                event["event_id"] = params["event_id"]; event["payload"] = updated
+                roomEvents[latest] = .object(event)
+                result = .object(["context": updated, "event": .object(event)])
             case "groups.disband":
                 disbanded = true
                 result = .object(["tombstone": .object(["room_id": params["room_id"]!, "disbanded_at": .number(100)])])
@@ -1380,7 +1394,9 @@ enum RoomFixture {
             room["name"] = .string(roomName)
             if let members { room["members"] = .array(members) }
             room["authority_gateway_id"] = .string(authority); room["authority_epoch"] = .number(Double(epoch))
-            return .object(["room": .object(room), "driver_status": driverStatus])
+            var state: [String: BotJSON] = ["room": .object(room), "driver_status": driverStatus]
+            state["context"] = context
+            return .object(state)
         case "groups.log":
             let start = params["since_seq"]!.integer!; logStarts.append(start)
             let end = min(latest, start + params["limit"]!.integer!)
@@ -1401,8 +1417,10 @@ enum RoomFixture {
         heldWrite?.resume(throwing: error)
         heldWrite = nil; writeReply = nil
     }
-    func releaseState(latest: Int) {
-        held?.resume(returning: .object(["room": RoomFixture.room(latest: latest)])); held = nil
+    func releaseState(latest: Int, context: BotJSON? = nil) {
+        var state = ["room": RoomFixture.room(latest: latest)]
+        state["context"] = context
+        held?.resume(returning: .object(state)); held = nil
     }
 }
 
