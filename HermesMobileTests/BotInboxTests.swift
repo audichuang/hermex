@@ -1333,8 +1333,6 @@ import SwiftUI
     }
 
     func testRoomListRefreshKeepsDraftsOfRoomsMissingFromTheList() async throws {
-        // A host whose owning gateway is offline lists none of that gateway's rooms,
-        // so absence from a complete list is no proof the room is gone.
         let connections = try connectedStore()
         let connectionID = try XCTUnwrap(connections.load(server: server)).id
         let listed = BotRoomKey(server: server, connectionID: connectionID, roomID: "room-a")
@@ -1351,7 +1349,8 @@ import SwiftUI
 
         await inbox.open()
         XCTAssertEqual(inbox.rooms.map(\.id), [listed.roomID])
-        XCTAssertEqual(store.load(missing).draft.texts, ["": missing.roomID])
+        XCTAssertEqual(store.load(missing).draft.texts, ["": missing.roomID],
+                       "an offline owning gateway leaves its rooms out of the list")
     }
 
     func testRoomsRemainListedWhenTheDriverIsDownButCreationIsDisabled() async throws {
