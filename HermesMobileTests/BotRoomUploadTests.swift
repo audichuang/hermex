@@ -1,4 +1,5 @@
 import Observation
+import UIKit
 import XCTest
 @testable import HermesMobile
 
@@ -63,6 +64,18 @@ import XCTest
         XCTAssertEqual(upload.mime, "image/jpeg")
         XCTAssertEqual(upload.name, "camera.jpg")
         XCTAssertTrue(upload.data.starts(with: [0xFF, 0xD8, 0xFF]))
+    }
+
+    func testAddedImageCarriesAComposerThumbnail() async throws {
+        let wire = RoomWire(), reader = try makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let heic = try XCTUnwrap(Data(base64Encoded: Self.heic))
+        await reader.addAttachments([input(name: "camera.heic", bytes: heic), input()], in: nil)
+        let chips = reader.attachmentChips(in: nil)
+        XCTAssertNotNil(chips.first?.thumbnail.flatMap(UIImage.init(data:)))
+        XCTAssertTrue(BotRoomAttachmentComposer.pending(chips[0]).isImage)
+        XCTAssertNil(chips.last?.thumbnail)
     }
 
     func testUploadBlocksSendUntilAnAttachmentOnlyMessageCanBeAcknowledged() async throws {

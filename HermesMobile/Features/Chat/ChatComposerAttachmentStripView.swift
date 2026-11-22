@@ -127,21 +127,25 @@ private struct ComposerDocumentThumbnail<Content: View>: View {
     }
 }
 
-private struct ComposerAttachmentThumbnailView: View {
+struct ComposerAttachmentThumbnailView: View {
     let attachment: PendingAttachment
     let onRemove: () -> Void
-    let onOpen: () -> Void
+    var onOpen: (() -> Void)?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Button(action: onOpen) {
+            if let onOpen {
+                Button(action: onOpen) {
+                    thumbnailContent
+                }
+                .buttonStyle(.chatTactile(.thumbnail))
+                .accessibilityLabel("Open attachment \(attachment.name)")
+            } else {
                 thumbnailContent
             }
-            .buttonStyle(.chatTactile(.thumbnail))
-            .accessibilityLabel("Open attachment \(attachment.name)")
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
