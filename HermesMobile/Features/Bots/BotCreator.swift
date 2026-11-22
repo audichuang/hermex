@@ -31,6 +31,15 @@ enum BotProfileName {
         return truncateAtTokenBoundary(result)
     }
 
+    static func copyID(of sourceID: String, taken: Set<String>) -> String? {
+        for n in 2..<100 {
+            let suffix = "-\(n)"
+            let candidate = String(sourceID.prefix(maxLength - suffix.count)) + suffix
+            if !taken.contains(candidate) { return candidate }
+        }
+        return nil
+    }
+
     static func isValid(_ name: String) -> Bool {
         guard let first = name.unicodeScalars.first, name.count <= 64, !reserved.contains(name) else { return false }
         guard ("a"..."z").contains(first) || ("0"..."9").contains(first) else { return false }
@@ -127,6 +136,7 @@ enum BotProfileName {
     private(set) var note: String?
 
     private var taken: Set<String>
+    private let duplicateID: String?
     private var wire: (any BotTransport)?
     private var generation = 0
     private let store: BotConnectionStore
@@ -139,7 +149,9 @@ enum BotProfileName {
         self.server = server; self.connection = connection; self.source = source
         self.store = store ?? BotConnectionStore()
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }; self.onCreated = onCreated
-        taken = Set(roster.map(\.id))
+        let taken = Set(roster.map(\.id))
+        self.taken = taken
+        duplicateID = source.flatMap { BotProfileName.copyID(of: $0.id, taken: taken) }
         var draft = Draft()
         if let source {
             draft.title = String(localized: "\(source.name) copy")
@@ -155,7 +167,7 @@ enum BotProfileName {
         self.draft = draft
     }
 
-    var name: String { BotProfileName.slug(from: draft.title) }
+    var name: String { duplicateID ?? BotProfileName.slug(from: draft.title) }
     var nameIsTaken: Bool { taken.contains(name) }
     var hasStarted: Bool { !outcomes.isEmpty }
     var nameProblem: String? {

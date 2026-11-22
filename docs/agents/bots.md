@@ -1644,7 +1644,11 @@ and diacritic-folded Latin letters keep their base forms while other NFC
 letters and digits become hyphen-separated `u<hex>` tokens, truncated on a
 hyphen boundary at 64 characters (matching Desktop's `slugifyProfileName`), and
 the typed name is saved as `ui_meta["hermes-bots"].title`; a name
-already on the roster is refused before any write. Setup is three host writes
+already on the roster is refused before any write. When duplicating, the
+Profile name is instead the first unused `<base>-2`…`-99` from the source
+Profile name with the base truncated before the suffix (matching Desktop's
+`duplicateBot`), and the typed title is used only as the display name. Setup is
+three host writes
 in order, each with its own outcome: `profiles.create` (name, optional
 description, optional `model` + `provider`, `clone_from` when duplicating),
 `profiles.configure` with the drawn look under `ui_meta_expected_revisions` 0,
