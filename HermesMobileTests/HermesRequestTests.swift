@@ -207,6 +207,16 @@ final class HermesRequestTests: XCTestCase {
         }
     }
 
+    func testRoomDownloadSendsTheOwningEventAndAttachmentIDs() throws {
+        let call = HermesCall.groupsAttachmentDownload(roomID: "room:1", eventID: "event:2", attachmentID: "att_3")
+        XCTAssertEqual(call.method, "groups.attachment.download")
+        let params = try call.params()
+        XCTAssertEqual(params["room_id"], .string("room:1"))
+        XCTAssertEqual(params["event_id"], .string("event:2"))
+        XCTAssertEqual(params["attachment_id"], .string("att_3"))
+        XCTAssertThrowsError(try HermesCall.groupsAttachmentDownload(roomID: "room:1", eventID: "", attachmentID: "att_3").params())
+    }
+
     func testSlashCallsAdmitOnlyOneNamedLine() {
         XCTAssertNoThrow(try HermesCall.slashExec(sessionID: "runtime", command: "/context").params())
         XCTAssertNoThrow(try HermesCall.slashExec(sessionID: "runtime", command: "/queue hi there").params())

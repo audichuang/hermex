@@ -31,3 +31,13 @@ Lives in: `HermesMobile/Features/Bots/BotHistoryCache.swift`
 `BotRecentTranscripts.begin` hands out a new owner token when a room screen starts recovery, not during SwiftUI construction. `save` writes only for the current owner, so a later owner or a removal makes every older writer inert.
 
 Lives in: `HermesMobile/Features/Bots/BotHistoryCache.swift`
+
+## Save attachment manifests with their owning messages
+
+Reopening after app termination resumes from the saved cursor, so the host may
+never replay the events behind it. Persist manifest metadata and the owning event
+ID even when a message has no cacheable text. The optional field lets older
+snapshots decode. Downloaded bytes may expire on the host, and local search still
+matches message text only.
+
+Lives in: `HermesMobile/Features/Bots/BotHistoryCache.swift`

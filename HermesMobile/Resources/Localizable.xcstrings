@@ -2,6 +2,118 @@
   "sourceLanguage" : "en",
   "strings" : {
     "%@ goes back to how it was at this checkpoint. Its current content is overwritten." : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "سيعود %@ إلى ما كان عليه عند نقطة التحقق هذه. سيتم استبدال محتواه الحالي." } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ wird auf den Stand dieses Checkpoints zurückgesetzt. Der aktuelle Inhalt wird überschrieben." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ vuelve a como estaba en este punto de control. Su contenido actual se sobrescribe." } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ به حالت زمان این نقطه بازیابی برمی‌گردد. محتوای فعلی آن بازنویسی می‌شود." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ revient à son état à ce point de contrôle. Son contenu actuel est écrasé." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ יחזור למצבו בנקודת השמירה הזו. התוכן הנוכחי שלו יידרס." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ torna com’era a questo checkpoint. Il contenuto attuale viene sovrascritto." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ はこのチェックポイント時点の状態に戻ります。現在の内容は上書きされます。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "%@은(는) 이 체크포인트 시점의 상태로 돌아가요. 현재 내용은 덮어써져요." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ gaat terug naar hoe het was bij dit checkpoint. De huidige inhoud wordt overschreven." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ wraca do stanu z tego punktu kontrolnego. Jego obecna zawartość zostanie nadpisana." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ volta a como estava neste checkpoint. O conteúdo atual é sobrescrito." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ вернётся к состоянию на этой контрольной точке. Текущее содержимое будет перезаписано." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@, bu kontrol noktasındaki haline döner. Mevcut içeriğinin üzerine yazılır." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ اس چیک پوائنٹ پر جیسی حالت میں تھی ویسی ہو جائے گی۔ اس کا موجودہ مواد اوور رائٹ ہو جائے گا۔" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ 會還原成此檢查點時的狀態。目前的內容會被覆寫。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ 将恢复为此检查点时的状态。当前内容会被覆盖。" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ 會還原成此檢查點時的狀態。目前的內容會被覆寫。" } } } },
+    "%@ · Files: %lld" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · عدد الملفات: %lld"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Dateianzahl: %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Archivos: %lld"
+          }
+        },
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · تعداد فایل‌ها: %lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Nombre de fichiers : %lld"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · מספר הקבצים: %lld"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Numero di file: %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ほか計%lldファイル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 등 파일 %lld개"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Aantal bestanden: %lld"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Liczba plików: %lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Arquivos: %lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Число файлов: %lld"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Dosya sayısı: %lld"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · فائلوں کی تعداد: %lld"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 等 %lld 個檔案"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 等 %lld 个文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 等 %lld 個檔案"
+          }
+        }
+      }
+    },
     "Approval needed" : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "الموافقة مطلوبة" } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Genehmigung erforderlich" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprobación requerida" } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "تأیید لازم است" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Approbation requise" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נדרש אישור" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Approvazione richiesta" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "承認が必要" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "승인 필요" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Goedkeuring vereist" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wymagane zatwierdzenie" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprovação necessária" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Требуется подтверждение" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Onay gerekli" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "منظوری درکار" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "需要審批" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "需要审批" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "需要審核" } } } },
     "Approval needed: %@" : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "الموافقة مطلوبة: %@" } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Genehmigung erforderlich: %@" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprobación requerida: %@" } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "تأیید لازم است: %@" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Approbation requise : %@" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נדרש אישור: %@" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Approvazione richiesta: %@" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "承認が必要: %@" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "승인 필요: %@" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Goedkeuring vereist: %@" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wymagane zatwierdzenie: %@" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprovação necessária: %@" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Требуется подтверждение: %@" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Onay gerekli: %@" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "منظوری درکار: %@" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "需要審批：%@" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "需要审批：%@" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "需要審核：%@" } } } },
     "Checkpoints are off on this Hermes host." : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "نقاط التحقق متوقفة على مضيف Hermes هذا." } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Checkpoints sind auf diesem Hermes-Host deaktiviert." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Los puntos de control están desactivados en este host de Hermes." } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "نقطه‌های بازیابی روی این میزبان Hermes خاموش است." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Les points de contrôle sont désactivés sur cet hôte Hermes." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נקודות שמירה כבויות במארח Hermes הזה." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "I checkpoint sono disattivati su questo host Hermes." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このHermesホストではチェックポイントがオフになっています。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 Hermes 호스트에서는 체크포인트가 꺼져 있어요." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Checkpoints staan uit op deze Hermes-host." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Punkty kontrolne są wyłączone na tym hoście Hermes." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Os checkpoints estão desativados neste host do Hermes." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "На этом хосте Hermes контрольные точки отключены." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu Hermes ana makinesinde kontrol noktaları kapalı." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس Hermes ہوسٹ پر چیک پوائنٹس بند ہیں۔" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 主機上已關閉檢查點。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 主机上已关闭检查点。" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 主機上已關閉檢查點。" } } } },
@@ -65,6 +177,118 @@
     "This computer's driver couldn't capture the screen." : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لم يتمكن برنامج التشغيل على هذا الكمبيوتر من التقاط الشاشة." } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Der Treiber dieses Computers konnte den Bildschirm nicht aufnehmen." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "El controlador de este ordenador no pudo capturar la pantalla." } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "درایور این رایانه نتوانست از صفحه تصویر بگیرد." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Le pilote de cet ordinateur n’a pas pu capturer l’écran." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מנהל ההתקן של המחשב הזה לא הצליח לצלם את המסך." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Il driver di questo computer non è riuscito ad acquisire lo schermo." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このコンピュータのドライバが画面をキャプチャできませんでした。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 컴퓨터의 드라이버가 화면을 캡처하지 못했습니다." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Het stuurprogramma van deze computer kon het scherm niet vastleggen." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Sterownik tego komputera nie mógł przechwycić ekranu." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O driver deste computador não conseguiu capturar a tela." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Драйверу этого компьютера не удалось захватить экран." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu bilgisayarın sürücüsü ekranı yakalayamadı." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس کمپیوٹر کا ڈرائیور اسکرین کیپچر نہیں کر سکا۔" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "這部電腦的驅動程式無法擷取螢幕畫面。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "这台电脑的驱动程序无法捕获屏幕。" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "這台電腦的驅動程式無法擷取螢幕畫面。" } } } },
     "This deletes it from this Profile's .env on the host, and the plugin can't use it until you add it again." : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يؤدي هذا إلى حذفه من ملف .env لملف التعريف هذا على المضيف، ولا يمكن للإضافة استخدامه حتى تضيفه مرة أخرى." } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dadurch wird er aus der .env dieses Profils auf dem Host gelöscht, und das Plug-in kann ihn erst wieder verwenden, wenn du ihn erneut hinzufügst." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Esto la elimina del .env de este perfil en el host, y el complemento no podrá usarla hasta que la vuelvas a añadir." } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "این کار آن را از فایل ⁨.env⁩ این نمایه روی میزبان حذف می‌کند و افزونه تا زمانی که دوباره اضافه‌اش نکنید نمی‌تواند از آن استفاده کند." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Cela la supprime du .env de ce profil sur l’hôte, et le plug-in ne pourra plus l’utiliser tant que vous ne l’aurez pas rajoutée." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הפעולה מוחקת אותו מקובץ ה-.env של הפרופיל הזה במארח, והתוסף לא יוכל להשתמש בו עד שיתווסף שוב." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questa azione la elimina dal file .env di questo profilo sull'host e il plugin non potrà usarla finché non la aggiungi di nuovo." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ホスト上にあるこのプロファイルの .env から削除されます。再度追加するまで、プラグインはこれを使用できません。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "호스트에 있는 이 프로필의 .env에서 삭제되며, 다시 추가할 때까지 플러그인에서 사용할 수 없습니다." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hiermee wordt hij verwijderd uit de .env van dit profiel op de host, en de plug-in kan hem pas weer gebruiken als je hem opnieuw toevoegt." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Spowoduje to usunięcie go z pliku .env tego profilu na hoście, a wtyczka nie będzie mogła go używać, dopóki nie dodasz go ponownie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Isso a exclui do .env deste perfil no host, e o plugin não poderá usá-la até que você a adicione novamente." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Ключ будет удалён из файла .env этого профиля на хосте, и плагин не сможет его использовать, пока вы не добавите его снова." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu işlem anahtarı ana makinedeki bu profilin .env dosyasından siler ve yeniden ekleyene kadar eklenti onu kullanamaz." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس سے یہ ہوسٹ پر اس پروفائل کی .env سے حذف ہو جاتی ہے، اور جب تک آپ اسے دوبارہ شامل نہ کریں پلگ ان اسے استعمال نہیں کر سکتا۔" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "這會將它從主機上此設定檔的 .env 中刪除，在你重新加入之前，外掛程式無法使用它。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "这会将它从主机上此配置文件的 .env 中删除，在你重新添加之前，插件无法使用它。" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "這會將它從主機上此設定檔的 .env 中刪除，在你重新加入之前，外掛程式無法使用它。" } } } },
     "This update gives the plugin new abilities. Nothing changes until you accept." : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يمنح هذا التحديث الإضافة قدرات جديدة. لن يتغير شيء حتى تقبل." } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieses Update gibt dem Plug-in neue Fähigkeiten. Es ändert sich nichts, bis du akzeptierst." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Esta actualización da nuevas capacidades al complemento. Nada cambia hasta que aceptes." } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "این به‌روزرسانی قابلیت‌های جدیدی به افزونه می‌دهد. تا زمانی که نپذیرید، چیزی تغییر نمی‌کند." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Cette mise à jour donne de nouvelles capacités au plug-in. Rien ne change tant que vous n’acceptez pas." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "העדכון הזה נותן לתוסף יכולות חדשות. שום דבר לא ישתנה עד לאישור." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo aggiornamento dà al plugin nuove capacità. Non cambia nulla finché non accetti." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "この更新により、プラグインに新しい機能が追加されます。承諾するまで何も変わりません。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 업데이트는 플러그인에 새로운 기능을 부여합니다. 수락할 때까지 아무것도 변경되지 않습니다." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Deze update geeft de plug-in nieuwe mogelijkheden. Er verandert niets totdat je accepteert." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ta aktualizacja daje wtyczce nowe możliwości. Nic się nie zmieni, dopóki nie zaakceptujesz." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Esta atualização dá novas capacidades ao plugin. Nada muda até que você aceite." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Это обновление даёт плагину новые возможности. Ничего не изменится, пока вы не примете его." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu güncelleme eklentiye yeni yetenekler verir. Kabul edene kadar hiçbir şey değişmez." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ اپ ڈیٹ پلگ ان کو نئی صلاحیتیں دیتی ہے۔ جب تک آپ قبول نہ کریں، کچھ نہیں بدلے گا۔" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此更新會賦予外掛程式新的能力。在你接受之前，不會有任何變更。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此更新会赋予插件新的能力。在你接受之前，不会有任何变更。" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此更新會賦予外掛程式新的能力。在你接受之前，不會有任何變更。" } } } },
+    "Too large. Download in Hermes Desktop." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حجم الملف كبير جدًا. نزّله في Hermes Desktop."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei zu groß. Lade sie in Hermes Desktop herunter."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El archivo es demasiado grande. Descárgalo en Hermes Desktop."
+          }
+        },
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فایل خیلی بزرگ است. آن را در Hermes Desktop دانلود کنید."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fichier trop volumineux. Téléchargez-le dans Hermes Desktop."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "הקובץ גדול מדי. אפשר להוריד אותו ב‑Hermes Desktop."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il file è troppo grande. Scaricalo in Hermes Desktop."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルが大きすぎます。Hermes Desktopでダウンロードしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일이 너무 큽니다. Hermes Desktop에서 다운로드하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bestand te groot. Download het in Hermes Desktop."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plik jest za duży. Pobierz go w Hermes Desktop."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O arquivo é grande demais. Baixe-o no Hermes Desktop."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Файл слишком большой. Скачайте его в Hermes Desktop."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dosya çok büyük. Hermes Desktop’ta indirin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فائل بہت بڑی ہے۔ اسے Hermes Desktop میں ڈاؤن لوڈ کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檔案太大，請在 Hermes Desktop 下載。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件过大，请在 Hermes Desktop 下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檔案太大，請在 Hermes Desktop 下載。"
+          }
+        }
+      }
+    },
     "Update %@" : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تحديث %@" } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ aktualisieren" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Actualizar %@" } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "به‌روزرسانی %@" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Mettre à jour %@" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "עדכון %@" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Aggiorna %@" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ を更新" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ 업데이트" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ bijwerken" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zaktualizuj %@" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Atualizar %@" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Обновить %@" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ eklentisini güncelle" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "‏%@ اپ ڈیٹ کریں" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "更新 %@" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "更新 %@" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "更新 %@" } } } },
     "Update Anyway" : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "التحديث على أي حال" } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Trotzdem aktualisieren" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Actualizar de todos modos" } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "به‌هرحال به‌روزرسانی شود" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Mettre à jour quand même" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "עדכן בכל זאת" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Aggiorna comunque" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このまま更新" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "그래도 업데이트" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Toch bijwerken" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zaktualizuj mimo to" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Atualizar mesmo assim" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Всё равно обновить" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Yine de Güncelle" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "بہرحال اپ ڈیٹ کریں" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "仍然更新" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "仍然更新" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "仍要更新" } } } },
     "Automation" : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "الأتمتة" } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Automatisierung" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Automatización" } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "خودکارسازی" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Automatisation" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "אוטומציה" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Automazione" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "自動化" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "자동화" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Automatisering" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Automatyzacja" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Automação" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Автоматизация" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Otomasyon" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "آٹومیشن" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "自動化" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "自动化" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "自動化" } } } },

@@ -54,14 +54,14 @@ import SwiftUI
                             let event = row.event
                             if threadID == nil, let thread = reader.threads.first(where: { $0.latest.seq == event.seq }) {
                                 Button { selectedThread = thread.id } label: {
-                                    BotRoomThreadPreview(thread: thread, room: reader.room)
+                                    BotRoomThreadPreview(thread: thread, reader: reader)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("room-thread-\(thread.id)")
                             } else {
                                 BotRoomEventView(
                                     event: event,
-                                    room: reader.room,
+                                    reader: reader,
                                     roster: roster,
                                     avatars: avatars,
                                     transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
@@ -268,9 +268,20 @@ struct BotRoomTranscriptRow: Identifiable {
     }
 }
 
-private struct BotRoomThreadPreview: View {
+struct BotRoomThreadPreview: View {
     let thread: BotRoomThread
-    let room: BotGroupRoom
+    let reader: BotRoomReader
+
+    var rootTitle: String? {
+        guard let root = thread.root else { return nil }
+        let text = root.payload["text"].text ?? ""
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let summary = reader.attachmentLists[root.seq]?.summary {
+            return summary
+        }
+        return text
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ViewThatFits(in: .horizontal) {
@@ -278,8 +289,8 @@ private struct BotRoomThreadPreview: View {
                 VStack(alignment: .leading) { author; activity }
             }
             .font(AppFont.caption()).foregroundStyle(.appSecondary)
-            if let root = thread.root {
-                Text(root.payload["text"].text ?? "").lineLimit(2)
+            if let rootTitle {
+                Text(rootTitle).lineLimit(2)
             } else {
                 Text("Earlier messages not loaded").foregroundStyle(.appSecondary)
             }
@@ -299,7 +310,7 @@ private struct BotRoomThreadPreview: View {
         .contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     @ViewBuilder private var author: some View {
-        if let root = thread.root { Text(root.kind == "message.user" ? String(localized: "You") : root.sender(in: room)) }
+        if let root = thread.root { Text(root.kind == "message.user" ? String(localized: "You") : root.sender(in: reader.room)) }
         else { Text("Thread") }
     }
     @ViewBuilder private var activity: some View {
@@ -360,7 +371,7 @@ struct BotRoomTranscriptWindow: Equatable {
 
 private struct BotRoomEventView: View {
     let event: BotRoomEvent
-    let room: BotGroupRoom
+    let reader: BotRoomReader
     let roster: [BotProfile]
     let avatars: [String: UIImage]
     let transcriptMediaCacheNamespace: String
@@ -372,35 +383,33 @@ private struct BotRoomEventView: View {
     var body: some View {
         if event.kind == "message.user" {
             VStack(alignment: .trailing, spacing: 4) {
-                MessageBubbleView(
-                    message: ChatMessage(role: "user", content: event.payload["text"].text,
-                        timestamp: event.timestamp, messageId: String(event.seq)),
-                    transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
-                    contextMenuActions: actions,
-                    textOnly: true
-                )
+                if showsMessageText {
+                    MessageBubbleView(
+                        message: ChatMessage(role: "user", content: event.payload["text"].text,
+                            timestamp: event.timestamp, messageId: String(event.seq)),
+                        transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
+                        contextMenuActions: actions,
+                        textOnly: true
+                    )
+                }
+                attachments
                 footer
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         } else if event.kind == "message.member" {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .bottom, spacing: 8) {
-                    BotRoomMemberAvatar(member: event.member(in: room), roster: roster, avatars: avatars, size: 26)
+                    BotRoomMemberAvatar(member: event.member(in: reader.room), roster: roster, avatars: avatars, size: 26)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(event.sender(in: room)).font(AppFont.caption()).foregroundStyle(.appSecondary)
-                        ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible) {
-                            MarkdownRenderer(content: messageText)
-                                .environment(\.markdownTableEdgeFadeColor, nil)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(event.sender(in: reader.room)).font(AppFont.caption()).foregroundStyle(.appSecondary)
+                            if showsMessageText { memberMessage }
                         }
-                        .onGeometryChange(for: Bool.self) { geometry in
-                            guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
-                            return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
-                        } action: { responseIsVisible = $0 }
-                            .padding(12).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20))
-                            .chatMessageContextMenu(actions, longPress: false)
+                        .accessibilityElement(children: .combine)
+                        attachments
                     }
                     Spacer(minLength: 20)
                 }
-                .accessibilityElement(children: .combine)
                 footer.padding(.leading, 34)
             }
         } else {
@@ -409,7 +418,32 @@ private struct BotRoomEventView: View {
         }
     }
 
+    private var files: [BotRoomAttachmentList.File] { reader.attachmentLists[event.seq]?.files ?? [] }
     private var messageText: String { event.payload["text"].text ?? "" }
+    private var showsMessageText: Bool {
+        files.isEmpty || !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    @ViewBuilder
+    private var attachments: some View {
+        ForEach(Array(files.enumerated()), id: \.offset) { _, file in
+            BotRoomAttachmentCard(file: file, reader: reader,
+                                  transcriptMediaCacheNamespace: transcriptMediaCacheNamespace)
+        }
+    }
+
+    private var memberMessage: some View {
+        ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible) {
+            MarkdownRenderer(content: messageText)
+                .environment(\.markdownTableEdgeFadeColor, nil)
+        }
+        .onGeometryChange(for: Bool.self) { geometry in
+            guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
+            return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
+        } action: { responseIsVisible = $0 }
+        .padding(12).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20))
+        .chatMessageContextMenu(actions, longPress: false)
+    }
 
     @ViewBuilder
     private var footer: some View {
