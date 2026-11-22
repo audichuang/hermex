@@ -31,6 +31,44 @@ import XCTest
         XCTAssertFalse(BotProfileName.isValid(""))
     }
 
+    func testNonASCIIProfileNamesEncodeDeterministicTokensAndCutOnHyphenBoundaries() {
+        XCTAssertEqual(BotProfileName.slug(from: "小助手"), "u5c0f-u52a9-u624b")
+        XCTAssertEqual(BotProfileName.slug(from: "한글"), "ud55c-uae00")
+        XCTAssertEqual(BotProfileName.slug(from: "Résumé"), "resume")
+        XCTAssertEqual(BotProfileName.slug(from: "Re\u{0301}sume\u{0301}"), "resume")
+        XCTAssertEqual(BotProfileName.slug(from: "test机器人"), "test-u673a-u5668-u4eba")
+        XCTAssertEqual(BotProfileName.slug(from: "u5c0f-u52a9-u624b"), "u5c0f-u52a9-u624b")
+        XCTAssertNotEqual(BotProfileName.slug(from: "ガ"), BotProfileName.slug(from: "カ"))
+        XCTAssertEqual(BotProfileName.slug(from: "🤖"), "")
+
+        let long = BotProfileName.slug(from: String(repeating: "小助手", count: 7))
+        XCTAssertEqual(long, "u5c0f-u52a9-u624b-u5c0f-u52a9-u624b-u5c0f-u52a9-u624b-u5c0f")
+        XCTAssertTrue(BotProfileName.isValid(long))
+
+        XCTAssertEqual(BotProfileName.slug(from: String(repeating: "a", count: 64) + "-小"),
+                       String(repeating: "a", count: 64))
+        XCTAssertEqual(BotProfileName.slug(from: String(repeating: "a", count: 63) + "-小"),
+                       String(repeating: "a", count: 63))
+    }
+
+    func testCreateWithCJKNameUsesEncodedProfileIDAndKeepsDisplayTitle() async throws {
+        var created: [String] = []
+        let (creator, wire) = try makeCreator(roster: []) { created.append($0) }
+        creator.setTitle("小助手")
+        XCTAssertEqual(creator.name, "u5c0f-u52a9-u624b")
+        XCTAssertTrue(creator.canCreate)
+        XCTAssertNil(creator.nameProblem)
+
+        await creator.create()
+
+        XCTAssertEqual(wire.calls[0].1["name"], .string("u5c0f-u52a9-u624b"))
+        XCTAssertEqual(wire.calls[1].1["name"], .string("u5c0f-u52a9-u624b"))
+        XCTAssertEqual(wire.calls[1].1["ui_meta"]?["hermes-bots"]["title"], .string("小助手"))
+        XCTAssertEqual(wire.calls[3].1["profile"], .string("u5c0f-u52a9-u624b"))
+        XCTAssertEqual(creator.phase, .created)
+        XCTAssertEqual(created, ["u5c0f-u52a9-u624b"])
+    }
+
     func testTakenAndReservedNamesBlockCreateBeforeAnyWrite() throws {
         let (creator, wire) = try makeCreator(roster: [row("triage")])
         creator.setTitle("Triage")
