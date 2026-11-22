@@ -466,6 +466,16 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
 - hermex-push's restart re-execs the gateway without its drain there
   (uzairansaruzi/hermex-push#33), so it isn't offered on a Webapp.
 
+### Room change events
+
+Verified on Hermes 0.23.1 (`3b421578`) with `scripts/local-hermes --gateway`.
+Both canonical WebSockets advertised `change_events: true` and `session_authority: true`
+in `gateway.ready`. A message sent to a disposable room appeared in `groups.log`.
+Over 15 seconds, the observing socket received one `sessions.changed` event and
+zero `groups.changed` events. This revision's `tui_gateway/change_watcher.py`
+omits `groups.changed`, so the handshake flag alone cannot justify slowing room
+polling. The production Hermes 0.23.2 host remains unchecked.
+
 ## Pin and minimum release
 
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
