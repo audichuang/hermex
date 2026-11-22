@@ -267,7 +267,12 @@ import XCTest
         let writing = expectation(description: "write held")
         wire.holdWrite = true
         wire.onWriteHeld = { writing.fulfill() }
-        let save = Task { await draft.save(in: reader) }
+        let acknowledged = expectation(description: "save returns while the poll is still held")
+        let save = Task {
+            let saved = await draft.save(in: reader)
+            acknowledged.fulfill()
+            return saved
+        }
         await fulfillment(of: [writing], timeout: 2)
         let reading = expectation(description: "poll held")
         wire.holdState = true
@@ -277,11 +282,20 @@ import XCTest
 
         wire.holdState = false
         wire.releaseWrite()
+        await fulfillment(of: [acknowledged], timeout: 2)
+        XCTAssertEqual(wire.stateCalls, 2)
+
+        let followUp = expectation(description: "save queues a fresh read after the held poll")
+        wire.holdState = true
+        wire.onHeld = { followUp.fulfill() }
+        wire.releaseState(latest: 0, context: oldContext)
+        await fulfillment(of: [followUp], timeout: 2)
+        XCTAssertEqual(reader.context?.purpose, "After")
+        wire.holdState = false
+        wire.releaseState(latest: wire.latest, context: wire.context)
         let saved = await save.value
         XCTAssertTrue(saved)
-        wire.releaseState(latest: 0, context: oldContext)
         await poll.value
-        XCTAssertEqual(reader.context?.purpose, "After")
     }
 
     private static let activity = BotJSON.object(["member_id": .string("chief"),

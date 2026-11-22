@@ -827,9 +827,11 @@ import XCTest
         let reader = makeReader(wire); await reader.open()
         let action = try XCTUnwrap(reader.status.actions.first)
         wire.writeFailure = BotRoomFailure(code: 5119, reason: nil)
-        let reads = wire.stateCalls
+        wire.driverStatus = RoomFixture.status(running: 1, actions: [RoomFixture.approval])
+        let refreshed = expectation(description: "approval rejection refreshes room status")
+        withObservationTracking { _ = reader.status } onChange: { refreshed.fulfill() }
         await reader.act(action, choice: .once)
-        XCTAssertGreaterThan(wire.stateCalls, reads)
+        await fulfillment(of: [refreshed], timeout: 2)
         XCTAssertFalse(reader.mayAct(action))
         await reader.act(action, choice: .deny)
         XCTAssertEqual(wire.writes.count, 1)
@@ -940,18 +942,21 @@ import XCTest
 
     func testRetryRejectionRefreshesAndUnknownActionsStayReadOnly() async throws {
         let wire = RoomWire()
-        wire.driverStatus = RoomFixture.status(actions: [.object(["kind": .string("retry"), "task_id": .string("task:1")]),
-            .object(["kind": .string("future")])])
+        let actions: [BotJSON] = [.object(["kind": .string("retry"), "task_id": .string("task:1")]),
+                                  .object(["kind": .string("future")])]
+        wire.driverStatus = RoomFixture.status(actions: actions)
         let reader = makeReader(wire); await reader.open()
         let retry = reader.status.actions[0], unknown = reader.status.actions[1]
         XCTAssertTrue(reader.mayAct(retry)); XCTAssertFalse(unknown.isAnswerable)
         await reader.act(unknown)
         XCTAssertTrue(wire.writes.isEmpty)
         wire.writeFailure = BotRoomFailure(code: 5118, reason: nil)
-        let reads = wire.stateCalls
+        wire.driverStatus = RoomFixture.status(running: 1, actions: actions)
+        let refreshed = expectation(description: "retry rejection refreshes room status")
+        withObservationTracking { _ = reader.status } onChange: { refreshed.fulfill() }
         await reader.act(retry)
+        await fulfillment(of: [refreshed], timeout: 2)
         XCTAssertEqual(wire.writes.first?.0, "groups.retry")
-        XCTAssertGreaterThan(wire.stateCalls, reads)
         reader.close()
     }
 

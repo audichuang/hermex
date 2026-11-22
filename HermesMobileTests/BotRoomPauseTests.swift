@@ -96,6 +96,7 @@ import XCTest
         XCTAssertEqual(wire.writes.first?.1, ["room_id": .string("fixture-room"), "discussion_event_id": .string("user:1")])
         XCTAssertEqual(reader.pauses[2]?.actionable, false)
         XCTAssertTrue(reader.pausedThreadIDs.isEmpty)
+        await reader.poll()
         XCTAssertEqual(reader.events.filter { $0.kind == "room.continued" }.map(\.seq), [3])
         XCTAssertEqual(reader.roundEvents.filter { $0.kind == "room.continued" }.map(\.seq), [3])
         XCTAssertEqual(wire.logStarts.last, 2)
@@ -108,8 +109,11 @@ import XCTest
         wire.writeFailure = BotRoomFailure(code: 4001, reason: "invalid_params")
         wire.latest = 3
         wire.roomEvents[3] = stop(3)
+        let refreshed = expectation(description: "continue rejection refreshes the pause")
+        withObservationTracking { _ = reader.pausedThreadIDs } onChange: { refreshed.fulfill() }
 
         await reader.continueDiscussion("user:1")
+        await fulfillment(of: [refreshed], timeout: 2)
 
         XCTAssertEqual(wire.writes.map(\.0), ["groups.continue"])
         XCTAssertNotNil(reader.commandMessage)
@@ -137,8 +141,11 @@ import XCTest
         XCTAssertFalse(reader.mayStop)
         XCTAssertTrue(reader.mayStopPaused)
         XCTAssertFalse(reader.pausedStopNeedsConfirmation)
+        let refreshed = expectation(description: "stop refreshes the pause")
+        withObservationTracking { _ = reader.pausedThreadIDs } onChange: { refreshed.fulfill() }
 
         await reader.stopPausedDiscussion()
+        await fulfillment(of: [refreshed], timeout: 2)
 
         XCTAssertEqual(wire.writes.map(\.0), ["groups.stop"])
         XCTAssertNil(reader.commandMessage)
