@@ -219,6 +219,54 @@ import Observation
         XCTAssertEqual(first.root, second.root)
     }
 
+    func testConcurrentOpenRecoversWhenTheFirstOpenIsCancelled() async {
+        for createWasSent in [false, true] {
+            let firstMint = expectation(description: "first open reached the create boundary")
+            let secondLookup = expectation(description: "second open read the empty list")
+            var release: CheckedContinuation<Void, Never>?
+            var rows: [BotJSON] = []
+            let publishChat = {
+                rows = [.object(["id": .string("root"), "resolved_id": .string("tip")])]
+            }
+            let waitForCancellation: () async -> Void = {
+                await withCheckedContinuation { release = $0; firstMint.fulfill() }
+            }
+            let firstWire = BotChatOpeningWire(lookup: { rows }, create: {
+                await waitForCancellation()
+                publishChat()
+            })
+            if !createWasSent {
+                firstWire.beforeCreate = {
+                    await waitForCancellation()
+                    try Task.checkCancellation()
+                }
+            }
+            var secondReadCount = 0
+            let secondWire = BotChatOpeningWire(lookup: {
+                secondReadCount += 1
+                if secondReadCount == 1 { secondLookup.fulfill() }
+                return rows
+            }, create: publishChat)
+            let (first, _) = attach(firstWire, .canonicalChat(profile: profile))
+            let (second, _) = attach(secondWire, .canonicalChat(profile: profile))
+            defer { first.suspend(); second.suspend() }
+
+            let firstOpen = Task { await first.activate() }
+            await fulfillment(of: [firstMint], timeout: 3)
+            let secondOpen = Task { await second.activate() }
+            await fulfillment(of: [secondLookup], timeout: 3)
+            first.suspend()
+            firstOpen.cancel()
+            release?.resume()
+            await firstOpen.value
+            await secondOpen.value
+
+            XCTAssertEqual(second.connectionState, .connected, "First create dispatched: \(createWasSent)")
+            XCTAssertEqual(second.root, "root")
+            XCTAssertEqual((firstWire.calls + secondWire.calls).filter { $0 == "session.create" }.count, 1)
+        }
+    }
+
     func testATransientDropReconnectsWithoutSendingAnything() async {
         for failure in [BotFailure.transport, .rejected(503), .rejected(429)] {
             let wire = BotFixtureWire()
@@ -485,6 +533,7 @@ import Observation
     private let fixture = BotFixtureWire()
     private let lookup: () -> [BotJSON]
     private let create: () async -> Void
+    var beforeCreate: (() async throws -> Void)?
     var calls: [String] = []
     var replayEpoch: String? { fixture.replayEpoch }
     var onEvent: ((BotJSON) -> Void)?
@@ -499,6 +548,7 @@ import Observation
     func close() {}
 
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        if case .sessionCreate = call { try await beforeCreate?() }
         try validateDispatch?()
         calls.append(call.method)
         switch call {

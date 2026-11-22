@@ -22,17 +22,22 @@ import Foundation
                            validate: @escaping () throws -> Void) async throws {
         try validate()
         let key = Key(server: server, connectionID: connectionID, profile: profile)
-        if let existing = pending[key] {
-            try await existing.value
+        while let existing = pending[key] {
+            do {
+                try await existing.value
+            } catch BotFailure.stale, is CancellationError {
+                try validate()
+                continue
+            }
             try validate()
             return
         }
 
         let task = Task {
+            defer { pending[key] = nil }
             try await mintIfMissing(profile: profile, using: client, validate: validate)
         }
         pending[key] = task
-        defer { pending[key] = nil }
         try await withTaskCancellationHandler {
             try await task.value
         } onCancel: {
