@@ -797,11 +797,14 @@ enum BotRoomStopControl: Equatable {
                 ApprovalSummaries.shared.remove(summaryKey)
                 self.feedback = BotFeedback(.approved(choice), after: self.feedback)
             }
+        }, onReject: {
+            self.inactiveActions.remove(action.id)
         })
     }
 
     private func command(_ call: HermesCall, validate: @escaping () throws -> Void,
-                         accept: (BotJSON) throws -> Void, reconcileSendRetry: (() -> Void)? = nil) async {
+                         accept: (BotJSON) throws -> Void, onReject: (() -> Void)? = nil,
+                         reconcileSendRetry: (() -> Void)? = nil) async {
         guard let client = wire, allows(call.method), !busy else { sending = nil; return }
         let token = UUID(), epoch = room.epoch
         commandID = token; busy = true; dispatched = false; commandMessage = nil
@@ -820,6 +823,7 @@ enum BotRoomStopControl: Equatable {
         } catch {
             guard commandID == token, wire === client else { return }
             if let rejection = error as? BotRoomFailure {
+                onReject?()
                 if case .groupsDisband = call { uncertainDisband = false }
                 if case .groupsContinue = call, !rejection.expired {
                     commandMessage = String(localized: "Couldn’t continue the discussion.")
