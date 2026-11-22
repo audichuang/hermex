@@ -36,6 +36,8 @@ enum BotRoomStopControl: Equatable {
     private(set) var loadingEarlier = false
     private(set) var foreignAuthority = false
     private var drafts: [String: String] = [:]
+    private var replyTargets: [String: BotRoomReplyTarget] = [:]
+    @ObservationIgnored private var insertedReplyHandles: [String: String] = [:]
     private var attachmentDrafts: [String: [BotRoomAttachmentChip]] = [:]
     private var attachmentNotices: [String: String] = [:]
     @ObservationIgnored private let attachmentNow: () -> Date
@@ -46,7 +48,37 @@ enum BotRoomStopControl: Equatable {
         set { setDraft(newValue, in: nil) }
     }
     func draft(in threadID: String?) -> String { drafts[threadID ?? ""] ?? "" }
-    func setDraft(_ text: String, in threadID: String?) { drafts[threadID ?? ""] = text }
+    func setDraft(_ text: String, in threadID: String?) {
+        let context = threadID ?? ""
+        drafts[context] = text
+        if let inserted = insertedReplyHandles[context],
+           !BotRoomReplyTarget.startsWithMention(inserted, in: text) {
+            insertedReplyHandles[context] = nil
+        }
+    }
+    func replyTarget(in threadID: String?) -> BotRoomReplyTarget? { replyTargets[threadID ?? ""] }
+    func beginReply(to event: BotRoomEvent, in threadID: String?) {
+        guard event.kind == "message.member", mayEditDraft(in: threadID) else { return }
+        let context = threadID ?? ""
+        let target = BotRoomReplyTarget(event: event, in: room)
+        replyTargets[context] = target
+        let current = draft(in: threadID)
+        let previous = insertedReplyHandles[context]
+        if let handle = target.handle {
+            if let previous, previous.caseInsensitiveCompare(handle) == .orderedSame,
+               BotRoomReplyTarget.startsWithMention(previous, in: current) {
+                return
+            }
+            let base = previous.map { BotRoomReplyTarget.strippingLeadingMention($0, from: current) } ?? current
+            let updated = BotRoomReplyTarget.addressing(base, to: handle)
+            drafts[context] = updated
+            insertedReplyHandles[context] = updated == base ? nil : handle
+        } else if let previous {
+            drafts[context] = BotRoomReplyTarget.strippingLeadingMention(previous, from: current)
+            insertedReplyHandles[context] = nil
+        }
+    }
+    func cancelReply(in threadID: String?) { replyTargets[threadID ?? ""] = nil }
     func uncertainSend(in threadID: String?) -> Send? { uncertainSends[threadID ?? ""] }
     private static let unknownOutcomeMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
     private(set) var commandMessage: String?
@@ -552,6 +584,7 @@ enum BotRoomStopControl: Equatable {
             self.log.acknowledge(value)
             self.uncertainSends[context] = nil; self.sending = nil
             self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
+            self.replyTargets[context] = nil; self.insertedReplyHandles[context] = nil
             if self.draft(in: threadID) == request.text { self.setDraft("", in: threadID) }
             self.publishLog()
             self.feedback = BotFeedback(.sent, after: self.feedback)
@@ -785,6 +818,7 @@ enum BotRoomStopControl: Equatable {
             guard log.events.contains(where: { $0.kind == "message.user" && $0.eventID == eventID }) else { continue }
             uncertainSends[context] = nil
             attachmentDrafts[context] = nil; attachmentNotices[context] = nil
+            replyTargets[context] = nil; insertedReplyHandles[context] = nil
             if draft(in: send.contextThreadID) == send.text { setDraft("", in: send.contextThreadID) }
             settled = true
         }

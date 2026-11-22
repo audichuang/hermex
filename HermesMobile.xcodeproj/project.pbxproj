@@ -715,12 +715,14 @@
 		902328F7C46D484784A92C52 /* BotRoomTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF16E9919604984868D037B /* BotRoomTests.swift */; };
 		436EFD8DACCE4A408E203282 /* BotRoomPauseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC302382D8844BB88113BB0 /* BotRoomPauseTests.swift */; };
 		7A4C9E2B10834F51B6D0281C /* BotRoomRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4C9E2B10834F51B6D0281D /* BotRoomRoutingTests.swift */; };
+		8B5D0F3C21945E62C7E1392C /* BotRoomReplyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5D0F3C21945E62C7E1392D /* BotRoomReplyTests.swift */; };
 		DFA3EA272489487D97B8B6E9 /* BotRoomAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F50B60CFF7849D9AF0058BF /* BotRoomAttachmentTests.swift */; };
 		D61DFCA058E843E4806BA594 /* BotRoomUploadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93149378240846539DF53DF7 /* BotRoomUploadTests.swift */; };
 		44479D93F1024975AD571858 /* BotRoomManagementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73869046C6B24A24B963627C /* BotRoomManagementTests.swift */; };
 		13E546F5603145768F264AAD /* BotRoomAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B84B78CC79B48F0938A1C70 /* BotRoomAction.swift */; };
 		F1C9FF8625FC4D2DB48868FA /* BotRoomPauses.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6BC2386D1640DDA0934809 /* BotRoomPauses.swift */; };
 		7A4C9E2B10834F51B6D0281A /* BotRoomRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4C9E2B10834F51B6D0281B /* BotRoomRouting.swift */; };
+		8B5D0F3C21945E62C7E1392A /* BotRoomReply.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5D0F3C21945E62C7E1392B /* BotRoomReply.swift */; };
 		DD0AA42E3B4D4866885E6CF4 /* BotRoomAttachmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D40920DAAF149DAA16E8A7B /* BotRoomAttachmentViews.swift */; };
 		C2E67CC2B4DD4AAB863B702C /* BotRoomAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0AFB7C7AF954B7999260DCE /* BotRoomAttachments.swift */; };
 		3579300C612748FBA962ADC0 /* BotRoomAttachmentComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E2C47E78534A80BF068E24 /* BotRoomAttachmentComposer.swift */; };
@@ -1499,12 +1501,14 @@
 		1AF16E9919604984868D037B /* BotRoomTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomTests.swift"; sourceTree = "<group>"; };
 		DCC302382D8844BB88113BB0 /* BotRoomPauseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomPauseTests.swift"; sourceTree = "<group>"; };
 		7A4C9E2B10834F51B6D0281D /* BotRoomRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomRoutingTests.swift"; sourceTree = "<group>"; };
+		8B5D0F3C21945E62C7E1392D /* BotRoomReplyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomReplyTests.swift"; sourceTree = "<group>"; };
 		0F50B60CFF7849D9AF0058BF /* BotRoomAttachmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomAttachmentTests.swift"; sourceTree = "<group>"; };
 		93149378240846539DF53DF7 /* BotRoomUploadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomUploadTests.swift"; sourceTree = "<group>"; };
 		73869046C6B24A24B963627C /* BotRoomManagementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomManagementTests.swift"; sourceTree = "<group>"; };
 		9B84B78CC79B48F0938A1C70 /* BotRoomAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomAction.swift"; sourceTree = "<group>"; };
 		5F6BC2386D1640DDA0934809 /* BotRoomPauses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomPauses.swift"; sourceTree = "<group>"; };
 		7A4C9E2B10834F51B6D0281B /* BotRoomRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomRouting.swift"; sourceTree = "<group>"; };
+		8B5D0F3C21945E62C7E1392B /* BotRoomReply.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomReply.swift"; sourceTree = "<group>"; };
 		1D40920DAAF149DAA16E8A7B /* BotRoomAttachmentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomAttachmentViews.swift"; sourceTree = "<group>"; };
 		E0AFB7C7AF954B7999260DCE /* BotRoomAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomAttachments.swift"; sourceTree = "<group>"; };
 		24E2C47E78534A80BF068E24 /* BotRoomAttachmentComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomAttachmentComposer.swift"; sourceTree = "<group>"; };
@@ -1695,6 +1699,7 @@
 				1AF16E9919604984868D037B /* BotRoomTests.swift */,
 				DCC302382D8844BB88113BB0 /* BotRoomPauseTests.swift */,
 				7A4C9E2B10834F51B6D0281D /* BotRoomRoutingTests.swift */,
+				8B5D0F3C21945E62C7E1392D /* BotRoomReplyTests.swift */,
 				0F50B60CFF7849D9AF0058BF /* BotRoomAttachmentTests.swift */,
 				93149378240846539DF53DF7 /* BotRoomUploadTests.swift */,
 				73869046C6B24A24B963627C /* BotRoomManagementTests.swift */,
@@ -2081,6 +2086,7 @@
 				9B84B78CC79B48F0938A1C70 /* BotRoomAction.swift */,
 				5F6BC2386D1640DDA0934809 /* BotRoomPauses.swift */,
 				7A4C9E2B10834F51B6D0281B /* BotRoomRouting.swift */,
+				8B5D0F3C21945E62C7E1392B /* BotRoomReply.swift */,
 				1D40920DAAF149DAA16E8A7B /* BotRoomAttachmentViews.swift */,
 				E0AFB7C7AF954B7999260DCE /* BotRoomAttachments.swift */,
 				24E2C47E78534A80BF068E24 /* BotRoomAttachmentComposer.swift */,
@@ -2902,6 +2908,7 @@
 				13E546F5603145768F264AAD /* BotRoomAction.swift in Sources */,
 				F1C9FF8625FC4D2DB48868FA /* BotRoomPauses.swift in Sources */,
 				7A4C9E2B10834F51B6D0281A /* BotRoomRouting.swift in Sources */,
+				8B5D0F3C21945E62C7E1392A /* BotRoomReply.swift in Sources */,
 				DD0AA42E3B4D4866885E6CF4 /* BotRoomAttachmentViews.swift in Sources */,
 				C2E67CC2B4DD4AAB863B702C /* BotRoomAttachments.swift in Sources */,
 				3579300C612748FBA962ADC0 /* BotRoomAttachmentComposer.swift in Sources */,
@@ -3319,6 +3326,7 @@
 				902328F7C46D484784A92C52 /* BotRoomTests.swift in Sources */,
 				436EFD8DACCE4A408E203282 /* BotRoomPauseTests.swift in Sources */,
 				7A4C9E2B10834F51B6D0281C /* BotRoomRoutingTests.swift in Sources */,
+				8B5D0F3C21945E62C7E1392C /* BotRoomReplyTests.swift in Sources */,
 				DFA3EA272489487D97B8B6E9 /* BotRoomAttachmentTests.swift in Sources */,
 				D61DFCA058E843E4806BA594 /* BotRoomUploadTests.swift in Sources */,
 				44479D93F1024975AD571858 /* BotRoomManagementTests.swift in Sources */,
