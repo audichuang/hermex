@@ -86,3 +86,26 @@ or code-shaped, matching Desktop.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReasons.swift` and
 `HermesMobile/Features/Bots/BotGroupRoom.swift`
+
+## Attribute scheduled posts by actor ID and resolve delivery-target Profile from the canonical roster
+
+The gateway stamps cron posts into rooms as `message.user` events whose `actor.id` starts
+with `cron:` or `cron-notice:` and whose `actor.display_name` holds the job name. Hermex
+detects scheduled posts by `kind == "message.user"` and that `actor.id` prefix without
+requiring `actor.kind == "user"`, because `BotHistoryCache.Message.roomEvent` restores only
+`actor.id` and `actor.display_name`. That keeps scheduled posts left-aligned with their job
+name and “Scheduled” badge across cold restarts, and keeps thread overview previews and
+local search results attributed to the job name instead of “You”.
+
+For the room profile’s copyable delivery target (`room:<room_id>[@<profile>]`), Hermex
+cannot rely on `groups.capabilities.room_link.profile` (absent unless `room_link` is
+enabled). On canonical connections (`speaksCanonicalProtocol`), `profiles.list` always puts
+the gateway’s own served Profile first (`served_profile_name(home)`), so `BotInbox` records
+that first row’s `name` (including `default`) as `hostProfile` and clears it on teardown /
+connection change. Non-canonical connections leave `hostProfile` nil and show `room:<room_id>`
+with a note to append `@profile` for jobs under another Profile.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomScheduledPost.swift`,
+`HermesMobile/Features/Bots/BotInbox.swift`, `HermesMobile/Features/Bots/BotRoomView.swift`,
+`HermesMobile/Features/Bots/BotRoomProfileView.swift`, and
+`HermesMobile/Features/Bots/BotHistoryCache.swift`

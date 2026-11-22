@@ -138,7 +138,7 @@ actor BotHistoryCache {
             let savedText = text.utf8.count <= Self.maximumMessageBytes ? text : ""
             guard (!savedText.isEmpty || !attachments.isEmpty), seen.insert(event.seq).inserted else { continue }
             rows.append(Message(id: String(event.seq), role: event.kind, text: savedText, seq: event.seq,
-                sender: event.kind == "message.user" ? String(localized: "You") : event.sender(in: room),
+                sender: event.authorName(in: room),
                 memberID: event.payload["member_id"].text ?? event.actor["id"].text, timestamp: event.timestamp,
                 threadID: event.threadID, eventID: event.eventID, attachments: attachments.isEmpty ? nil : attachments))
         }

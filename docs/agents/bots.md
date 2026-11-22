@@ -2261,6 +2261,13 @@ reader is discarded.
 
 The transcript renders `message.user` and `message.member` with the existing
 Bot markdown renderer; member messages include their sender and roster avatar.
+Scheduled posts (`message.user` with an `actor.id` prefixed `cron:` or
+`cron-notice:`) render left-aligned with a generic clock avatar, the job’s name
+(`actor.display_name`, falling back to the stripped actor ID or “Scheduled”),
+and a “Scheduled” badge instead of a right-aligned user bubble. Thread overview
+previews and local cache search results also attribute them to the job name;
+matching on `actor.id` without requiring `actor.kind` preserves that attribution
+after disk cache replay.
 Both kinds show attachment cards, even when the message has no text. A file-only thread
 root uses its first filename in the overview. When the host advertises
 `groups.attachment.download`, a card opens a preview with Save to Files and Share.
@@ -2412,6 +2419,12 @@ requires `driver_status.routing_modes` to advertise `auto` or the room to alread
 use it. The host applies edits from the next message, keeping the context of
 already admitted work. See [room settings](../adr/0181-bot-room-settings.md) for
 the validation and polling contract.
+
+The room profile also shows a copyable delivery target for scheduled Tasks:
+`room:<room_id>@<profile>` on canonical connections (taking `<profile>`, including
+`default`, from the first row of `profiles.list`, which the canonical host always
+populates with its own served Profile), or `room:<room_id>` with a note to append
+`@profile` when the Profile is unavailable (such as non-canonical connections).
 
 Disband permanently removes the room and history from every device and stops its
 bots. Its confirmation states those consequences. The control waits while Stop

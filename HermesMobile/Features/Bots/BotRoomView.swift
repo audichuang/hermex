@@ -22,10 +22,12 @@ import SwiftUI
     private var followsLatest: Bool { followLatch.isFollowing }
     let roster: [BotProfile]
     let avatars: [String: UIImage]
+    let hostProfile: String?
     let onUpdateSignIn: () -> Void
 
-    init(reader: BotRoomReader, roster: [BotProfile], avatars: [String: UIImage], threadID: String? = nil, sequence: Int? = nil, onUpdateSignIn: @escaping () -> Void = {}) {
+    init(reader: BotRoomReader, roster: [BotProfile], avatars: [String: UIImage], hostProfile: String? = nil, threadID: String? = nil, sequence: Int? = nil, onUpdateSignIn: @escaping () -> Void = {}) {
         _reader = State(initialValue: reader); self.roster = roster; self.avatars = avatars
+        self.hostProfile = hostProfile
         self.onUpdateSignIn = onUpdateSignIn; self.threadID = threadID
         _pendingSequence = State(initialValue: sequence ?? (threadID == nil ? reader.initialSequence : nil))
     }
@@ -193,10 +195,10 @@ import SwiftUI
             }
         }
         .navigationDestination(isPresented: $showingProfile) {
-            BotRoomProfileView(reader: reader, roster: roster, avatars: avatars, onUpdateSignIn: onUpdateSignIn)
+            BotRoomProfileView(reader: reader, roster: roster, avatars: avatars, hostProfile: hostProfile, onUpdateSignIn: onUpdateSignIn)
         }
         .navigationDestination(item: $selectedThread) { selected in
-            BotRoomView(reader: reader, roster: roster, avatars: avatars, threadID: selected,
+            BotRoomView(reader: reader, roster: roster, avatars: avatars, hostProfile: hostProfile, threadID: selected,
                         sequence: threadSequence, onUpdateSignIn: onUpdateSignIn)
         }
         .onChange(of: selectedThread) { _, selected in
@@ -356,9 +358,12 @@ struct BotRoomThreadPreview: View {
         .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
+    var authorTitle: String {
+        if let root = thread.root { return root.authorName(in: reader.room) }
+        return String(localized: "Thread")
+    }
     @ViewBuilder private var author: some View {
-        if let root = thread.root { Text(root.kind == "message.user" ? String(localized: "You") : root.sender(in: reader.room)) }
-        else { Text("Thread") }
+        Text(verbatim: authorTitle)
     }
     @ViewBuilder private var activity: some View {
         if let time = thread.latest.timestamp, time.isFinite, time > 0 {
@@ -432,7 +437,7 @@ private struct BotRoomEventView: View {
     @State private var responseIsVisible = false
 
     var body: some View {
-        if event.kind == "message.user" {
+        if event.kind == "message.user" && !event.isScheduledPost {
             VStack(alignment: .trailing, spacing: 4) {
                 if showsMessageText {
                     MessageBubbleView(
@@ -447,13 +452,21 @@ private struct BotRoomEventView: View {
                 footer
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-        } else if event.kind == "message.member" {
+        } else if event.kind == "message.member" || event.isScheduledPost {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .bottom, spacing: 8) {
-                    BotRoomMemberAvatar(member: event.member(in: reader.room), roster: roster, avatars: avatars, size: 26)
+                    if event.isScheduledPost {
+                        BotRoomScheduledPostAvatar(size: 26)
+                    } else {
+                        BotRoomMemberAvatar(member: event.member(in: reader.room), roster: roster, avatars: avatars, size: 26)
+                    }
                     VStack(alignment: .leading, spacing: 6) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(event.sender(in: reader.room)).font(AppFont.caption()).foregroundStyle(.appSecondary)
+                            if event.isScheduledPost {
+                                BotRoomScheduledPostHeader(name: event.authorName(in: reader.room))
+                            } else {
+                                Text(event.sender(in: reader.room)).font(AppFont.caption()).foregroundStyle(.appSecondary)
+                            }
                             if showsMessageText { memberMessage }
                         }
                         .accessibilityElement(children: .combine)
@@ -513,7 +526,7 @@ private struct BotRoomEventView: View {
             nil
         }
         if time != nil || onReply != nil {
-            ChatMessageMetaRow(isUserMessage: event.kind == "message.user", timeText: time, onCopy: nil) {
+            ChatMessageMetaRow(isUserMessage: event.kind == "message.user" && !event.isScheduledPost, timeText: time, onCopy: nil) {
                 if let onReply {
                     Button(action: onReply) {
                         Image(systemName: "arrowshape.turn.up.left")

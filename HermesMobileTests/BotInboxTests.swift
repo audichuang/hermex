@@ -1395,6 +1395,29 @@ import SwiftUI
         XCTAssertEqual(inbox.link, .live)
     }
 
+    func testHostProfileUsesFirstRosterRowOnlyOnCanonicalConnectionsAndClearsOnCloseOrSwitch() async throws {
+        let canonical = BotInboxFixtureWire(roster: [row("default"), row("triage")])
+        canonical.speaksCanonicalProtocol = true
+        let nonCanonical = BotInboxFixtureWire(roster: [row("default"), row("triage")])
+        let namedCanonical = BotInboxFixtureWire(roster: [row("ops"), row("default")])
+        namedCanonical.speaksCanonicalProtocol = true
+
+        let inbox = try makeInbox(wires: [canonical, nonCanonical, namedCanonical])
+        XCTAssertNil(inbox.hostProfile)
+
+        await inbox.open()
+        XCTAssertEqual(inbox.hostProfile, "default")
+
+        inbox.close()
+        XCTAssertNil(inbox.hostProfile)
+
+        await inbox.open()
+        XCTAssertNil(inbox.hostProfile, "non-canonical connections do not guarantee first-row host profile order")
+
+        await inbox.open()
+        XCTAssertEqual(inbox.hostProfile, "ops")
+    }
+
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil,
                            rosterCache: BotRosterCache? = nil, statusPollInterval: Duration = .seconds(3600),
                            rosterRefreshInterval: Duration = .seconds(3600), reconnectDelays: [Duration] = [.zero],
@@ -1488,6 +1511,7 @@ import SwiftUI
 
 @MainActor final class BotInboxFixtureWire: BotTransport {
     var replayEpoch: String? = "epoch"
+    var speaksCanonicalProtocol = false
     var serverInstallID: String?
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
