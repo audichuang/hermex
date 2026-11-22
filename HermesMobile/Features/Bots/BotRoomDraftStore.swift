@@ -69,29 +69,13 @@ import OSLog
         discard(file(for: key))
     }
 
-    func retainRooms(_ ids: Set<String>, server: URL, connectionID: UUID) {
-        generations = generations.filter { key, _ in
-            key.server != server || key.connectionID != connectionID || ids.contains(key.roomID)
-        }
-        let folder = folder(for: server, connectionID: connectionID)
-        do {
-            let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-            let retained = Set(ids.map(Self.filename(for:)))
-            for file in files where file.pathExtension == "json" && !retained.contains(file.lastPathComponent) {
-                discard(file)
-            }
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return
-        } catch {
-            Self.logger.error("Could not list room drafts: \(error.localizedDescription, privacy: .private)")
-        }
-    }
-
     func remove(server: URL, connectionID: UUID? = nil) {
         generations = generations.filter { key, _ in
             key.server != server || (connectionID != nil && key.connectionID != connectionID)
         }
-        discard(folder(for: server, connectionID: connectionID))
+        let serverDirectory = directory.appendingPathComponent(Self.digest(server.absoluteString), isDirectory: true)
+        discard(connectionID.map { serverDirectory.appendingPathComponent($0.uuidString, isDirectory: true) }
+            ?? serverDirectory)
     }
 
     private func discard(_ url: URL) {
@@ -105,16 +89,10 @@ import OSLog
     }
 
     private func file(for key: BotRoomKey) -> URL {
-        folder(for: key.server, connectionID: key.connectionID).appendingPathComponent(Self.filename(for: key.roomID))
+        directory.appendingPathComponent(Self.digest(key.server.absoluteString), isDirectory: true)
+            .appendingPathComponent(key.connectionID.uuidString, isDirectory: true)
+            .appendingPathComponent(Self.digest(key.roomID) + ".json")
     }
-
-    private func folder(for server: URL, connectionID: UUID?) -> URL {
-        let serverDirectory = directory.appendingPathComponent(Self.digest(server.absoluteString), isDirectory: true)
-        return connectionID.map { serverDirectory.appendingPathComponent($0.uuidString, isDirectory: true) }
-            ?? serverDirectory
-    }
-
-    private static func filename(for roomID: String) -> String { digest(roomID) + ".json" }
 
     private static func digest(_ text: String) -> String {
         SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()

@@ -786,7 +786,6 @@ import UIKit
                                                    hidden: roomFlags.hidden.intersection(ids))
             if pruned != roomFlags { roomFlags = pruned; persistRoomFlags() }
             if let connectionID = connection?.id {
-                draftStore.retainRooms(ids, server: server, connectionID: connectionID)
                 try? await historyCache.retainRooms(ids, scope: .init(server: server, connectionID: connectionID))
             }
         } catch {

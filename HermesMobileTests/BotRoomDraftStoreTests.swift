@@ -354,29 +354,6 @@ import XCTest
         }
     }
 
-    func testRetainingRoomsPurgesMissingDraftsAndInvalidatesOpenReaders() throws {
-        let writer = disk
-        let kept = BotRoomKey(server: key.server, connectionID: key.connectionID, roomID: "kept-room")
-        try saveFixture(for: key, store: writer)
-        try saveFixture(for: kept, store: writer)
-
-        let store = disk
-        let reader = makeReader(RoomWire(), store: store)
-        XCTAssertNotNil(reader.uncertainSend)
-        store.retainRooms([kept.roomID], server: key.server, connectionID: key.connectionID)
-
-        let removed = disk.load(key).draft
-        XCTAssertTrue(removed.texts.isEmpty)
-        XCTAssertTrue(removed.pending.isEmpty)
-        XCTAssertFalse(disk.load(kept).draft.pending.isEmpty)
-
-        reader.setDraft("Late editor update", in: nil)
-        reader.suspend()
-        let afterSuspend = disk.load(key).draft
-        XCTAssertTrue(afterSuspend.texts.isEmpty)
-        XCTAssertTrue(afterSuspend.pending.isEmpty)
-    }
-
     func testSuspendingPersistsTypingBeforeTheDebounceFires() {
         let reader = makeReader(RoomWire(), draftSaveDelay: .seconds(3600))
         reader.setDraft("typing", in: nil)
