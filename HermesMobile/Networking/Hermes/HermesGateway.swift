@@ -506,6 +506,9 @@ private extension HermesCall {
         case .commitMessage, .displayStart: return .seconds(120)
         case .sessionCompress: return .seconds(660)
         case .sessionMutate(let mutation) where mutation.operation.name == "compress": return .seconds(660)
+        case .groupsAttachmentUpload(_, _, let file):
+            let base64Bytes = (file.data.count + 2) / 3 * 4
+            return standard + .seconds(Double(base64Bytes) / 100_000)
         default: return standard
         }
     }

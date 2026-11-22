@@ -518,6 +518,35 @@ import XCTest
         XCTAssertFalse(socket.isClosed)
     }
 
+    func testARoomAttachmentUploadOutlivesTheUsualDeadline() async throws {
+        let room = BotClient(http: connection(rpcDeadline: .milliseconds(50), canonical: true))
+        try await room.connect()
+        defer { room.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        let sent = expectation(description: "Upload on the wire")
+        let failedEarly = expectation(description: "Upload failed before the reply")
+        failedEarly.isInverted = true
+        socket.withholdReply = { request in
+            guard request["method"].text == BotRoomFiles.uploadMethod else { return false }
+            sent.fulfill()
+            return true
+        }
+        let file = BotRoomUpload(data: Data(count: 750_000), name: "slow.bin", kind: .file, mime: "application/octet-stream")
+        let upload = Task {
+            do { return try await room.call(.groupsAttachmentUpload(roomID: "room", uploadID: "upload", file: file)) }
+            catch { failedEarly.fulfill(); throw error }
+        }
+        defer { upload.cancel() }
+        await fulfillment(of: [sent], timeout: 2)
+        await fulfillment(of: [failedEarly], timeout: 0.2)
+        XCTAssertFalse(socket.isClosed)
+        let manifest = BotJSON.object(["attachment_id": .string("att_uploaded"), "kind": .string("file"),
+                                       "name": .string(file.name), "mime": .string(file.mime), "size": .number(Double(file.data.count))])
+        try answer(socket, BotRoomFiles.uploadMethod, with: manifest)
+        let reply = try await upload.value
+        XCTAssertEqual(reply["attachment_id"].text, "att_uploaded")
+    }
+
     func testACompressionOutlivesTheUsualDeadline() async throws {
         let http = connection(rpcDeadline: .milliseconds(50))
         let chat = BotClient(http: http), other = BotClient(http: http)

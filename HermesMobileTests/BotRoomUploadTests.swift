@@ -92,6 +92,95 @@ import XCTest
         XCTAssertTrue(reader.attachmentChips(in: nil).isEmpty)
     }
 
+    func testOnlyTimerPollingWaitsForAnUploadReply() async throws {
+        let wire = RoomWire(), reader = try makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let held = expectation(description: "Upload awaiting a reply")
+        var release: CheckedContinuation<Void, Never>?
+        wire.beforeUploadReply = { await withCheckedContinuation { release = $0; held.fulfill() } }
+        let adding = Task { await reader.addAttachments([input()], in: nil) }
+        await fulfillment(of: [held], timeout: 3)
+
+        let priorReads = wire.stateCalls
+        await reader.poll()
+        XCTAssertEqual(wire.stateCalls, priorReads)
+        await reader.rename("Renamed Comms")
+        XCTAssertEqual(wire.stateCalls, priorReads + 1, "A command must still refresh room state")
+
+        release?.resume()
+        await adding.value
+        let readsAfterCommand = wire.stateCalls
+        await reader.poll()
+        XCTAssertEqual(wire.stateCalls, readsAfterCommand + 1)
+    }
+
+    func testAnAttachmentPreparedWhileSuspendedCanBeRetried() async throws {
+        let wire = RoomWire(), reader = try makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let heic = try XCTUnwrap(Data(base64Encoded: Self.heic))
+        let loading = expectation(description: "Photo is still loading")
+        var release: CheckedContinuation<Void, Never>?
+        let photo = BotRoomFiles.Input(name: "camera.heic") {
+            await withCheckedContinuation { release = $0; loading.fulfill() }
+            return .init(data: heic, filename: "camera.heic")
+        }
+        let adding = Task { await reader.addAttachments([photo], in: nil) }
+        await fulfillment(of: [loading], timeout: 3)
+        let originalID = reader.attachmentChips(in: nil).first?.id
+        reader.suspend()
+        release?.resume()
+        await adding.value
+
+        let chip = try XCTUnwrap(reader.attachmentChips(in: nil).first)
+        XCTAssertEqual(chip.id, originalID)
+        guard case .failed(let file, let message) = chip.state else { return XCTFail("The photo must be retryable") }
+        XCTAssertEqual(message, BotFailure.transport.localizedDescription)
+        XCTAssertEqual(file.mime, "image/jpeg")
+        XCTAssertEqual(chip.name, "camera.jpg")
+        XCTAssertTrue(wire.uploadCalls.isEmpty)
+
+        await reader.open()
+        await reader.retryAttachment(chip.id, in: nil)
+        let call = try XCTUnwrap(wire.uploadCalls.first).params()
+        XCTAssertEqual(call["upload_id"]?.text, chip.id.uuidString)
+        XCTAssertEqual(call["data_base64"]?.text, file.data.base64EncodedString())
+        XCTAssertTrue(reader.maySend)
+    }
+
+    func testAnAttachmentPreparedAcrossAnEpochChangeCanBeRetried() async throws {
+        let wire = RoomWire(), reader = try makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let loading = expectation(description: "File is still loading")
+        var release: CheckedContinuation<Void, Never>?
+        let bytes = Data("Keep this draft file".utf8)
+        let file = BotRoomFiles.Input(name: "note.txt") {
+            await withCheckedContinuation { release = $0; loading.fulfill() }
+            return .init(data: bytes, filename: "note.txt")
+        }
+        let adding = Task { await reader.addAttachments([file], in: nil) }
+        await fulfillment(of: [loading], timeout: 3)
+        let originalID = reader.attachmentChips(in: nil).first?.id
+        wire.epoch += 1
+        await reader.poll()
+        release?.resume()
+        await adding.value
+
+        let chip = try XCTUnwrap(reader.attachmentChips(in: nil).first)
+        XCTAssertEqual(chip.id, originalID)
+        guard case .failed(_, let message) = chip.state else { return XCTFail("The file must be retryable in the new epoch") }
+        XCTAssertEqual(message, BotFailure.transport.localizedDescription)
+        XCTAssertTrue(wire.uploadCalls.isEmpty)
+
+        await reader.retryAttachment(chip.id, in: nil)
+        let call = try XCTUnwrap(wire.uploadCalls.first).params()
+        XCTAssertEqual(call["upload_id"]?.text, chip.id.uuidString)
+        XCTAssertEqual(call["data_base64"]?.text, bytes.base64EncodedString())
+        XCTAssertTrue(reader.maySend)
+    }
+
     func testRetryUploadReusesIdentityAndConvertedBytes() async throws {
         let wire = RoomWire(), reader = try makeReader(wire)
         await reader.open()
