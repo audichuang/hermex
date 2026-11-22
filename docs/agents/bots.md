@@ -1641,8 +1641,8 @@ alternative and is offered again inside the delete confirmation.
 is the slug of the typed display name under the host's rule
 (`[a-z0-9][a-z0-9_-]{0,63}`, never `default` or another reserved word): ASCII
 and diacritic-folded Latin letters keep their base forms while other NFC
-letters and digits become hyphen-separated `u<hex>` tokens (truncated at 64
-characters, or on a hyphen boundary when `u<hex>` tokens are present), and
+letters and digits become hyphen-separated `u<hex>` tokens, truncated on a
+hyphen boundary at 64 characters (matching Desktop's `slugifyProfileName`), and
 the typed name is saved as `ui_meta["hermes-bots"].title`; a name
 already on the roster is refused before any write. Setup is three host writes
 in order, each with its own outcome: `profiles.create` (name, optional

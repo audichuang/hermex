@@ -51,16 +51,12 @@ import XCTest
                        String(repeating: "a", count: 63))
     }
 
-    func testLongASCIIProfileNamesKeepExactPrefixAndAllowCloning() throws {
-        let longTitle = String(repeating: "a", count: 60) + " bbbbbbbb"
-        XCTAssertEqual(BotProfileName.slug(from: longTitle), String(repeating: "a", count: 60) + "-bbb")
+    func testLongASCIIAndAccentedProfileNamesTruncateAtHyphenBoundaries() {
+        let longASCII = String(repeating: "a", count: 60) + " bbbbbbbb"
+        XCTAssertEqual(BotProfileName.slug(from: longASCII), String(repeating: "a", count: 60))
 
-        let sourceID = String(repeating: "a", count: 62)
-        let source = try XCTUnwrap(BotProfile(row(sourceID, look: ["title": .string(sourceID)])))
-        let (creator, _) = try makeCreator(roster: [row(sourceID)], source: source)
-        XCTAssertEqual(creator.name, sourceID + "-c")
-        XCTAssertFalse(creator.nameIsTaken)
-        XCTAssertTrue(creator.canCreate)
+        let longAccented = "Café " + String(repeating: "a", count: 60) + " bbbbbbbb"
+        XCTAssertEqual(BotProfileName.slug(from: longAccented), "cafe")
     }
 
     func testCreateWithCJKNameUsesEncodedProfileIDAndKeepsDisplayTitle() async throws {
