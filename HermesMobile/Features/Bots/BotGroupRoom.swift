@@ -296,7 +296,8 @@ struct BotRoomThread: Identifiable, Equatable {
     let historyIsPartial: Bool
     var messages: [BotRoomEvent] { events.filter(\.isMessage) }
     var root: BotRoomEvent? {
-        guard !historyIsPartial, let first = messages.first, first.kind == "message.user" else { return nil }
+        guard let first = messages.first, first.kind == "message.user" else { return nil }
+        guard !historyIsPartial || first.isScheduledPostRoot(for: id) else { return nil }
         return first
     }
     var replyCount: Int { messages.count - (root == nil ? 0 : 1) }

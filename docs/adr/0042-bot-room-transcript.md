@@ -97,6 +97,16 @@ requiring `actor.kind == "user"`, because `BotHistoryCache.Message.roomEvent` re
 name and “Scheduled” badge across cold restarts, and keeps thread overview previews and
 local search results attributed to the job name instead of “You”.
 
+In rooms with earlier unloaded history (`historyIsPartial`), `BotRoomThread.root` normally
+returns `nil` because the thread's original root may predate the loaded window. Each cron
+run, however, opens a new thread whose `thread_id` is `cron-<digest[:24]>` and whose
+`event_id` is `cron-post:<digest[:40]>` from the same SHA-256 digest (and retries of the
+same run return the original event), so a loaded scheduled post whose `event_id` starts with
+`cron-post:` followed by the non-empty suffix of a `cron-` thread ID is provably that
+thread's root. `BotRoomThread.root` keeps it as the root even when `historyIsPartial` is
+true (including after disk cache replay, which preserves `event_id`, `thread_id`, and
+`actor.id`), while mismatched or non-scheduled messages remain `nil`.
+
 For the room profile’s copyable delivery target (`room:<room_id>[@<profile>]`), Hermex
 cannot rely on `groups.capabilities.room_link.profile` (absent unless `room_link` is
 enabled). On canonical connections (`speaksCanonicalProtocol`), `profiles.list` always puts
@@ -106,6 +116,7 @@ connection change. Non-canonical connections leave `hostProfile` nil and show `r
 with a note to append `@profile` for jobs under another Profile.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomScheduledPost.swift`,
+`HermesMobile/Features/Bots/BotGroupRoom.swift`,
 `HermesMobile/Features/Bots/BotInbox.swift`, `HermesMobile/Features/Bots/BotRoomView.swift`,
 `HermesMobile/Features/Bots/BotRoomProfileView.swift`, and
 `HermesMobile/Features/Bots/BotHistoryCache.swift`

@@ -11,6 +11,7 @@ import XCTest
 
     private func scheduledEvent(
         seq: Int = 1,
+        eventID: String? = "cron-post:digest1",
         actorID: String = "cron:daily-brief",
         displayName: String? = "Morning Brief",
         includeActorKind: Bool = true,
@@ -22,15 +23,16 @@ import XCTest
         if let displayName { actor["display_name"] = .string(displayName) }
         var payload: [String: BotJSON] = ["text": .string(text)]
         if let threadID { payload["thread_id"] = .string(threadID) }
-        return .object([
+        var event: [String: BotJSON] = [
             "room_id": .string("fixture-room"),
             "seq": .number(Double(seq)),
-            "event_id": .string("cron-post:digest\(seq)"),
             "kind": .string("message.user"),
             "actor": .object(actor),
             "payload": .object(payload),
             "created_at": .number(1_700_000_000)
-        ])
+        ]
+        if let eventID { event["event_id"] = .string(eventID) }
+        return .object(event)
     }
 
     func testScheduledPostDetectionCoversCronAndNoticePrefixesIncludingDiskReplay() throws {
@@ -112,9 +114,58 @@ import XCTest
         let ownPreview = BotRoomThreadPreview(thread: ownThread, reader: reader, rootFiles: nil)
         XCTAssertEqual(ownPreview.authorTitle, String(localized: "You"))
 
-        let partialThread = BotRoomThread(id: "cron-thread", events: [scheduledRoot], historyIsPartial: true)
+        let digest24 = "0123456789abcdef01234567"
+        let digest40 = "\(digest24)89abcdef01234567"
+        let cronThreadID = "cron-\(digest24)"
+        let partialScheduledRoot = try XCTUnwrap(BotRoomEvent(scheduledEvent(
+            seq: 10,
+            eventID: "cron-post:\(digest40)",
+            displayName: "Morning Brief",
+            text: "Daily summary ready",
+            threadID: cronThreadID
+        )))
+        let partialThread = BotRoomThread(id: cronThreadID, events: [partialScheduledRoot], historyIsPartial: true)
         let partialPreview = BotRoomThreadPreview(thread: partialThread, reader: reader, rootFiles: nil)
-        XCTAssertEqual(partialPreview.authorTitle, String(localized: "Thread"))
+        XCTAssertEqual(partialPreview.authorTitle, "Morning Brief")
+        XCTAssertEqual(partialPreview.rootTitle, "Daily summary ready")
+
+        let mismatchedScheduledRoot = try XCTUnwrap(BotRoomEvent(scheduledEvent(
+            seq: 11,
+            eventID: "cron-post:fedcba9876543210fedcba9876543210fedcba98",
+            displayName: "Morning Brief",
+            text: "Mismatched digest",
+            threadID: cronThreadID
+        )))
+        let mismatchedPreview = BotRoomThreadPreview(
+            thread: BotRoomThread(id: cronThreadID, events: [mismatchedScheduledRoot], historyIsPartial: true),
+            reader: reader,
+            rootFiles: nil
+        )
+        XCTAssertEqual(mismatchedPreview.authorTitle, String(localized: "Thread"))
+        XCTAssertNil(mismatchedPreview.rootTitle)
+
+        let missingEventIDRoot = try XCTUnwrap(BotRoomEvent(scheduledEvent(
+            seq: 12,
+            eventID: nil,
+            displayName: "Morning Brief",
+            text: "Missing event id",
+            threadID: cronThreadID
+        )))
+        let missingEventIDPreview = BotRoomThreadPreview(
+            thread: BotRoomThread(id: cronThreadID, events: [missingEventIDRoot], historyIsPartial: true),
+            reader: reader,
+            rootFiles: nil
+        )
+        XCTAssertEqual(missingEventIDPreview.authorTitle, String(localized: "Thread"))
+        XCTAssertNil(missingEventIDPreview.rootTitle)
+
+        let partialOwnPreview = BotRoomThreadPreview(
+            thread: BotRoomThread(id: "user-thread", events: [ownRoot], historyIsPartial: true),
+            reader: reader,
+            rootFiles: nil
+        )
+        XCTAssertEqual(partialOwnPreview.authorTitle, String(localized: "Thread"))
+        XCTAssertNil(partialOwnPreview.rootTitle)
     }
 
     func testHistoryCacheStoresJobNameAsSenderAndPreservesScheduledPostAcrossDiskReplay() async throws {
