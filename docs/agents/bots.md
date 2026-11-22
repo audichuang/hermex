@@ -27,10 +27,13 @@ still open). The owner gets the replay reply and the snapshot whole and restores
 open requests from them, with its own guard against a newer request on screen
 (see the blocking requests below). Targets:
 - `.canonicalChat(profile)`: the Bot Chat, found by exact title on every attach. Only
-  this target runs the title lookup. An empty result lets `BotChatMint` ensure the
-  chat exists, then the attach looks up the persisted root and tip. The mint is
-  shared with bot creation and rechecks the title before writing so overlapping
-  opens on the same connection and Profile cannot create two chats. A changed root is
+  this target runs the title lookup. Until the conversation first identifies a Bot Chat,
+  an empty result lets `BotChatMint` ensure the chat exists, then the attach looks up
+  the persisted root and tip. After identification, an empty lookup on reconnect,
+  runtime reclaim, or foreground return reports `missingChat` without creating a chat,
+  matching Desktop's background behavior. The mint is shared with bot creation
+  and rechecks the title before writing so overlapping opens on the same connection
+  and Profile cannot create two chats. A changed root is
   the host's new Bot Chat. Since hermes-agent 0.22.3 a bot delivery moves aside a Bot
   Chat it can't own (a messaging channel's or an API conversation), retitled
   `Bot Chat (<platform> <id>)` and unhidden,

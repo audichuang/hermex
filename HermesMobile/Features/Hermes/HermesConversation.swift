@@ -359,6 +359,7 @@ extension HermesConversationOwner {
             let validate = { try self.check(attempt) }
             var rows = try await BotChatMint.findChat(profile: profile, using: wire, validate: validate)
             if rows.isEmpty {
+                guard storedKey == nil else { throw BotFailure.missingChat }
                 try await BotChatMint.ensureChat(profile: profile, server: server, connectionID: connection.id,
                                                  using: wire, validate: validate)
                 rows = try await BotChatMint.findChat(profile: profile, using: wire, validate: validate)

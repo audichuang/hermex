@@ -167,6 +167,22 @@ import Observation
         XCTAssertEqual(owner.disconnects.map(\.failure), [.rejected(5000)])
     }
 
+    func testADeepLinkedOpenStillCreatesAMissingBotChat() async {
+        var rows: [BotJSON] = []
+        let wire = BotChatOpeningWire(lookup: { rows }, create: {
+            rows = [.object(["id": .string("root"), "resolved_id": .string("tip")])]
+        })
+        let (conversation, owner) = attach(wire, .canonicalChat(profile: profile), linkedRoot: "old-root")
+        defer { conversation.suspend() }
+
+        await conversation.activate()
+
+        XCTAssertEqual(wire.calls.filter { $0 == "session.create" }.count, 1)
+        XCTAssertEqual(conversation.connectionState, .connected)
+        XCTAssertEqual(conversation.root, "root")
+        XCTAssertEqual(owner.log, ["replaced", "root root", "snapshot", "connected"])
+    }
+
     func testAnAmbiguousLookupStillReportsMissingChat() async {
         let host = BotSocketHost()
         host.always("session.list", .init(result: .object(["sessions": .array([
@@ -282,6 +298,26 @@ import Observation
             XCTAssertEqual(Set(wire.calls.map(\.0)), ["session.list", "session.resume", "session.events.since"])
             conversation.suspend()
         }
+    }
+
+    func testAReconnectNeverCreatesAReplacementBotChat() async {
+        let wire = BotFixtureWire()
+        let (conversation, owner) = attach(wire, .canonicalChat(profile: profile), reconnectDelay: { _ in })
+        defer { conversation.suspend() }
+        await conversation.activate()
+        XCTAssertEqual(conversation.connectionState, .connected)
+
+        wire.lookupFailure = .missingChat
+        let stopped = expectation(description: "reconnect stopped after an empty lookup")
+        wire.onDisconnect?(BotFailure.transport)
+        withObservationTracking { _ = conversation.isReconnecting } onChange: { stopped.fulfill() }
+        await fulfillment(of: [stopped], timeout: 3)
+
+        XCTAssertFalse(wire.calls.contains { $0.0 == "session.create" }, "A reconnect must not send session.create")
+        XCTAssertEqual(owner.disconnects.last?.failure, .missingChat)
+        XCTAssertEqual(owner.disconnects.last?.retrying, false)
+        XCTAssertEqual(conversation.root, "root")
+        XCTAssertFalse(owner.log.contains("replaced"))
     }
 
     func testReconnectBacksOffAndStopsForARefusedPassword() async {
@@ -506,13 +542,14 @@ import Observation
         return (conversation, owner, client)
     }
 
-    private func attach(_ wire: any BotTransport, _ target: ConversationTarget,
+    private func attach(_ wire: any BotTransport, _ target: ConversationTarget, linkedRoot: String? = nil,
                         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
                         // test-wait: a factory default; a reconnect waits 1 s or more, so a test that reaches one passes its own delay.
                         reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) })
         -> (HermesConversation, RecordingOwner) {
         let conversation = HermesConversation(server: URL(string: "https://hermes.example")!, connection: record,
-                                              target: target, wire: wire, reconnectDelay: reconnectDelay, now: now)
+                                              target: target, linkedRoot: linkedRoot, wire: wire,
+                                              reconnectDelay: reconnectDelay, now: now)
         let owner = RecordingOwner()
         conversation.owner = owner
         return (conversation, owner)
