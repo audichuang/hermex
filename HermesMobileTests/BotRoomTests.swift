@@ -141,6 +141,62 @@ import XCTest
         next.close()
     }
 
+    func testColdRoomReplaysRecentSystemEventsWithoutDuplicatingMessages() async throws {
+        let wire = RoomWire(); wire.latest = 202; wire.kind = "future.event"
+        let older = RoomFixture.event(1)
+        let reply = RoomFixture.event(3, kind: "message.member")
+        let failure = RoomFixture.event(202, kind: "turn.failed")
+        wire.roomEvents = [1: older, 3: reply, 202: failure]
+        let cache = try await coldRoomCache([older, reply, failure], cursor: 202, since: 0)
+        let reader = makeReader(wire, cache: cache)
+        defer { reader.close() }
+
+        await reader.open()
+
+        XCTAssertEqual(reader.link, .live)
+        XCTAssertEqual(wire.logStarts, [2, 102])
+        XCTAssertEqual(reader.events.map(\.seq), [1, 3, 202])
+        XCTAssertEqual(Array(reader.events.dropFirst()), [reply, failure].compactMap(BotRoomEvent.init))
+    }
+
+    func testColdRoomStillReplaysSystemEventsAfterItsFirstConnectionFails() async throws {
+        let wire = RoomWire(); wire.latest = 2; wire.connectFailure = BotFailure.transport
+        let message = RoomFixture.event(1)
+        let failure = RoomFixture.event(2, kind: "turn.failed")
+        wire.roomEvents = [1: message, 2: failure]
+        let cache = try await coldRoomCache([message, failure], cursor: 2, since: 0)
+        let reader = makeReader(wire, cache: cache)
+        defer { reader.close() }
+
+        await reader.open()
+        XCTAssertEqual(reader.link, .stopped)
+        XCTAssertEqual(reader.events.map(\.seq), [1])
+
+        wire.connectFailure = nil
+        await reader.open(preservingLoadedHistory: true)
+
+        XCTAssertEqual(reader.link, .live)
+        XCTAssertEqual(wire.logStarts, [0])
+        XCTAssertEqual(reader.events.last, BotRoomEvent(failure))
+    }
+
+    func testColdRoomReplayMovesTheEarlierBoundaryBeforeAShortSnapshot() async throws {
+        let wire = RoomWire(); wire.latest = 250
+        let cache = try await coldRoomCache([RoomFixture.event(250)], cursor: 250, since: 249)
+        let reader = makeReader(wire, cache: cache)
+        defer { reader.close() }
+
+        await reader.open()
+        XCTAssertEqual(wire.logStarts, [50, 150])
+        XCTAssertEqual(reader.events.first?.seq, 51)
+        XCTAssertTrue(reader.hasEarlier)
+
+        await reader.loadEarlier()
+        XCTAssertEqual(wire.logStarts.last, 0)
+        XCTAssertEqual(reader.events.map(\.seq), Array(1...250))
+        XCTAssertFalse(reader.hasEarlier)
+    }
+
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!, username: "u", password: "p")
 
     func testCachedRoomSearchSurvivesColdStartAndListFailureButFreshListAndIdentityWin() async throws {
@@ -518,6 +574,7 @@ import XCTest
         wire.latest = 1
         var root = RoomFixture.event(1).fields!
         root["payload"] = .object(["text": .string("Desktop root"), "thread_id": .string("desktop-thread")])
+        wire.roomEvents[1] = .object(root)
         try await cache.appendRoom(key: key(), room: BotGroupRoom(RoomFixture.room(latest: 1))!,
                                    page: RoomFixture.page([.object(root)], cursor: 1), since: 0)
         let subject = makeReader(wire, cache: cache)
@@ -851,6 +908,15 @@ import XCTest
     private func key() -> BotRoomKey { BotRoomKey(server: URL(string: "https://webui.example")!, connectionID: connection.id, roomID: "fixture-room") }
     private func makeReader(_ wire: RoomWire, cache: BotHistoryCache = BotHistoryCache(), expired: @escaping () -> Void = {}) -> BotRoomReader {
         BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, cache: cache, makeWire: { _ in wire }, onExpired: expired)
+    }
+
+    private func coldRoomCache(_ events: [BotJSON], cursor: Int, since: Int) async throws -> BotHistoryCache {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: cursor)))
+        try await BotHistoryCache(directory: directory).appendRoom(key: key(), room: room,
+            page: RoomFixture.page(events, cursor: cursor), since: since)
+        return BotHistoryCache(directory: directory)
     }
 }
 

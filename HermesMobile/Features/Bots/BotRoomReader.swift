@@ -67,6 +67,7 @@ import Observation
     @ObservationIgnored private var log = BotRoomLog()
     @ObservationIgnored private var recentOwner: UUID?
     @ObservationIgnored private var hasRecentLog = false
+    @ObservationIgnored private var restoredFromDisk = false
     @ObservationIgnored private var wire: (any BotTransport)?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var capabilities = BotRoomCapabilities(.null)
@@ -145,6 +146,8 @@ import Observation
                 if let sequence = target, sequence > 0, sequence <= latest {
                     initial.begin(latest: latest - sequence < 199 ? latest : sequence + 199)
                 }
+            } else if restoredFromDisk {
+                initial.rewind(to: BotRoomLog.windowStart(before: initial.cursor))
             }
             if let sequence = target, sequence > 0, sequence <= initial.earlierBoundary {
                 let earlier = try await readPages(client, since: sequence - 1, through: initial.earlierBoundary)
@@ -160,7 +163,7 @@ import Observation
             publishLog()
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
             try check(client)
-            link = .live; didOpen = true; hasRecentLog = true
+            link = .live; didOpen = true; hasRecentLog = true; restoredFromDisk = false
             reconnect.succeeded()
             saveRecentTranscript()
             pollTask = Task { [weak self] in
@@ -258,7 +261,7 @@ import Observation
     func close() {
         suspend(); log = BotRoomLog(); events = []; threads = []; hasEarlier = false
         if !attachmentLists.isEmpty { attachmentLists = [:] }
-        hasRecentLog = false
+        hasRecentLog = false; restoredFromDisk = false
         status = BotRoomStatus(.null); lastAuthority = nil
     }
 
@@ -701,6 +704,7 @@ import Observation
         var restored = BotRoomLog()
         restored.apply(cached.replayPage)
         restored.loadedEarlier(from: cached.earlierBoundary ?? 0)
+        restoredFromDisk = true
         log = restored; publishLog()
     }
 
