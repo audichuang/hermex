@@ -148,7 +148,9 @@ import XCTest
         now += 7_200
         reader.expireAttachments(in: nil)
         wire.loseWrite = false
+        wire.latest = 0
         await reader.open()
+        wire.latest = 1
         await reader.send(retry: true)
         XCTAssertEqual(wire.writes.count, 2)
         XCTAssertEqual(wire.writes.first?.1["event_id"], wire.writes.last?.1["event_id"])

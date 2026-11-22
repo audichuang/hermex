@@ -2,6 +2,16 @@ import CryptoKit
 import Foundation
 import Observation
 
+enum BotRoomPrimaryAction: Equatable {
+    case send(enabled: Bool)
+    case retry(enabled: Bool)
+}
+
+enum BotRoomStopControl: Equatable {
+    case stop(enabled: Bool)
+    case stopping
+}
+
 @MainActor @Observable final class BotRoomReader {
     enum Link: Equatable { case idle, connecting, live, stopped }
     let key: BotRoomKey
@@ -35,6 +45,7 @@ import Observation
     func draft(in threadID: String?) -> String { drafts[threadID ?? ""] ?? "" }
     func setDraft(_ text: String, in threadID: String?) { drafts[threadID ?? ""] = text }
     func uncertainSend(in threadID: String?) -> Send? { uncertainSends[threadID ?? ""] }
+    private static let unknownOutcomeMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
     private(set) var commandMessage: String?
     var uncertainSend: Send? { uncertainSend(in: nil) }
     private(set) var uncertainDisband = false
@@ -247,10 +258,7 @@ import Observation
         reconnect.cancel()
         ApprovalSummaries.shared.leave(summaryScope)
         saveRecentTranscript()
-        if busy && dispatched {
-            if let sending { uncertainSends[sending.contextThreadID ?? ""] = sending }
-            commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
-        }
+        if busy && dispatched { markUncertain(sending) }
         commandID = nil; busy = false; sending = nil; dispatched = false; renaming = false
         let old = wire; wire = nil
         pollTask?.cancel(); pollTask = nil
@@ -270,9 +278,19 @@ import Observation
     }
     var showsComposer: Bool { !foreignAuthority }
     var showsWelcome: Bool { link == .live && !hasEarlier && !BotRoomEvent.hasConversation(in: events) }
-    var showsStop: Bool { status.working || status.stopping > 0 || awaitingStop }
+    var stopControl: BotRoomStopControl? {
+        if finishingStop { return .stopping }
+        if status.working { return .stop(enabled: mayStop) }
+        return nil
+    }
     var mayStop: Bool { allows("groups.stop") && !busy && !awaitingStop && status.stopping == 0 && status.stoppable > 0 }
     var maySend: Bool { maySend(in: nil) }
+    func primaryAction(in threadID: String?) -> BotRoomPrimaryAction {
+        if uncertainSend(in: threadID) != nil {
+            return .retry(enabled: mayResend(in: threadID))
+        }
+        return .send(enabled: maySend(in: threadID))
+    }
     func mayEditDraft(in threadID: String?) -> Bool { !busy && uncertainSend(in: threadID) == nil }
     func maySend(in threadID: String?) -> Bool {
         guard allows("groups.send"), mayEditDraft(in: threadID), let attachments = uploadedAttachments(in: threadID)
@@ -527,14 +545,12 @@ import Observation
             self.feedback = BotFeedback(.sent, after: self.feedback)
             self.sentAt = .now
         }, reconcileAttachmentRetry: retry && !request.attachments.isEmpty ? {
-            self.uncertainSends[context] = nil; self.sending = nil
-            self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
-            if self.log.events.contains(where: { $0.eventID == request.serverEventID }) {
-                if self.draft(in: threadID) == request.text { self.setDraft("", in: threadID) }
+            self.sending = nil
+            if self.settleLandedSends(), self.uncertainSends[context] == nil {
                 self.commandMessage = nil
-                self.feedback = BotFeedback(.sent, after: self.feedback)
-                self.sentAt = .now
             } else {
+                self.uncertainSends[context] = nil
+                self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
                 self.setDraft(request.text, in: threadID)
                 self.commandMessage = String(localized: "Attachments expired. Add them again before sending.")
             }
@@ -619,8 +635,7 @@ import Observation
                     reconciled = true
                 }
             } else if dispatched {
-                if let sending { uncertainSends[sending.contextThreadID ?? ""] = sending }
-                commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
+                markUncertain(sending)
             } else { commandMessage = error.localizedDescription }
         }
         guard commandID == token, wire === client else { return }
@@ -708,7 +723,31 @@ import Observation
         log = restored; publishLog()
     }
 
+    private func markUncertain(_ send: Send?) {
+        commandMessage = Self.unknownOutcomeMessage
+        guard let send else { return }
+        sending = nil
+        uncertainSends[send.contextThreadID ?? ""] = send
+        if settleLandedSends() { publishLog() }
+    }
+
+    private func settleLandedSends() -> Bool {
+        var settled = false
+        for (context, send) in uncertainSends {
+            guard send.eventID != sending?.eventID else { continue }
+            let eventID = send.serverEventID
+            guard log.events.contains(where: { $0.kind == "message.user" && $0.eventID == eventID }) else { continue }
+            uncertainSends[context] = nil
+            attachmentDrafts[context] = nil; attachmentNotices[context] = nil
+            if draft(in: send.contextThreadID) == send.text { setDraft("", in: send.contextThreadID) }
+            settled = true
+        }
+        if settled && uncertainSends.isEmpty && commandMessage == Self.unknownOutcomeMessage { commandMessage = nil }
+        return settled
+    }
+
     private func publishLog() {
+        _ = settleLandedSends()
         let pendingIDs = Set((Array(uncertainSends.values) + [sending].compactMap { $0 }).map(\.serverEventID))
         let visible = log.events.filter { event in
             event.kind != "message.user" || !pendingIDs.contains(event.eventID ?? "")

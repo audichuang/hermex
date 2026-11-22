@@ -2,6 +2,7 @@ import SwiftUI
 
 @MainActor struct BotRoomView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var reader: BotRoomReader
     @State private var revision = UUID()
@@ -170,6 +171,11 @@ import SwiftUI
                 .accessibilityLabel(reader.room.name)
                 .accessibilityHint("Opens this room’s profile.")
             }
+            if let stopControl = reader.stopControl {
+                ToolbarItem(placement: .topBarTrailing) {
+                    stopToolbarButton(stopControl)
+                }
+            }
         }
         .navigationDestination(isPresented: $showingProfile) {
             BotRoomProfileView(reader: reader, roster: roster, avatars: avatars, onUpdateSignIn: onUpdateSignIn)
@@ -257,6 +263,26 @@ import SwiftUI
         BotComposerPill.room(link: reader.link, blocked: reader.status.blocked,
             hasActions: !reader.status.actions.isEmpty, mayRetry: reader.mayResend(in: threadID), needsSignIn: reader.needsSignIn,
             errorText: errorTexts.first { !dismissedErrors.contains($0) })
+    }
+
+    private func stopToolbarButton(_ control: BotRoomStopControl) -> some View {
+        let enabled = control == .stop(enabled: true)
+        return Button(role: .destructive) {
+            Task { await reader.stop() }
+        } label: {
+            Group {
+                switch control {
+                case .stopping:
+                    Text("Stopping…").font(AppFont.caption())
+                case .stop:
+                    Image(systemName: "stop.fill")
+                        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                }
+            }
+        }
+        .tint(.red)
+        .disabled(!enabled)
+        .accessibilityLabel(control == .stopping ? Text("Stopping…") : Text("Stop every bot in this room"))
     }
 }
 

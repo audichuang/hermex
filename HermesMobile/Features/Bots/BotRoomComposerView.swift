@@ -152,29 +152,25 @@ struct BotRoomComposerView: View {
     }
 
     private var actionButton: some View {
-        let stop = reader.showsStop
-        let enabled = stop ? reader.mayStop : reader.maySend(in: threadID)
-        let appearance = ChatComposerActionAppearance(isStop: stop, isDisabled: !enabled,
+        let (isRetry, enabled): (Bool, Bool) = switch reader.primaryAction(in: threadID) {
+        case .send(let enabled): (false, enabled)
+        case .retry(let enabled): (true, enabled)
+        }
+        let appearance = ChatComposerActionAppearance(isStop: false, isDisabled: !enabled,
             colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions,
             tint: PrimaryActionTintSettings.colors(accentHex: accentHex, serverHex: themeHex))
         return Button {
-            if stop { Task { await reader.stop() } } else { send() }
+            if isRetry { Task { await reader.send(retry: true, threadID: threadID) } } else { send() }
         } label: {
-            Group {
-                if reader.awaitingStop || reader.status.stopping > 0 {
-                    Text("Stopping…").font(AppFont.caption()).padding(.horizontal, 8)
-                } else {
-                    Image(systemName: stop ? "stop.fill" : "arrow.up")
-                        .font(.system(size: iconSize, weight: .semibold))
-                        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                        .frame(width: ChatComposerMetrics.actionSize)
-                }
-            }
-            .frame(minHeight: ChatComposerMetrics.actionSize)
-            .background(appearance.background).foregroundStyle(appearance.foreground).clipShape(Capsule())
+            Image(systemName: isRetry ? "arrow.clockwise" : "arrow.up")
+                .font(.system(size: iconSize, weight: .semibold))
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .frame(width: ChatComposerMetrics.actionSize)
+                .frame(minHeight: ChatComposerMetrics.actionSize)
+                .background(appearance.background).foregroundStyle(appearance.foreground).clipShape(Capsule())
         }
         .buttonStyle(.chatTactile(.icon)).disabled(!enabled)
-        .accessibilityLabel(stop ? Text("Stop every bot in this room") : Text("Send"))
+        .accessibilityLabel(isRetry ? Text("Retry send") : Text("Send"))
     }
 
     private func send() { Task { await reader.send(threadID: threadID) } }
