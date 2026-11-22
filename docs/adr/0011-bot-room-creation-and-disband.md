@@ -8,11 +8,15 @@ The gateway still serves `groups.list`, `groups.state`, and `groups.log` when
 the room driver is down. The capabilities flag gates creation and inbox room
 commands. An open room uses each `groups.state` response: omission of
 `driver_status` means the driver is unavailable, and a later response restores
-participation and attachment transfers without reopening the room.
+participation and attachment transfers without reopening the room. The
+unavailable notice stays pinned above the composer in `BotComposerPill` so long
+threads anchored at the bottom still show why input is disabled.
 
 Lives in: `HermesMobile/Features/Bots/BotGroupRoom.swift`,
-`HermesMobile/Features/Bots/BotInbox.swift`, and
-`HermesMobile/Features/Bots/BotRoomReader.swift`
+`HermesMobile/Features/Bots/BotInbox.swift`,
+`HermesMobile/Features/Bots/BotRoomReader.swift`,
+`HermesMobile/Features/Bots/BotRoomComposerView.swift`, and
+`HermesMobile/Features/Bots/BotRoomView.swift`
 
 ## Retry room creation with the same room id
 

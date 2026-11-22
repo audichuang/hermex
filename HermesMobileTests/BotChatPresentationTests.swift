@@ -25,28 +25,50 @@ import XCTest
     }
 
     func testRoomPillKeepsRequestsAndRecoveryReachableWithoutRoutineStatus() {
-        XCTAssertNil(BotComposerPill.room(link: .connecting, blocked: false, hasActions: false, mayRetry: false, errorText: nil))
-        XCTAssertNil(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: false, errorText: nil))
-        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: true, mayRetry: false, errorText: "failed"),
+        XCTAssertNil(BotComposerPill.room(link: .connecting, blocked: false, hasActions: false, mayRetry: false, unavailable: false, errorText: nil))
+        XCTAssertNil(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: false, unavailable: false, errorText: nil))
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: true, mayRetry: false, unavailable: false, errorText: "failed"),
                        .error("failed"), "Blocked-room actions must not hide a failed command")
-        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: true, mayRetry: false, errorText: nil),
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: true, mayRetry: false, unavailable: false, errorText: nil),
                        .request("Waiting for your answer"))
-        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: true, mayRetry: true, errorText: nil),
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: true, mayRetry: true, unavailable: false, errorText: nil),
                        .retrySend, "An uncertain send must remain recoverable while another member waits")
-        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: false, mayRetry: false, errorText: nil),
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: false, mayRetry: false, unavailable: false, errorText: nil),
                        .notice("Waiting on Hermes Desktop"))
-        XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: true, hasActions: true, mayRetry: false, errorText: nil),
+        XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: true, hasActions: true, mayRetry: false, unavailable: false, errorText: nil),
                        .reconnect, "Stale approval state must not hide connection recovery")
-        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true, errorText: nil), .retrySend)
-        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true, errorText: "Outcome unknown"),
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true, unavailable: false, errorText: nil), .retrySend)
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true, unavailable: false, errorText: "Outcome unknown"),
                        .error("Outcome unknown"))
         XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: false, hasActions: false, mayRetry: false,
-                                            needsSignIn: true, errorText: nil), .updateSignIn)
+                                            needsSignIn: true, unavailable: false, errorText: nil), .updateSignIn)
         XCTAssertEqual(BotComposerPill.room(link: .idle, blocked: false, hasActions: false, mayRetry: false,
-                                            needsSignIn: true, errorText: nil), .updateSignIn)
+                                            needsSignIn: true, unavailable: false, errorText: nil), .updateSignIn)
         XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: false, hasActions: false, mayRetry: false,
-                                            needsSignIn: true, errorText: "Hermes didn't accept the username or password."),
+                                            needsSignIn: true, unavailable: false, errorText: "Hermes didn't accept the username or password."),
                        .error("Hermes didn't accept the username or password."), "the error still shows first")
+
+        let unavailableNotice = String(localized: "This group is temporarily unavailable. Restart or update the Hermes gateway that manages it.")
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: false,
+                                            unavailable: true, errorText: nil),
+                       .notice(unavailableNotice))
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: true, mayRetry: false,
+                                            unavailable: true, errorText: nil),
+                       .notice(unavailableNotice), "Temporary unavailability takes precedence over blocked-room requests")
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: false,
+                                            unavailable: true, errorText: "failed"),
+                       .error("failed"))
+        XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: false, hasActions: false, mayRetry: false,
+                                            unavailable: true, errorText: nil),
+                       .reconnect)
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true,
+                                            unavailable: true, errorText: nil),
+                       .retrySend)
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: false,
+                                            needsSignIn: true, unavailable: true, errorText: nil),
+                       .updateSignIn)
+        XCTAssertNil(BotComposerPill.room(link: .connecting, blocked: false, hasActions: false, mayRetry: false,
+                                          unavailable: true, errorText: nil))
     }
 
     func testAnsweringARoomApprovalKeepsTheNextCardsSummaryLoading() async throws {
