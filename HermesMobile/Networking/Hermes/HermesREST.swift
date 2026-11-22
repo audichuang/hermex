@@ -100,6 +100,8 @@ enum HermesREST: Equatable, Sendable {
     case profileSoul(name: String)
     case setProfileSoul(name: String, content: String)
     case speak(text: String, profile: String)
+    case voiceLiveStatus(profile: String)
+    case voiceLiveSession(profile: String, sdp: String, history: [BotJSON])
     case analyticsUsage(days: Int, profile: String)
     case analyticsModels(days: Int, profile: String)
     case kanbanConfig
@@ -441,6 +443,12 @@ enum HermesREST: Equatable, Sendable {
         case .speak(let text, let profile):
             guard !profile.isEmpty else { throw BotFailure.invalidAddress }
             return try Self.send("POST", try Self.url(base, "api/audio/speak", profile: profile), ["text": .string(text)])
+        case .voiceLiveStatus(let profile):
+            return Self.get(try Self.url(base, "api/audio/voice-live/status", profile: profile))
+        case .voiceLiveSession(let profile, let sdp, let history):
+            // Never trimmed: the vendor's SDP parser refuses an offer without its trailing CRLF.
+            return try Self.send("POST", try Self.url(base, "api/audio/voice-live/session", profile: profile),
+                                 ["sdp": .string(sdp), "history": .array(history)])
         case .analyticsUsage(let days, let profile): return try Self.analytics(base, "usage", days: days, profile: profile)
         case .analyticsModels(let days, let profile): return try Self.analytics(base, "models", days: days, profile: profile)
         case .kanbanConfig: return try Self.kanban(base, ["config"])

@@ -258,6 +258,13 @@ struct MessageComposerView: View {
     var uploadsAttachmentsOnSend = false
     var onCancelAttachmentUpload: (() -> Void)?
     var hermesTranscriber: ComposerTranscriber?
+    /// The chat's voice call while it is on (#1091): the mic and Call stay off so dictation can't
+    /// take the audio session from it. Its controls are in the call bar.
+    var voiceCall: HermesVoiceCall?
+    /// Starts a voice call; nil hides Call (a webui chat, or a host whose Profile didn't choose GPT-Live).
+    var onStartVoiceCall: (() -> Void)?
+    /// Starts the call Start Voice Call asked for, or says why not; set once the host has answered.
+    var onStartRequestedVoiceCall: (() -> Void)?
 
     @State private var textFieldHeight: CGFloat = 0
     @State private var textInputHeight: CGFloat = 22
@@ -634,6 +641,12 @@ struct MessageComposerView: View {
             else if scenePhase == .active { voiceInput.resume() }
             autoStartVoiceInputIfNeeded()
         }
+        .task(id: canStartRequestedVoiceCall) {
+            // Start Voice Call (#1091) opens the mic only in the active, unlocked app, as dictation waits.
+            guard canStartRequestedVoiceCall, let onStartRequestedVoiceCall else { return }
+            isFocused = false
+            onStartRequestedVoiceCall()
+        }
         .onChange(of: sessionID) { _, _ in
             restoresFocusAfterDictation = false
             voiceInput.stopBeforeSubmittingDraft()
@@ -826,6 +839,18 @@ struct MessageComposerView: View {
             || shouldRestoreFocusAfterPresentation
     }
 
+    private var canStartRequestedVoiceCall: Bool {
+        onStartRequestedVoiceCall != nil && scenePhase == .active && !AppLock.shared.isLocked
+    }
+
+    private var isOnVoiceCall: Bool {
+        voiceCall != nil
+    }
+
+    private var isAudioHeldByCall: Bool {
+        isOnVoiceCall || ComposerAudioCaptureState.shared.isOnCall
+    }
+
     private var isDictating: Bool {
         voiceInput.state != .idle
     }
@@ -886,6 +911,8 @@ struct MessageComposerView: View {
                         modelEffortControl(showsTitle: false)
                     }
 
+                    voiceCallButton
+
                     voiceControlButton
 
                     actionButton
@@ -899,6 +926,15 @@ struct MessageComposerView: View {
         .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
     }
 
+    @ViewBuilder private var voiceCallButton: some View {
+        if let onStartVoiceCall, !isAudioHeldByCall {
+            ComposerVoiceCallButton(isDisabled: holdsHostControls, color: metaControlColor) {
+                isFocused = false
+                onStartVoiceCall()
+            }
+        }
+    }
+
     private var toolbarRow: some View {
         HStack(alignment: .center, spacing: 8) {
             plusButton(usesGlass: true)
@@ -908,6 +944,8 @@ struct MessageComposerView: View {
             }
 
             Spacer(minLength: 0)
+
+            voiceCallButton
 
             voiceControlButton
 
@@ -1397,6 +1435,7 @@ struct MessageComposerView: View {
         }
 
         return holdsHostControls
+            || isAudioHeldByCall
             || isSending
             || isCompressingSession
             || isWaitingForStream
@@ -1408,6 +1447,7 @@ struct MessageComposerView: View {
     private var isVoiceNoteRecordingDisabled: Bool {
         !showsSessionControls
             || holdsHostControls
+            || isAudioHeldByCall
             || isSending
             || isSendingVoiceNote
             || isCompressingSession
