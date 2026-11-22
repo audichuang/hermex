@@ -51,6 +51,18 @@ import XCTest
                        String(repeating: "a", count: 63))
     }
 
+    func testLongASCIIProfileNamesKeepExactPrefixAndAllowCloning() throws {
+        let longTitle = String(repeating: "a", count: 60) + " bbbbbbbb"
+        XCTAssertEqual(BotProfileName.slug(from: longTitle), String(repeating: "a", count: 60) + "-bbb")
+
+        let sourceID = String(repeating: "a", count: 62)
+        let source = try XCTUnwrap(BotProfile(row(sourceID, look: ["title": .string(sourceID)])))
+        let (creator, _) = try makeCreator(roster: [row(sourceID)], source: source)
+        XCTAssertEqual(creator.name, sourceID + "-c")
+        XCTAssertFalse(creator.nameIsTaken)
+        XCTAssertTrue(creator.canCreate)
+    }
+
     func testCreateWithCJKNameUsesEncodedProfileIDAndKeepsDisplayTitle() async throws {
         var created: [String] = []
         let (creator, wire) = try makeCreator(roster: []) { created.append($0) }

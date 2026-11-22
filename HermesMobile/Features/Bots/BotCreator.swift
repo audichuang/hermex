@@ -8,6 +8,7 @@ enum BotProfileName {
     static func slug(from title: String) -> String {
         var result = ""
         var pendingDash = false
+        var hasEncodedToken = false
         for scalar in title.precomposedStringWithCanonicalMapping.unicodeScalars {
             if scalar == "_" {
                 if pendingDash, !result.isEmpty { result.append("-") }
@@ -21,6 +22,7 @@ enum BotProfileName {
                 } else {
                     if !result.isEmpty { result.append("-") }
                     pendingDash = true
+                    hasEncodedToken = true
                     result.append("u")
                     result.append(String(scalar.value, radix: 16))
                 }
@@ -28,7 +30,7 @@ enum BotProfileName {
                 pendingDash = true
             }
         }
-        return truncateAtTokenBoundary(result)
+        return hasEncodedToken ? truncateAtTokenBoundary(result) : String(result.prefix(maxLength))
     }
 
     static func isValid(_ name: String) -> Bool {
