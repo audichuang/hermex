@@ -3,6 +3,7 @@ import SwiftUI
 struct BotRoomComposerView: View {
     @Bindable var reader: BotRoomReader
     var threadID: String? = nil
+    var focusRequest: UUID? = nil
     let roster: [BotProfile]
     let avatars: [String: UIImage]
     @Environment(\.colorScheme) private var colorScheme
@@ -42,6 +43,11 @@ struct BotRoomComposerView: View {
                             ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
                         }
                         .layoutPriority(-1)
+                    }
+                }
+                if let replyTarget = reader.replyTarget(in: threadID) {
+                    BotRoomReplyChip(target: replyTarget) {
+                        reader.cancelReply(in: threadID)
                     }
                 }
                 if !reader.attachmentChips(in: threadID).isEmpty || reader.attachmentNotice(in: threadID) != nil {
@@ -93,6 +99,16 @@ struct BotRoomComposerView: View {
             if phase == .active { voiceInput.resume() } else { voiceInput.suspend() }
         }
         .onChange(of: threadID) { _, _ in stopDictation() }
+        .onChange(of: focusRequest) { _, request in
+            guard request != nil else { return }
+            Task { @MainActor in
+                await Task.yield()
+                guard !isDictating, reader.mayEditDraft(in: threadID) else { return }
+                focused = true
+                let end = (reader.draft(in: threadID) as NSString).length
+                selection = selection.moved(to: NSRange(location: end, length: 0))
+            }
+        }
         .onChange(of: isDictating) { _, dictating in if !dictating { restoreFocusAfterDictation() } }
         .onDisappear(perform: stopDictation)
     }

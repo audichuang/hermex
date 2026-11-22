@@ -397,8 +397,10 @@ the phone never calls `message.react`.
 
 Room member messages sit in a `ResponseTextSelection` document, so text selects in
 place as it does in Sessions. The scroll-view context menu outranks the selection
-long-press, so those rows pass `longPress: false`: Copy stays a VoiceOver action and the
-selection menu supplies Copy and Select All. User messages keep the long-press menu.
+long-press, so those rows pass `longPress: false`: `BotMessageActions` (`Reply` on
+threaded member messages and `Copy`) stay VoiceOver actions, the selection menu
+supplies Copy and Select All, and the member footer (`ChatMessageMetaRow`) exposes a
+Reply button when the composer is shown. User messages keep the long-press menu.
 
 The room transcript is an eager `VStack` because of that document. It is a hosted view
 controller, and a lazy stack places rows it has not built from an estimate: under load a
@@ -2308,6 +2310,12 @@ The composer uses room member handles and display names for mention
 completion, plus `all` and `everyone`. Text is sent as typed, without the Bot Chat
 identification annotation. Each explicit send mints an `event_id`. The room overview
 starts a fresh `thread_id`; thread detail uses the selected existing `thread_id`.
+Inside a thread, replying to a member message shows a dismissible reply chip above
+the composer, focuses the draft, and prepends `@handle ` unless the draft already
+starts with that handle (matched case-insensitively across the host's handle
+characters). Members without a handle set only the chip. Cancelling the chip clears
+only the reply target and preserves the user's draft; an accepted send clears it.
+Reply targets stay in memory on the room reader per thread.
 A reply becomes that thread's current discussion instead of queuing an independent
 thread. It does not promise immediate cancellation of already running work.
 `groups.send` acknowledges a durable append and admission, not a bot response.

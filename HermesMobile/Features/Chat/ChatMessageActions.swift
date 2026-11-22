@@ -18,6 +18,7 @@ struct ChatMessageActionItem: Identifiable {
         case regenerate
         case edit
         case fork
+        case reply
         case copy
     }
 

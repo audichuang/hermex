@@ -16,6 +16,7 @@ import SwiftUI
     @State private var isNearBottom = true
     @State private var pendingSequence: Int?
     @State private var showRequestID = UUID()
+    @State private var composerFocusRequest: UUID?
     @State private var dismissedErrors: Set<String> = []
     @State private var window = BotRoomTranscriptWindow()
     private var followsLatest: Bool { followLatch.isFollowing }
@@ -71,7 +72,11 @@ import SwiftUI
                                     reader: reader,
                                     roster: roster,
                                     avatars: avatars,
-                                    transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
+                                    transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)",
+                                    onReply: threadID != nil && event.kind == "message.member" && event.threadID != nil && reader.showsComposer ? {
+                                        reader.beginReply(to: event, in: threadID)
+                                        composerFocusRequest = UUID()
+                                    } : nil
                                 )
                             }
                         }
@@ -147,7 +152,10 @@ import SwiftUI
                                                   room: reader.room, threadID: threadID) {
                     BotRoomActivityStrip(round: round)
                 }
-                if reader.showsComposer { BotRoomComposerView(reader: reader, threadID: threadID, roster: roster, avatars: avatars) }
+                if reader.showsComposer {
+                    BotRoomComposerView(reader: reader, threadID: threadID, focusRequest: composerFocusRequest,
+                                        roster: roster, avatars: avatars)
+                }
             }
             .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))
         }
@@ -413,6 +421,7 @@ private struct BotRoomEventView: View {
     let roster: [BotProfile]
     let avatars: [String: UIImage]
     let transcriptMediaCacheNamespace: String
+    var onReply: (() -> Void)? = nil
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey)
     private var showsTimestamps = ChatTranscriptDisplaySettings.defaultShowsTimestamps
@@ -444,6 +453,7 @@ private struct BotRoomEventView: View {
                             if showsMessageText { memberMessage }
                         }
                         .accessibilityElement(children: .combine)
+                        .chatMessageContextMenu(actions, longPress: false)
                         attachments
                     }
                     Spacer(minLength: 20)
@@ -489,19 +499,44 @@ private struct BotRoomEventView: View {
             return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
         } action: { responseIsVisible = $0 }
         .padding(12).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20))
-        .chatMessageContextMenu(actions, longPress: false)
     }
 
     @ViewBuilder
     private var footer: some View {
-        if showsTimestamps, let timestamp = event.timestamp, timestamp > 0,
-           let time = ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: timestamp) {
-            ChatMessageMetaRow(isUserMessage: event.kind == "message.user", timeText: time, onCopy: nil)
+        let time: String? = if showsTimestamps, let timestamp = event.timestamp, timestamp > 0 {
+            ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: timestamp)
+        } else {
+            nil
+        }
+        if time != nil || onReply != nil {
+            ChatMessageMetaRow(isUserMessage: event.kind == "message.user", timeText: time, onCopy: nil) {
+                if let onReply {
+                    Button(action: onReply) {
+                        Image(systemName: "arrowshape.turn.up.left")
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(width: 28, height: 28)
+                            .chatMinimumHitTarget(
+                                horizontalPadding: max(0, (44 - 28) / 2),
+                                verticalPadding: max(0, (44 - 28) / 2),
+                                in: Rectangle()
+                            )
+                            .accessibilityHidden(true)
+                    }
+                    .buttonStyle(.chatTactile(.icon))
+                    .foregroundStyle(.appSecondary)
+                    .disabled(!reader.mayEditDraft(in: event.threadID))
+                    .accessibilityLabel(String(localized: "Reply to \(event.sender(in: reader.room))"))
+                }
+            }
         }
     }
 
     private var actions: [ChatMessageActionItem] {
-        BotMessageActions.items(copyText: messageText, isHapticsEnabled: isHapticsEnabled)
+        BotMessageActions.items(
+            copyText: messageText,
+            isHapticsEnabled: isHapticsEnabled,
+            reply: reader.mayEditDraft(in: event.threadID) ? onReply : nil
+        )
     }
 }
 

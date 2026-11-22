@@ -36,6 +36,7 @@ enum BotRoomStopControl: Equatable {
     private(set) var loadingEarlier = false
     private(set) var foreignAuthority = false
     private var drafts: [String: String] = [:]
+    private var replyTargets: [String: BotRoomReplyTarget] = [:]
     private var attachmentDrafts: [String: [BotRoomAttachmentChip]] = [:]
     private var attachmentNotices: [String: String] = [:]
     @ObservationIgnored private let attachmentNow: () -> Date
@@ -47,6 +48,16 @@ enum BotRoomStopControl: Equatable {
     }
     func draft(in threadID: String?) -> String { drafts[threadID ?? ""] ?? "" }
     func setDraft(_ text: String, in threadID: String?) { drafts[threadID ?? ""] = text }
+    func replyTarget(in threadID: String?) -> BotRoomReplyTarget? { replyTargets[threadID ?? ""] }
+    func beginReply(to event: BotRoomEvent, in threadID: String?) {
+        guard event.kind == "message.member", mayEditDraft(in: threadID) else { return }
+        let target = BotRoomReplyTarget(event: event, in: room)
+        replyTargets[threadID ?? ""] = target
+        if let handle = target.handle {
+            setDraft(BotRoomReplyTarget.addressing(draft(in: threadID), to: handle), in: threadID)
+        }
+    }
+    func cancelReply(in threadID: String?) { replyTargets[threadID ?? ""] = nil }
     func uncertainSend(in threadID: String?) -> Send? { uncertainSends[threadID ?? ""] }
     private static let unknownOutcomeMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
     private(set) var commandMessage: String?
@@ -552,6 +563,7 @@ enum BotRoomStopControl: Equatable {
             self.log.acknowledge(value)
             self.uncertainSends[context] = nil; self.sending = nil
             self.attachmentDrafts[context] = nil; self.attachmentNotices[context] = nil
+            self.replyTargets[context] = nil
             if self.draft(in: threadID) == request.text { self.setDraft("", in: threadID) }
             self.publishLog()
             self.feedback = BotFeedback(.sent, after: self.feedback)
@@ -785,6 +797,7 @@ enum BotRoomStopControl: Equatable {
             guard log.events.contains(where: { $0.kind == "message.user" && $0.eventID == eventID }) else { continue }
             uncertainSends[context] = nil
             attachmentDrafts[context] = nil; attachmentNotices[context] = nil
+            replyTargets[context] = nil
             if draft(in: send.contextThreadID) == send.text { setDraft("", in: send.contextThreadID) }
             settled = true
         }
