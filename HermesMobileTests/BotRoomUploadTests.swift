@@ -429,18 +429,20 @@ import XCTest
         XCTAssertEqual(reader.events.last?.roomAttachments.first?.name, "thread.txt")
     }
 
-    func testUploadCapabilityControlsWhetherComposerCreatesAnAttachmentButton() async throws {
+    func testAttachButtonShowsBeforeTheRoomConnectsAndFollowsUploadCapability() async throws {
         let wire = RoomWire(), reader = try makeReader(wire, uploadEnabled: false)
+        XCTAssertTrue(reader.offersAttachments)
+        XCTAssertFalse(reader.mayAddAttachments(in: nil))
         await reader.open()
         defer { reader.close() }
-        let composer = BotRoomComposerView(reader: reader, roster: [], avatars: [:])
-        XCTAssertNil(composer.attachmentButton)
+        XCTAssertFalse(reader.offersAttachments)
         await reader.addAttachments([input()], in: nil)
         XCTAssertTrue(wire.uploadCalls.isEmpty)
 
         wire.capabilities = uploadCapabilities
         await reader.open()
-        XCTAssertNotNil(composer.attachmentButton)
+        XCTAssertTrue(reader.offersAttachments)
+        XCTAssertTrue(reader.mayAddAttachments(in: nil))
     }
 
     private func makeReader(_ wire: RoomWire, uploadEnabled: Bool = true, now: @escaping () -> Date = Date.init) throws -> BotRoomReader {

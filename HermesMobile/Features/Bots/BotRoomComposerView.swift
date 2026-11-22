@@ -24,6 +24,7 @@ struct BotRoomComposerView: View {
     @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 16
 
     private var isDictating: Bool { voiceInput.state != .idle }
+    private var isExpanded: Bool { focused || isDictating }
 
     var body: some View {
         AdaptiveGlassContainer(spacing: 6) {
@@ -54,7 +55,7 @@ struct BotRoomComposerView: View {
                     BotRoomAttachmentComposer(reader: reader, threadID: threadID)
                 }
                 HStack(spacing: 4) {
-                    if !isDictating { attachmentButton }
+                    if !isExpanded { attachmentButton(usesGlass: false) }
                     ComposerTextInputView(
                         text: Binding(get: { reader.draft(in: threadID) }, set: { reader.setDraft($0, in: threadID) }), selection: $selection, isFocused: $focused,
                         inputHeight: $inputHeight, measuredHeight: $measuredHeight,
@@ -67,28 +68,45 @@ struct BotRoomComposerView: View {
                         onPasteImageProviders: { addAttachments($0.map(BotRoomAttachmentPicker.imageProvider)) },
                         onPasteImages: { addAttachments($0.map(BotRoomAttachmentPicker.image)) },
                         onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },
-                        placeholder: threadID == nil ? String(localized: "Message \(reader.room.name)") : String(localized: "Reply in thread"), acceptsAttachments: reader.mayAddAttachments(in: threadID) && !isDictating
+                        placeholder: threadID == nil ? String(localized: "Message \(reader.room.name)") : String(localized: "Reply in thread"), acceptsAttachments: reader.mayAddAttachments(in: threadID) && !isDictating,
+                        collapsedHorizontalPadding: 4
                     )
-                    if !isDictating {
-                        ComposerVoiceControlButton(
-                            isDisabled: !reader.mayEditDraft(in: threadID) || voiceInput.isRequestingPermission,
-                            color: Color(.appTextSecondary), isRecordingVoiceNote: false, supportsVoiceNotes: false,
-                            onTap: toggleVoiceInput, onRecordingStart: {}, onRecordingDragChanged: { _ in }, onRecordingEnd: { _ in })
+                    if !isExpanded {
+                        voiceButton
                         actionButton
                     }
                 }
-                .padding(ChatComposerMetrics.pillInset)
-                .modifier(ChatComposerSurfaceStyle(isExpanded: focused || isDictating))
+                .padding(.horizontal, isExpanded ? 0 : ChatComposerMetrics.pillInset)
+                .padding(.vertical, isExpanded ? 0 : ChatComposerMetrics.pillInset)
+                .padding(.top, isExpanded ? 2 : 0)
+                .padding(.bottom, isExpanded ? 4 : 0)
+                .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
+                .zIndex(1)
+                if focused && !isDictating {
+                    HStack(alignment: .center, spacing: 8) {
+                        attachmentButton(usesGlass: true)
+                        Spacer(minLength: 0)
+                        voiceButton
+                        actionButton
+                    }
+                    .frame(maxWidth: .infinity)
+                    .background(toolbarBackground)
+                    .transition(.opacity)
+                }
                 if isDictating {
                     let finish = ChatComposerActionAppearance(isStop: false, isDisabled: false,
                         colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions,
                         tint: PrimaryActionTintSettings.colors(accentHex: accentHex, serverHex: themeHex))
                     ComposerDictationRow(voiceInput: voiceInput, circleSize: ChatComposerMetrics.actionSize,
                                          finishBackground: finish.background, finishForeground: finish.foreground)
+                        .frame(maxWidth: .infinity)
+                        .background(toolbarBackground)
                         .transition(.opacity)
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isDictating)
+            .animation(isExpanded ? ChatMotion.keyboard(reduceMotion: reduceMotion)
+                : ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
         }
         .padding(.horizontal, 16).padding(.bottom, 8)
         .modifier(BotRoomAttachmentPicker(reader: reader, threadID: threadID, isPresented: $showsAttachmentPicker))
@@ -116,21 +134,43 @@ struct BotRoomComposerView: View {
         .onDisappear { stopDictation(in: threadID) }
     }
 
-    var attachmentButton: (some View)? {
-        let button = Button {
-            showsAttachmentPicker = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: iconSize, weight: .medium))
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-                .accessibilityHidden(true)
+    @ViewBuilder
+    private func attachmentButton(usesGlass: Bool) -> some View {
+        if reader.offersAttachments {
+            Button {
+                showsAttachmentPicker = true
+            } label: {
+                let icon = Image(systemName: "plus")
+                    .font(.system(size: iconSize, weight: .medium))
+                    .frame(width: ChatComposerMetrics.actionSize, height: ChatComposerMetrics.actionSize)
+                    .accessibilityHidden(true)
+                if usesGlass {
+                    icon.adaptiveGlass(.regular, isInteractive: true, fallbackMaterial: .ultraThinMaterial, in: Circle())
+                        .clipShape(Circle())
+                } else {
+                    icon.contentShape(Rectangle())
+                }
+            }
+            .buttonStyle(.chatTactile(.icon))
+            .foregroundStyle(Color(.appTextSecondary))
+            .accessibilityLabel("Attach files")
+            .disabled(!reader.mayAddAttachments(in: threadID))
         }
-        .buttonStyle(.chatTactile(.icon))
-        .foregroundStyle(Color(.appTextSecondary))
-        .accessibilityLabel("Attach files")
-        .disabled(!reader.mayAddAttachments(in: threadID))
-        return reader.showsAttachmentPicker ? button : nil
+    }
+
+    private var toolbarBackground: some View {
+        Color(.appCanvas)
+            .padding(.top, -10)
+            .padding(.bottom, -12)
+            .padding(.horizontal, -16)
+            .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var voiceButton: some View {
+        ComposerVoiceControlButton(
+            isDisabled: !reader.mayEditDraft(in: threadID) || voiceInput.isRequestingPermission,
+            color: Color(.appTextSecondary), isRecordingVoiceNote: false, supportsVoiceNotes: false,
+            onTap: toggleVoiceInput, onRecordingStart: {}, onRecordingDragChanged: { _ in }, onRecordingEnd: { _ in })
     }
 
     private func addAttachments(_ inputs: [BotRoomFiles.Input]) {

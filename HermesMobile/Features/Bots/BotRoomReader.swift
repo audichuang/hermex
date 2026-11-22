@@ -230,6 +230,7 @@ enum BotRoomStopControl: Equatable {
             let value = try await client.call(.groupsCapabilities)
             try check(client)
             capabilities = BotRoomCapabilities(value)
+            uploadSupported = capabilities.methods.contains(BotRoomFiles.uploadMethod)
             guard capabilities.readable else { throw BotFailure.unsupported }
             if uncertainDisband, try await reconcileDisband(client) { return }
             let latest = try await readState(client)
@@ -458,6 +459,8 @@ enum BotRoomStopControl: Equatable {
     var mayDownload: Bool { allows(BotRoomAttachment.downloadMethod) }
 
     var showsAttachmentPicker: Bool { allows(BotRoomFiles.uploadMethod) }
+    private(set) var uploadSupported: Bool?
+    var offersAttachments: Bool { showsComposer && uploadSupported != false }
 
     func mayAddAttachments(in threadID: String?) -> Bool {
         showsAttachmentPicker && mayEditDraft(in: threadID)
