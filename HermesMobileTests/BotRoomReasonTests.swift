@@ -85,6 +85,25 @@ import XCTest
         XCTAssertEqual(event.systemText(in: room), "Ada failed")
     }
 
+    func testTurnFailedSuppressesDefaultBoilerplateError() throws {
+        let room = makeRoom()
+        let named = try XCTUnwrap(BotRoomEvent(rawEvent(2, "turn.failed", payload: [
+            "member_id": .string("ada"),
+            "thread_id": .string("thread"),
+            "reason_code": .string("unknown"),
+            "error": .string("member turn failed")
+        ])))
+        XCTAssertEqual(named.systemText(in: room), "Ada failed")
+
+        let departed = try XCTUnwrap(BotRoomEvent(rawEvent(3, "turn.failed", payload: [
+            "member_id": .string("departed"),
+            "thread_id": .string("thread"),
+            "reason_code": .string("unknown"),
+            "error": .string("member turn failed")
+        ])))
+        XCTAssertEqual(departed.systemText(in: room), "Turn failed")
+    }
+
     func testTurnCancelledShowsSupersededReasonAndSuppressesDefaultBoilerplate() throws {
         let room = makeRoom()
         let superseded = try XCTUnwrap(BotRoomEvent(rawEvent(2, "turn.cancelled", payload: [

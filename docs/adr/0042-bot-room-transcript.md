@@ -65,7 +65,9 @@ reason text through `BotRoomReason.text(code:detail:)`:
 1. If `reason_code` (or `reason` for cancelled/deferred turns) matches the gateway's
    21-entry vocabulary, display its localized label.
 2. Otherwise, if `error` (or `reason`) contains free text (not a code-shaped token and
-   not `member turn cancelled`), display its first line verbatim.
+   not the server's default boilerplate `member turn cancelled` or `member turn failed` —
+   suppressing `member turn failed` is a deliberate small divergence from Desktop so
+   fallback failures do not repeat the base notice), display its first line verbatim.
 3. Otherwise omit the detail and show only the base notice (with the member's name when
    that member is still in the roster, or without a name for departed members and
    room-level `member.unavailable`).

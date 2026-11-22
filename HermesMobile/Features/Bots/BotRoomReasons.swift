@@ -28,7 +28,7 @@ enum BotRoomReason {
         if let mapped = label(for: firstLine) {
             return mapped
         }
-        if firstLine == "member turn cancelled" || isCodeShaped(firstLine) {
+        if firstLine == "member turn cancelled" || firstLine == "member turn failed" || isCodeShaped(firstLine) {
             return nil
         }
         return firstLine
