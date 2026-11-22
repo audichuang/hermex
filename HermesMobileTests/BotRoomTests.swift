@@ -1651,8 +1651,8 @@ final class BotRoomActivityStripTests: XCTestCase {
                                                 "task_id": .string("dtask:route"), "passed": .bool(true)])
         var log = BotRoomLog()
         log.apply(page([context, message, assigned, routed]))
-        XCTAssertEqual(log.events.map(\.seq), [49], "the transcript still shows only the message")
-        XCTAssertEqual(log.signals.map(\.seq), [1, 50, 51])
+        XCTAssertEqual(log.events.map(\.seq), [49, 50], "the transcript shows the message and lead assignment")
+        XCTAssertEqual(log.signals.map(\.seq), [1, 51])
 
         let events = (log.events + log.signals).sorted { $0.seq < $1.seq }
         let routing = try XCTUnwrap(BotRoomRound.build(events: [context, message], activity: [row("default")], room: room, threadID: nil))

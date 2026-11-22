@@ -67,6 +67,7 @@ import SwiftUI
                                 BotRoomEventView(
                                     event: event,
                                     files: reader.attachmentLists[event.seq]?.files ?? [],
+                                    handoffs: reader.handoffs[event.seq] ?? [],
                                     reader: reader,
                                     roster: roster,
                                     avatars: avatars,
@@ -407,6 +408,7 @@ struct BotRoomTranscriptWindow: Equatable {
 private struct BotRoomEventView: View {
     let event: BotRoomEvent
     let files: [BotRoomAttachmentList.File]
+    let handoffs: [BotRoomHandoff]
     let reader: BotRoomReader
     let roster: [BotProfile]
     let avatars: [String: UIImage]
@@ -447,9 +449,19 @@ private struct BotRoomEventView: View {
                     Spacer(minLength: 20)
                 }
                 footer.padding(.leading, 34)
+                if !handoffs.isEmpty {
+                    VStack(spacing: 4) {
+                        ForEach(Array(handoffs.enumerated()), id: \.offset) { _, handoff in
+                            Text(handoff.text(in: reader.room))
+                                .font(AppFont.caption()).foregroundStyle(.appSecondary)
+                                .frame(maxWidth: .infinity).multilineTextAlignment(.center)
+                        }
+                    }
+                    .padding(.top, 8)
+                }
             }
-        } else {
-            Text(event.systemText).font(AppFont.caption()).foregroundStyle(.appSecondary)
+        } else if let text = event.isRoutingEvent ? event.routingText(in: reader.room) : event.systemText, !text.isEmpty {
+            Text(text).font(AppFont.caption()).foregroundStyle(.appSecondary)
                 .frame(maxWidth: .infinity).multilineTextAlignment(.center)
         }
     }
