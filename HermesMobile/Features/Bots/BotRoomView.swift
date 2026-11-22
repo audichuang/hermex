@@ -51,6 +51,12 @@ import SwiftUI
                         if threadID != nil, reader.threads.first(where: { $0.id == threadID })?.root == nil {
                             Text("Earlier messages not loaded").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         }
+                        if reader.link == .connecting && !BotRoomEvent.hasConversation(in: transcriptEvents) {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 48)
+                                .accessibilityLabel(Text("Loading…"))
+                        }
                         let rows = Array(transcriptEvents[start...])
                         let mayReply = reader.mayReply(in: threadID)
                         ForEach((showsThreadOverview ? Array(rows.reversed()) : rows).map {
@@ -663,6 +669,7 @@ struct BotRoomInboxRow: View {
             }
         }
         .padding(.vertical, 12)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 }
