@@ -148,6 +148,58 @@ import XCTest
         XCTAssertNil(reader.replyTarget(in: "thread-2"))
     }
 
+    func testBeginReplyIsBlockedWhileDictatingAndAllowedAfterward() throws {
+        let room = makeRoom([(id: "ada", name: "Ada", handle: "ada")])
+        let reader = makeReader(wire: RoomWire(), room: room)
+        let adaEvent = try XCTUnwrap(BotRoomEvent(memberMessage(2, from: "ada", text: "Ada update", threadID: "thread-1")))
+
+        reader.setDraft("in progress", in: "thread-1")
+        reader.setDictating(true, in: "thread-1")
+        XCTAssertFalse(reader.mayReply(in: "thread-1"))
+        XCTAssertTrue(reader.mayReply(in: "thread-2"))
+
+        reader.beginReply(to: adaEvent, in: "thread-1")
+        XCTAssertNil(reader.replyTarget(in: "thread-1"))
+        XCTAssertEqual(reader.draft(in: "thread-1"), "in progress")
+
+        reader.setDictating(false, in: "thread-1")
+        XCTAssertTrue(reader.mayReply(in: "thread-1"))
+
+        reader.beginReply(to: adaEvent, in: "thread-1")
+        XCTAssertEqual(reader.replyTarget(in: "thread-1"), BotRoomReplyTarget(name: "Ada", handle: "ada", excerpt: "Ada update"))
+        XCTAssertEqual(reader.draft(in: "thread-1"), "@ada in progress")
+    }
+
+    func testRemovingLeadingMentionClearsReplyTarget() throws {
+        let room = makeRoom([
+            (id: "ada", name: "Ada", handle: "ada"),
+            (id: "nora", name: "Nora", handle: nil)
+        ])
+        let reader = makeReader(wire: RoomWire(), room: room)
+        let adaEvent = try XCTUnwrap(BotRoomEvent(memberMessage(2, from: "ada", text: "Ada update", threadID: "thread-1")))
+        let noraEvent = try XCTUnwrap(BotRoomEvent(memberMessage(3, from: "nora", text: "Nora update", threadID: "thread-4")))
+
+        reader.beginReply(to: adaEvent, in: "thread-1")
+        XCTAssertNotNil(reader.replyTarget(in: "thread-1"))
+        reader.setDraft("hello", in: "thread-1")
+        XCTAssertNil(reader.replyTarget(in: "thread-1"))
+
+        reader.setDraft("@ada hi", in: "thread-2")
+        reader.beginReply(to: adaEvent, in: "thread-2")
+        XCTAssertNotNil(reader.replyTarget(in: "thread-2"))
+        XCTAssertEqual(reader.draft(in: "thread-2"), "@ada hi")
+        reader.setDraft("hi", in: "thread-2")
+        XCTAssertNil(reader.replyTarget(in: "thread-2"))
+
+        reader.beginReply(to: adaEvent, in: "thread-3")
+        reader.setDraft("@ada follow up", in: "thread-3")
+        XCTAssertNotNil(reader.replyTarget(in: "thread-3"))
+
+        reader.beginReply(to: noraEvent, in: "thread-4")
+        reader.setDraft("hello", in: "thread-4")
+        XCTAssertEqual(reader.replyTarget(in: "thread-4"), BotRoomReplyTarget(name: "Nora", handle: nil, excerpt: "Nora update"))
+    }
+
     func testBotMessageActionsIncludesReplyWhenProvided() {
         var replied = false
         let withReply = BotMessageActions.items(copyText: "Hello", isHapticsEnabled: false, reply: { replied = true })

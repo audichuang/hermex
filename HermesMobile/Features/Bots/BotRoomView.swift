@@ -50,6 +50,7 @@ import SwiftUI
                             Text("Earlier messages not loaded").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         }
                         let rows = Array(transcriptEvents[start...])
+                        let mayReply = reader.mayReply(in: threadID)
                         ForEach((showsThreadOverview ? Array(rows.reversed()) : rows).map {
                             BotRoomTranscriptRow(event: $0, isOverview: threadID == nil)
                         }) { row in
@@ -73,7 +74,9 @@ import SwiftUI
                                     roster: roster,
                                     avatars: avatars,
                                     transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)",
+                                    mayReply: mayReply,
                                     onReply: threadID != nil && event.kind == "message.member" && event.threadID != nil && reader.showsComposer ? {
+                                        guard reader.mayReply(in: threadID) else { return }
                                         reader.beginReply(to: event, in: threadID)
                                         composerFocusRequest = UUID()
                                     } : nil
@@ -421,6 +424,7 @@ private struct BotRoomEventView: View {
     let roster: [BotProfile]
     let avatars: [String: UIImage]
     let transcriptMediaCacheNamespace: String
+    let mayReply: Bool
     var onReply: (() -> Void)? = nil
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey)
@@ -524,7 +528,7 @@ private struct BotRoomEventView: View {
                     }
                     .buttonStyle(.chatTactile(.icon))
                     .foregroundStyle(.appSecondary)
-                    .disabled(!reader.mayEditDraft(in: event.threadID))
+                    .disabled(!mayReply)
                     .accessibilityLabel(String(localized: "Reply to \(event.sender(in: reader.room))"))
                 }
             }
@@ -535,7 +539,7 @@ private struct BotRoomEventView: View {
         BotMessageActions.items(
             copyText: messageText,
             isHapticsEnabled: isHapticsEnabled,
-            reply: reader.mayEditDraft(in: event.threadID) ? onReply : nil
+            reply: mayReply ? onReply : nil
         )
     }
 }

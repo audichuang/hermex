@@ -39,6 +39,7 @@ enum BotRoomStopControl: Equatable {
     private var drafts: [String: String] = [:]
     private var replyTargets: [String: BotRoomReplyTarget] = [:]
     @ObservationIgnored private var insertedReplyHandles: [String: String] = [:]
+    private var dictatingThreads: Set<String> = []
     private var attachmentDrafts: [String: [BotRoomAttachmentChip]] = [:]
     private var attachmentNotices: [String: String] = [:]
     @ObservationIgnored private let attachmentNow: () -> Date
@@ -56,10 +57,22 @@ enum BotRoomStopControl: Equatable {
            !BotRoomReplyTarget.startsWithMention(inserted, in: text) {
             insertedReplyHandles[context] = nil
         }
+        if let handle = replyTargets[context]?.handle,
+           !BotRoomReplyTarget.startsWithMention(handle, in: text) {
+            replyTargets[context] = nil
+        }
+    }
+    func setDictating(_ dictating: Bool, in threadID: String?) {
+        let context = threadID ?? ""
+        if dictating {
+            if !dictatingThreads.contains(context) { dictatingThreads.insert(context) }
+        } else if dictatingThreads.contains(context) {
+            dictatingThreads.remove(context)
+        }
     }
     func replyTarget(in threadID: String?) -> BotRoomReplyTarget? { replyTargets[threadID ?? ""] }
     func beginReply(to event: BotRoomEvent, in threadID: String?) {
-        guard event.kind == "message.member", mayEditDraft(in: threadID) else { return }
+        guard event.kind == "message.member", mayReply(in: threadID) else { return }
         let context = threadID ?? ""
         let target = BotRoomReplyTarget(event: event, in: room)
         replyTargets[context] = target
@@ -345,6 +358,7 @@ enum BotRoomStopControl: Equatable {
         return .send(enabled: maySend(in: threadID))
     }
     func mayEditDraft(in threadID: String?) -> Bool { !busy && uncertainSend(in: threadID) == nil }
+    func mayReply(in threadID: String?) -> Bool { mayEditDraft(in: threadID) && !dictatingThreads.contains(threadID ?? "") }
     func maySend(in threadID: String?) -> Bool {
         guard allows("groups.send"), mayEditDraft(in: threadID), let attachments = uploadedAttachments(in: threadID)
         else { return false }

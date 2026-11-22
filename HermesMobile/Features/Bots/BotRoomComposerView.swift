@@ -98,7 +98,7 @@ struct BotRoomComposerView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { voiceInput.resume() } else { voiceInput.suspend() }
         }
-        .onChange(of: threadID) { _, _ in stopDictation() }
+        .onChange(of: threadID) { oldThreadID, _ in stopDictation(in: oldThreadID) }
         .onChange(of: focusRequest) { _, request in
             guard request != nil else { return }
             Task { @MainActor in
@@ -109,8 +109,11 @@ struct BotRoomComposerView: View {
                 selection = selection.moved(to: NSRange(location: end, length: 0))
             }
         }
-        .onChange(of: isDictating) { _, dictating in if !dictating { restoreFocusAfterDictation() } }
-        .onDisappear(perform: stopDictation)
+        .onChange(of: isDictating) { _, dictating in
+            reader.setDictating(dictating, in: threadID)
+            if !dictating { restoreFocusAfterDictation() }
+        }
+        .onDisappear { stopDictation(in: threadID) }
     }
 
     var attachmentButton: (some View)? {
@@ -162,9 +165,10 @@ struct BotRoomComposerView: View {
         focused = true
     }
 
-    private func stopDictation() {
+    private func stopDictation(in threadID: String?) {
         restoresFocusAfterDictation = false
         voiceInput.stopBeforeSubmittingDraft()
+        reader.setDictating(false, in: threadID)
     }
 
     private var actionButton: some View {
