@@ -54,13 +54,15 @@ import SwiftUI
                             let event = row.event
                             if threadID == nil, let thread = reader.threads.first(where: { $0.latest.seq == event.seq }) {
                                 Button { selectedThread = thread.id } label: {
-                                    BotRoomThreadPreview(thread: thread, reader: reader)
+                                    BotRoomThreadPreview(thread: thread, reader: reader,
+                                                         rootFiles: thread.root.flatMap { reader.attachmentLists[$0.seq]?.summary })
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("room-thread-\(thread.id)")
                             } else {
                                 BotRoomEventView(
                                     event: event,
+                                    files: reader.attachmentLists[event.seq]?.files ?? [],
                                     reader: reader,
                                     roster: roster,
                                     avatars: avatars,
@@ -271,13 +273,14 @@ struct BotRoomTranscriptRow: Identifiable {
 struct BotRoomThreadPreview: View {
     let thread: BotRoomThread
     let reader: BotRoomReader
+    /// The root's file summary, looked up by the parent so a new attachment elsewhere leaves this row alone.
+    let rootFiles: String?
 
     var rootTitle: String? {
         guard let root = thread.root else { return nil }
         let text = root.payload["text"].text ?? ""
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let summary = reader.attachmentLists[root.seq]?.summary {
-            return summary
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let rootFiles {
+            return rootFiles
         }
         return text
     }
@@ -371,6 +374,8 @@ struct BotRoomTranscriptWindow: Equatable {
 
 private struct BotRoomEventView: View {
     let event: BotRoomEvent
+    /// Looked up by the parent so a new attachment elsewhere leaves this row alone.
+    let files: [BotRoomAttachmentList.File]
     let reader: BotRoomReader
     let roster: [BotProfile]
     let avatars: [String: UIImage]
@@ -418,7 +423,6 @@ private struct BotRoomEventView: View {
         }
     }
 
-    private var files: [BotRoomAttachmentList.File] { reader.attachmentLists[event.seq]?.files ?? [] }
     private var messageText: String { event.payload["text"].text ?? "" }
     private var showsMessageText: Bool {
         files.isEmpty || !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

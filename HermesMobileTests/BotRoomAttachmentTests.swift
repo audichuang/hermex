@@ -40,9 +40,9 @@ import XCTest
         XCTAssertEqual(reader.events.map(\.kind), ["message.user", "message.member", "message.user"])
         XCTAssertFalse(reader.showsWelcome)
         let first = try XCTUnwrap(reader.threads.first { $0.id == "first-thread" })
-        XCTAssertEqual(BotRoomThreadPreview(thread: first, reader: reader).rootTitle, "brief.pdf")
+        XCTAssertEqual(BotRoomThreadPreview(thread: first, reader: reader, rootFiles: Self.rootFiles(first, reader)).rootTitle, "brief.pdf")
         let second = try XCTUnwrap(reader.threads.first { $0.id == "second-thread" })
-        let title = try XCTUnwrap(BotRoomThreadPreview(thread: second, reader: reader).rootTitle)
+        let title = try XCTUnwrap(BotRoomThreadPreview(thread: second, reader: reader, rootFiles: Self.rootFiles(second, reader)).rootTitle)
         XCTAssertTrue(title.hasPrefix("brief.pdf"))
         XCTAssertTrue(title.contains("2"))
 
@@ -198,6 +198,29 @@ import XCTest
         await reader.poll()
         XCTAssertEqual(reader.attachmentLists, initial)
         XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 0), .timedOut)
+    }
+
+    func testAnAttachmentInAnotherThreadLeavesAThreadPreviewAlone() async throws {
+        let wire = RoomWire()
+        wire.latest = 1
+        wire.roomEvents[1] = RoomFixture.attachmentEvent(1, threadID: "first-thread", files: [RoomFixture.attachment("brief")])
+        let reader = try makeReader(wire)
+        defer { reader.close() }
+        await reader.open()
+        let first = try XCTUnwrap(reader.threads.first { $0.id == "first-thread" })
+        let preview = BotRoomThreadPreview(thread: first, reader: reader, rootFiles: Self.rootFiles(first, reader))
+        let changed = expectation(description: "the preview depended on another thread's files")
+        withObservationTracking { _ = preview.rootTitle } onChange: { changed.fulfill() }
+
+        wire.roomEvents[2] = RoomFixture.attachmentEvent(2, threadID: "second-thread", files: [RoomFixture.attachment("map")])
+        wire.latest = 2
+        await reader.poll()
+        XCTAssertNotNil(reader.attachmentLists[2])
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 0), .timedOut)
+    }
+
+    private static func rootFiles(_ thread: BotRoomThread, _ reader: BotRoomReader) -> String? {
+        thread.root.flatMap { reader.attachmentLists[$0.seq]?.summary }
     }
 
     private func makeReader(_ wire: RoomWire, downloadEnabled: Bool = true) throws -> BotRoomReader {
