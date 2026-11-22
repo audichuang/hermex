@@ -1728,4 +1728,21 @@ final class BotRoomActivityStripTests: XCTestCase {
         let queued = try XCTUnwrap(BotRoomRound.build(events: [], activity: [row("default", "queued")], room: room, threadID: nil))
         XCTAssertNil(BotRoomActivityStrip.detail(queued, now: Date(timeIntervalSince1970: 1_102)))
     }
+
+    func testDeferredMemberUnavailableMarksSeatUnavailableAndCountsAsFinished() throws {
+        let events = [
+            event(2, "message.user", id: reply, ["text": .string("Check status"), "thread_id": .string("t1")]),
+            event(3, "turn.deferred", ["discussion_event_id": .string(reply), "member_id": .string("codex-watch"),
+                                       "reason": .string("member_unavailable")]),
+            event(4, "turn.deferred", ["discussion_event_id": .string(reply), "member_id": .string("research-desk"),
+                                       "reason": .string("target_busy")])
+        ]
+        let round = try XCTUnwrap(BotRoomRound.build(events: events, activity: [row("personal-assistant")], room: room, threadID: "t1"))
+        XCTAssertEqual(round.seats.first { $0.memberID == "codex-watch" }?.outcome, .unavailable)
+        XCTAssertEqual(round.seats.first { $0.memberID == "research-desk" }?.outcome, .waiting,
+                       "only member_unavailable marks a seat unavailable")
+        XCTAssertEqual(round.finished, 1)
+        XCTAssertEqual(BotRoomActivityStrip.progress(round), "2/4")
+        XCTAssertEqual(BotRoomActivityStrip.word(.unavailable), "No answer")
+    }
 }

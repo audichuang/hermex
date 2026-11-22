@@ -63,7 +63,7 @@ struct BotRoomPausedRow: View {
                     .buttonStyle(.bordered)
                 }
             } else {
-                Text(event.systemText)
+                Text(event.systemText(in: reader.room))
                     .font(AppFont.caption()).foregroundStyle(.appSecondary)
             }
         }

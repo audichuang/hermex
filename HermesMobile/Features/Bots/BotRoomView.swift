@@ -470,7 +470,7 @@ private struct BotRoomEventView: View {
                     .padding(.top, 8)
                 }
             }
-        } else if let text = event.isRoutingEvent ? event.routingText(in: reader.room) : event.systemText, !text.isEmpty {
+        } else if let text = event.isRoutingEvent ? event.routingText(in: reader.room) : event.systemText(in: reader.room), !text.isEmpty {
             Text(text).font(AppFont.caption()).foregroundStyle(.appSecondary)
                 .frame(maxWidth: .infinity).multilineTextAlignment(.center)
         }
