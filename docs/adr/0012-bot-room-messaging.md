@@ -55,3 +55,21 @@ Lives in: `HermesMobile/Features/Bots/BotGroupRoom.swift`
 Right after a send the round has not started, so the idle status cadence would miss the lead's routing. `BotRoomReader.pollInterval` is 1 s for 20 s after `sentAt`, then the host's status interval.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Bound automatic room attachment reads on the room socket
+
+Both user and member attachments belong to the log event that carries their manifest.
+The download RPC needs that event's ID to authorize access. It shares the reader's
+socket with state and log polling. The 12,000,000-byte limit leaves room for base64
+and JSON in a 16 MiB frame. Two concurrent automatic image previews limit contention
+with polling. Leaving the viewport drops a queued preview, while an admitted read
+can finish and warm the room-scoped image cache. A manual download can join a read
+already in flight or start without waiting for an automatic slot.
+
+`BotRoomPreviewSlot` keeps a loaded picture while the room passes through idle and
+connecting on reopen or foregrounding, so the card does not collapse and reload;
+only a missing picture waits for a live room. Rows and thread previews receive their
+own file summary from the parent instead of reading `attachmentLists`, so a new
+attachment elsewhere does not invalidate every row.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomAttachments.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`

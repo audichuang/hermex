@@ -32,7 +32,32 @@ final class BotHistoryCacheTests: XCTestCase {
         let event = try XCTUnwrap(message.roomEvent.flatMap(BotRoomEvent.init))
         XCTAssertEqual(event.payload["text"].text, "Old message")
         XCTAssertNil(event.threadID)
+        XCTAssertTrue(event.roomAttachments.isEmpty)
         XCTAssertTrue(BotRoomThread.group([event], hasEarlier: false).isEmpty)
+    }
+
+    func testRoomAttachmentsSurviveColdReplayEvenWithoutText() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = BotHistoryCache(directory: directory), key = roomKey()
+        let pdf = RoomFixture.attachment("brief", kind: "pdf", name: "brief.pdf", size: 200)
+        let image = RoomFixture.attachment("map")
+        let sent = RoomFixture.attachmentEvent(1, threadID: "room-thread", files: [pdf])
+        let reply = RoomFixture.attachmentEvent(2, kind: "message.member", text: "Here is the map",
+                                                 threadID: "room-thread", files: [image])
+        try await cache.appendRoom(key: key, room: room, page: RoomFixture.page([sent, reply], cursor: 2), since: 0)
+
+        let reopened = BotHistoryCache(directory: directory)
+        let snapshot = try await reopened.roomHistory(key)
+        let events = try XCTUnwrap(snapshot?.replayPage["events"].list).compactMap(BotRoomEvent.init)
+        XCTAssertEqual(events.map(\.eventID), ["event:1", "event:2"])
+        XCTAssertEqual(events.map(\.roomAttachments), [[pdf].compactMap(BotRoomAttachment.init), [image].compactMap(BotRoomAttachment.init)])
+        XCTAssertEqual(events.first?.payload["text"].text, "")
+        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
+        let filenameHits = try await reopened.search("brief.pdf", scope: scope, roomIDs: nil)
+        XCTAssertTrue(filenameHits.isEmpty)
+        let textHits = try await reopened.search("Here is", scope: scope, roomIDs: nil)
+        XCTAssertEqual(textHits.map(\.message.eventID), ["event:2"])
     }
 
     func testRoomThreadIdentitySurvivesDiskReplay() async throws {

@@ -2171,7 +2171,7 @@ counts; a replaced one under the same title is not a hit. A match on the session
 shows as the bot's plain result. Room messages stay local: user/member messages from group room
 pages this iPhone has loaded, under the label “Messages saved on this iPhone.” Bot Chat's own
 snapshots are dropped from the cache when it loads (#1148). There is no initial server crawl,
-attachment indexing, or live-token indexing.
+attachment indexing, or live-token indexing. A message with only files does not match text search.
 
 `BotHistoryCache` serializes disk access and matching off the main actor, with no runtime
 identifier. The cache is disposable, under Library/Caches with file protection: 30-day
@@ -2182,8 +2182,9 @@ refine at the cap. Tool output, credentials from prompt cards and drafts are not
 Room rows use configured server hash + connection UUID + room ID, never the room
 name or member Profile. Completed replay windows append by `seq`; overlaps do
 not replace existing messages. Pages in each window commit together so fetching
-earlier history preserves the newer cached window. Only `message.user` and `message.member` text, sender identity and time
-are saved. The separate cursor includes invisible events. Cached coverage stays
+earlier history preserves the newer cached window. The cache keeps `message.user` and `message.member`
+text, sender identity, time, and attachment manifests. File-only messages survive replay alongside
+text messages. The separate cursor includes invisible events. Cached coverage stays
 contiguous; eviction advances its earlier boundary. Every room's results share
 the 100-hit limit and global storage budget. A room hit shows its room and sender
 and opens the normal room at the saved sequence, revalidating the connection and
@@ -2242,6 +2243,11 @@ reader is discarded.
 
 The transcript renders `message.user` and `message.member` with the existing
 Bot markdown renderer; member messages include their sender and roster avatar.
+Both kinds show attachment cards, even when the message has no text. A file-only thread
+root uses its first filename in the overview. When the host advertises
+`groups.attachment.download`, a card opens a preview with Save to Files and Share.
+Images with a known size up to 5 MiB can preview as they approach the viewport.
+Files over 12,000,000 bytes direct the user to Hermes Desktop.
 `turn.failed`, `turn.cancelled`, `room.stop_requested`, and `room.renamed` are
 centered system lines. `room.activity`, `turn.settled`, `turn.deferred`,
 `authority.*`, and all unknown kinds remain invisible. Driver status reports
@@ -2255,7 +2261,7 @@ shows while the room is live with no earlier history and no user or member
 message loaded (`BotRoomReader.showsWelcome`), so a rename before anyone speaks
 keeps it, and the first message replaces it for good.
 
-The socket allowlist admits four room reads, four participant commands and three lifecycle commands with typed parameter checks.
+The socket allowlist admits four room reads, attachment download, four participant commands and three lifecycle commands with typed parameter checks.
 Room RPC errors preserve `data.reason`: `room_history_expired` or code 4114 removes
 the room with a toast; 4123 asks for a gateway restart on the Mac. No replica, peer, promotion, or demotion method is permitted.
 

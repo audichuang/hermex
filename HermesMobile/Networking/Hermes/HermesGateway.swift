@@ -479,7 +479,7 @@ private extension HermesCall {
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
              .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,
              .displayStart, .displayStop, .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove, .pluginsUpdate,
-             .pluginsSettings, .rollbackList, .rollbackDiff: return true
+             .pluginsSettings, .rollbackList, .rollbackDiff, .groupsAttachmentDownload: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }

@@ -25,14 +25,17 @@ actor BotHistoryCache {
         var displayKind: String? = nil
         var threadID: String? = nil
         var eventID: String? = nil
+        var attachments: [BotRoomAttachment]? = nil
 
         var roomEvent: BotJSON? {
             guard let seq else { return nil }
+            var payload: [String: BotJSON] = ["text": .string(text), "thread_id": threadID.map(BotJSON.string) ?? .null]
+            if let attachments { payload["attachments"] = .array(attachments.map(\.json)) }
             return .object(["seq": .number(Double(seq)), "kind": .string(role),
                 "event_id": eventID.map(BotJSON.string) ?? .null,
                 "actor": .object(["id": memberID.map(BotJSON.string) ?? .null,
                                   "display_name": sender.map(BotJSON.string) ?? .null]),
-                "payload": .object(["text": .string(text), "thread_id": threadID.map(BotJSON.string) ?? .null]),
+                "payload": .object(payload),
                 "created_at": timestamp.map(BotJSON.number) ?? .null])
         }
     }
@@ -129,12 +132,15 @@ actor BotHistoryCache {
         for value in page["events"].list ?? [] {
             guard value["room_id"].text == key.roomID, let event = BotRoomEvent(value),
                   event.seq > since, event.seq <= cursor,
-                  ["message.user", "message.member"].contains(event.kind),
-                  let text = event.payload["text"].text, !text.isEmpty,
-                  text.utf8.count <= Self.maximumMessageBytes, seen.insert(event.seq).inserted else { continue }
-            rows.append(Message(id: String(event.seq), role: event.kind, text: text, seq: event.seq,
+                  event.isMessage else { continue }
+            let attachments = event.roomAttachments
+            let text = event.payload["text"].text ?? ""
+            let savedText = text.utf8.count <= Self.maximumMessageBytes ? text : ""
+            guard (!savedText.isEmpty || !attachments.isEmpty), seen.insert(event.seq).inserted else { continue }
+            rows.append(Message(id: String(event.seq), role: event.kind, text: savedText, seq: event.seq,
                 sender: event.kind == "message.user" ? String(localized: "You") : event.sender(in: room),
-                memberID: event.payload["member_id"].text ?? event.actor["id"].text, timestamp: event.timestamp, threadID: event.threadID, eventID: event.eventID))
+                memberID: event.payload["member_id"].text ?? event.actor["id"].text, timestamp: event.timestamp,
+                threadID: event.threadID, eventID: event.eventID, attachments: attachments.isEmpty ? nil : attachments))
         }
         rows.sort { ($0.seq ?? 0) < ($1.seq ?? 0) }
         var boundary = overlaps ? min(previous?.earlierBoundary ?? since, since) : since

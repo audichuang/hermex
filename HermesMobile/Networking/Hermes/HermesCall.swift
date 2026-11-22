@@ -117,6 +117,7 @@ enum HermesCall: Equatable, Sendable {
     case groupsState(roomID: String)
     case groupsLog(roomID: String, sinceSeq: Int, limit: Int)
     case groupsSend(roomID: String, eventID: String, text: String, threadID: String)
+    case groupsAttachmentDownload(roomID: String, eventID: String, attachmentID: String)
     case groupsStop(roomID: String, cancelID: String)
     case groupsApprove(roomID: String, memberID: String, taskID: String, executionGeneration: Int,
                        requestID: String, choice: BotApprovalRequest.Choice)
@@ -371,6 +372,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsState: return "groups.state"
         case .groupsLog: return "groups.log"
         case .groupsSend: return "groups.send"
+        case .groupsAttachmentDownload: return "groups.attachment.download"
         case .groupsStop: return "groups.stop"
         case .groupsApprove: return "groups.approve"
         case .groupsRetry: return "groups.retry"
@@ -617,6 +619,8 @@ enum HermesCall: Equatable, Sendable {
         case .groupsSend(let roomID, let eventID, let text, let threadID):
             return ["room_id": .string(roomID), "event_id": .string(eventID),
                     "payload": .object(["text": .string(text), "thread_id": .string(threadID)])]
+        case .groupsAttachmentDownload(let roomID, let eventID, let attachmentID):
+            return ["room_id": .string(roomID), "event_id": .string(eventID), "attachment_id": .string(attachmentID)]
         case .groupsStop(let roomID, let cancelID): return ["room_id": .string(roomID), "cancel_id": .string(cancelID)]
         case .groupsApprove(let roomID, let memberID, let taskID, let executionGeneration, let requestID, let choice):
             return ["room_id": .string(roomID), "member_id": .string(memberID), "task_id": .string(taskID),
@@ -749,6 +753,8 @@ enum HermesCall: Equatable, Sendable {
             valid = BotRoomRPC.validID(roomID) && sinceSeq >= 0 && (1...Self.roomPageSize).contains(limit)
         case .groupsSend(let roomID, let eventID, let text, let threadID):
             valid = [roomID, eventID, threadID].allSatisfy(BotRoomRPC.validID) && BotRoomRPC.validText(text)
+        case .groupsAttachmentDownload(let roomID, let eventID, let attachmentID):
+            valid = [roomID, eventID, attachmentID].allSatisfy(BotRoomRPC.validID)
         case .groupsStop(let roomID, let cancelID): valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(cancelID)
         case .groupsApprove(let roomID, let memberID, let taskID, let executionGeneration, let requestID, let choice):
             valid = [roomID, memberID, taskID, requestID].allSatisfy(BotRoomRPC.validID) && executionGeneration > 0

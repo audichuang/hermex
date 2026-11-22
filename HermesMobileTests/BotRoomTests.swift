@@ -994,6 +994,24 @@ enum RoomFixture {
         .object(["room_id": .string("fixture-room"), "seq": .number(Double(seq)), "kind": .string(kind),
             "actor": .object(["id": .string("chief")]), "payload": .object(["text": .string("Message \(seq)")])])
     }
+    static func attachment(_ id: String, kind: String = "image", name: String = "map.png", size: Int? = 100) -> BotJSON {
+        var fields: [String: BotJSON] = ["attachment_id": .string(id), "kind": .string(kind), "name": .string(name),
+                                        "mime": .string(kind == "image" ? "image/png" : "application/pdf")]
+        fields["size"] = size.map { .number(Double($0)) }
+        return .object(fields)
+    }
+
+    static func attachmentEvent(_ seq: Int, kind: String = "message.user", text: String? = nil,
+                                threadID: String? = nil, files: [BotJSON]) -> BotJSON {
+        var fields = event(seq, kind: kind).fields!
+        fields["event_id"] = .string("event:\(seq)")
+        var payload: [String: BotJSON] = ["attachments": .array(files)]
+        payload["text"] = text.map(BotJSON.string)
+        payload["thread_id"] = threadID.map(BotJSON.string)
+        fields["payload"] = .object(payload)
+        return .object(fields)
+    }
+
     static func page(_ events: [BotJSON], cursor: Int, more: Bool = false) -> BotJSON {
         .object(["events": .array(events), "cursor": .number(Double(cursor)), "has_more": .bool(more),
                  "authority": .object(["gateway_id": .string("fixture-install"), "epoch": .number(1)])])
@@ -1019,6 +1037,9 @@ enum RoomFixture {
     var stateCalls = 0
     var closed = 0
     var kind = "message.user"
+    var roomEvents: [Int: BotJSON] = [:]
+    var attachmentCalls: [HermesCall] = []
+    var attachmentReply: ((String) async -> BotJSON)?
     var failure: Error?
     var driverStatus = RoomFixture.status()
     var writes: [(String, [String: BotJSON])] = []
@@ -1099,6 +1120,10 @@ enum RoomFixture {
         case "profiles.list": return .object(["profiles": .array([])])
         case "session.active_list": return .object(["sessions": .array([])])
         case "groups.capabilities": return capabilities
+        case "groups.attachment.download":
+            attachmentCalls.append(call)
+            guard let id = params["attachment_id"]?.text, let attachmentReply else { throw BotFailure.unsupported }
+            return await attachmentReply(id)
         case "groups.list":
             listCalls += 1
             if let listFailure { throw listFailure }
@@ -1120,7 +1145,7 @@ enum RoomFixture {
             let start = params["since_seq"]!.integer!; logStarts.append(start)
             let end = min(latest, start + params["limit"]!.integer!)
             let events = end > start ? ((start + 1)...end).map { seq in
-                sentEvents.values.first { $0["seq"].integer == seq } ?? RoomFixture.event(seq, kind: kind)
+                sentEvents.values.first { $0["seq"].integer == seq } ?? roomEvents[seq] ?? RoomFixture.event(seq, kind: kind)
             } : []
             var page = RoomFixture.page(events, cursor: end, more: end < latest).fields!
             page["authority"] = .object(["gateway_id": .string(authority), "epoch": .number(Double(epoch))])

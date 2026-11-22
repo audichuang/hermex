@@ -12,6 +12,8 @@ import Observation
     private(set) var room: BotGroupRoom
     private(set) var events: [BotRoomEvent] = []
     private(set) var roundEvents: [BotRoomEvent] = []
+    private(set) var attachmentLists: [Int: BotRoomAttachmentList] = [:]
+    @ObservationIgnored private let attachmentPreviews = BotRoomPreviewQueue()
     @ObservationIgnored private var sentAt: ContinuousClock.Instant?
     private(set) var status = BotRoomStatus(.null)
     private(set) var link = Link.idle
@@ -100,6 +102,7 @@ import Observation
             hasRecentLog = true
         } else {
             log = BotRoomLog(); events = []; threads = []; hasEarlier = false; hasRecentLog = false
+            if !attachmentLists.isEmpty { attachmentLists = [:] }
         }
         recentOwner = cache.recent.begin(.init(key))
         if needsSignIn {
@@ -218,6 +221,7 @@ import Observation
     func networkPathDidChange() { reconnect.networkPathDidChange() }
 
     func suspend() {
+        attachmentPreviews.suspend()
         reconnect.cancel()
         ApprovalSummaries.shared.leave(summaryScope)
         saveRecentTranscript()
@@ -234,6 +238,7 @@ import Observation
 
     func close() {
         suspend(); log = BotRoomLog(); events = []; threads = []; hasEarlier = false
+        if !attachmentLists.isEmpty { attachmentLists = [:] }
         hasRecentLog = false
         status = BotRoomStatus(.null); lastAuthority = nil
     }
@@ -255,6 +260,48 @@ import Observation
         allows("groups.send") && !busy && uncertainSend(in: threadID) != nil
     }
     private func allows(_ method: String) -> Bool { canParticipate && capabilities.methods.contains(method) }
+    var mayDownload: Bool { allows(BotRoomAttachment.downloadMethod) }
+
+    func downloadAttachment(_ request: BotRoomAttachment.Request) async throws -> Data {
+        guard let client = wire, mayDownload else { throw BotFailure.stale }
+        let key = BotRoomPreviewQueue.Key(wire: ObjectIdentifier(client), request: request)
+        return try await attachmentPreviews.download(key, load: attachmentLoad(request, client: client))
+    }
+
+    func previewAttachment(_ request: BotRoomAttachment.Request, namespace: String, observer: UUID,
+                           deliver: @escaping BotRoomPreviewQueue.Deliver) {
+        guard let client = wire, mayDownload else { return }
+        let key = BotRoomPreviewQueue.Key(wire: ObjectIdentifier(client), request: request)
+        attachmentPreviews.enqueue(key: key, cacheKey: "\(namespace)|\(connection.id)|attachment:\(request.eventID)|\(request.attachmentID)",
+                                   observer: observer, load: attachmentLoad(request, client: client), deliver: deliver)
+    }
+
+    func cancelAttachmentPreview(observer: UUID) {
+        attachmentPreviews.cancel(observer: observer)
+    }
+
+    private func attachmentLoad(_ request: BotRoomAttachment.Request, client: any BotTransport) -> BotRoomPreviewQueue.Load {
+        let epoch = room.epoch
+        return { [weak self] in
+            guard let self else { throw BotFailure.stale }
+            let call = HermesCall.groupsAttachmentDownload(roomID: self.key.roomID, eventID: request.eventID,
+                                                           attachmentID: request.attachmentID)
+            let result = try await client.call(call, validateDispatch: {
+                try self.check(client)
+                guard self.mayDownload, self.room.epoch == epoch else { throw BotFailure.stale }
+            })
+            try self.check(client)
+            guard result["attachment_id"].text == request.attachmentID,
+                  let encoded = result["data_base64"].text,
+                  let data = await Task.detached(operation: { Data(base64Encoded: encoded) }).value else {
+                throw BotArtifactFailure.unavailable
+            }
+            try self.check(client)
+            guard self.room.epoch == epoch else { throw BotFailure.stale }
+            return data
+        }
+    }
+
     func mayAct(_ action: BotRoomAction) -> Bool { !busy && isPendingAndAnswerable(action) }
 
     private func isPendingAndAnswerable(_ action: BotRoomAction) -> Bool {
@@ -486,7 +533,12 @@ import Observation
         let visible = log.events.filter { event in
             event.kind != "message.user" || !pendingIDs.contains(event.eventID ?? "")
         }
-        if events != visible { events = visible }
+        if events != visible {
+            events = visible
+            var lists: [Int: BotRoomAttachmentList] = [:]
+            for event in visible { lists[event.seq] = BotRoomAttachmentList(event) }
+            if attachmentLists != lists { attachmentLists = lists }
+        }
         let round = (visible + log.signals).sorted { $0.seq < $1.seq }
         if roundEvents != round { roundEvents = round }
         hasEarlier = log.earlierBoundary > 0

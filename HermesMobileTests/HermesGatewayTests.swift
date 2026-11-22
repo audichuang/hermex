@@ -499,6 +499,25 @@ import XCTest
         XCTAssertEqual(lost, [.transport])
     }
 
+    func testASlowRoomAttachmentDownloadKeepsTheRoomConnected() async throws {
+        let http = connection(rpcDeadline: .milliseconds(50))
+        let room = BotClient(http: http)
+        try await room.connect()
+        defer { room.close() }
+        var lost = 0
+        room.onDisconnect = { _ in lost += 1 }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.withholdReply = { $0["method"].text == "groups.attachment.download" }
+
+        do {
+            _ = try await room.call(.groupsAttachmentDownload(roomID: "room", eventID: "event:1", attachmentID: "brief"))
+            XCTFail("An unanswered download cannot succeed")
+        } catch { XCTAssertEqual(error as? BotFailure, .transport) }
+        _ = try await room.call(.profilesList(includeSessions: false))
+        XCTAssertEqual(lost, 0, "A slow file must not end the room's polling and commands")
+        XCTAssertFalse(socket.isClosed)
+    }
+
     func testACompressionOutlivesTheUsualDeadline() async throws {
         let http = connection(rpcDeadline: .milliseconds(50))
         let chat = BotClient(http: http), other = BotClient(http: http)
