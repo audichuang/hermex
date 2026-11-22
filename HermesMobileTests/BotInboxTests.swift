@@ -1332,6 +1332,26 @@ import SwiftUI
         XCTAssertEqual(inbox.rooms(matching: ""), [], "the live read replaces the copy")
     }
 
+    func testRoomsRemainListedWhenTheDriverIsDownButCreationIsDisabled() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.rooms = [RoomFixture.room(latest: 0)]
+        wire.roomDriver = false
+        wire.roomAuthority = "fixture-install"
+        wire.roomMethods += ["groups.create", "groups.rename", "groups.disband"]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        defer { inbox.close() }
+
+        let room = try XCTUnwrap(inbox.rooms.first)
+        XCTAssertEqual(inbox.rooms(matching: room.name), [room])
+        inbox.setRoomPinned(true, room)
+        XCTAssertTrue(inbox.pinned.contains { $0.id == BotInbox.ChatRow.room(room).id })
+        XCTAssertTrue(inbox.roomCapabilities.methods.contains("groups.create"))
+        XCTAssertFalse(inbox.roomCapabilities.enabled)
+        XCTAssertFalse(inbox.mayRenameRoom(room))
+        XCTAssertFalse(inbox.mayDisbandRoom(room))
+    }
+
     func testACachedRosterNeverCrossesConnectionsOrOutlivesItsRemoval() async throws {
         let store = try connectedStore()
         let a = try XCTUnwrap(store.load(server: server))
@@ -1517,6 +1537,7 @@ import SwiftUI
     var onDisconnect: ((Error) -> Void)?
     var roster: [BotJSON]
     var rooms: [BotJSON]?
+    var roomDriver = true
     var roomMethods = ["groups.list", "groups.state", "groups.log"]
     var roomAuthority: String?
     var roomCommand: ((String, [String: BotJSON]) throws -> BotJSON)?
@@ -1568,7 +1589,7 @@ import SwiftUI
         switch method {
         case "groups.capabilities":
             guard rooms != nil else { throw BotFailure.unsupported }
-            var value: [String: BotJSON] = ["driver": .bool(true), "methods": .array(roomMethods.map(BotJSON.string))]
+            var value: [String: BotJSON] = ["driver": .bool(roomDriver), "methods": .array(roomMethods.map(BotJSON.string))]
             if let roomAuthority { value["authority_gateway_id"] = .string(roomAuthority) }
             return .object(value)
         case "groups.rename", "groups.disband":

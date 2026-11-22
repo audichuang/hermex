@@ -29,6 +29,7 @@ enum BotRoomStopControl: Equatable {
     @ObservationIgnored private let attachmentPreviews = BotRoomPreviewQueue()
     @ObservationIgnored private var sentAt: ContinuousClock.Instant?
     private(set) var status = BotRoomStatus(.null)
+    private(set) var runtimeDown = false
     private(set) var context: BotRoomContext?
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
@@ -199,7 +200,7 @@ enum BotRoomStopControl: Equatable {
             let value = try await client.call(.groupsCapabilities)
             try check(client)
             capabilities = BotRoomCapabilities(value)
-            guard capabilities.enabled else { throw BotFailure.unsupported }
+            guard capabilities.readable else { throw BotFailure.unsupported }
             if uncertainDisband, try await reconcileDisband(client) { return }
             let latest = try await readState(client)
             var initial = log
@@ -333,11 +334,12 @@ enum BotRoomStopControl: Equatable {
         if !pausedThreadIDs.isEmpty { pausedThreadIDs = [] }
         if !handoffs.isEmpty { handoffs = [:] }
         hasRecentLog = false; restoredFromDisk = false
-        status = BotRoomStatus(.null); lastAuthority = nil
+        status = BotRoomStatus(.null); lastAuthority = nil; runtimeDown = false
     }
 
     var canParticipate: Bool {
-        link == .live && !uncertainDisband && !foreignAuthority && capabilities.authority != nil && room.authority == capabilities.authority
+        link == .live && !runtimeDown && !uncertainDisband && !foreignAuthority
+            && capabilities.authority != nil && room.authority == capabilities.authority
     }
     var showsComposer: Bool { !foreignAuthority }
     var showsWelcome: Bool { link == .live && !hasEarlier && !BotRoomEvent.hasConversation(in: events) }
@@ -357,7 +359,7 @@ enum BotRoomStopControl: Equatable {
         }
         return .send(enabled: maySend(in: threadID))
     }
-    func mayEditDraft(in threadID: String?) -> Bool { !busy && uncertainSend(in: threadID) == nil }
+    func mayEditDraft(in threadID: String?) -> Bool { !runtimeDown && !busy && uncertainSend(in: threadID) == nil }
     func mayReply(in threadID: String?) -> Bool { mayEditDraft(in: threadID) && !dictatingThreads.contains(threadID ?? "") }
     func maySend(in threadID: String?) -> Bool {
         guard allows("groups.send"), mayEditDraft(in: threadID), let attachments = uploadedAttachments(in: threadID)
@@ -784,7 +786,10 @@ enum BotRoomStopControl: Equatable {
             interruptUploads()
             ApprovalSummaries.shared.retain([], in: previousSummaryScope)
         }
-        let nextStatus = BotRoomStatus(value["driver_status"])
+        let driverStatus = value["driver_status"]
+        let nextRuntimeDown = driverStatus == .null
+        if runtimeDown != nextRuntimeDown { runtimeDown = nextRuntimeDown }
+        let nextStatus = BotRoomStatus(driverStatus)
         let nextContext = BotRoomContext(value["context"])
         if context != nextContext { context = nextContext }
         let pendingSummaries = nextStatus.actions.filter { $0.approval != nil }.map {
