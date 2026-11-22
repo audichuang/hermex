@@ -373,6 +373,7 @@ final class ChatViewModel {
     var followLatch = ChatScrollPolicy.FollowLatch()
     var expandedTurnKeys: Set<String> = []
     @ObservationIgnored var hermesBotChatRoot: String?
+    @ObservationIgnored var hermesSeat: HermesSessionChat?
     @ObservationIgnored var hermesLineageRoot: String?
     @ObservationIgnored private var hermesCacheEpoch: Int?
     private func applyCompressionAnchorMetadata(from session: SessionDetail?) {
@@ -2943,6 +2944,207 @@ final class ChatViewModel {
     private func holdForLostAnswer(_ hermes: HermesChatTurnCoordinator) {
         isHermesSubmissionUncertain = true
         hermes.recoverAfterLostAnswer()
+    }
+
+
+    @ObservationIgnored var makeVoiceLiveTransport: @MainActor (@escaping VoiceLiveSessionOpener) -> any VoiceLiveTransport = {
+        WebRTCVoiceLiveTransport(openSession: $0)
+    }
+
+    @ObservationIgnored var liveCall = LiveVoiceCall.shared
+
+    var hermesConversation: (server: URL, connectionID: UUID, target: ConversationTarget)? {
+        hermesTurn.map { ($0.engine.server, $0.engine.connection.id, $0.engine.target) }
+    }
+
+    var hermesConnectionIsRetired: Bool { hermesTurn?.connection?.isRetired == true }
+
+    private(set) var voiceCall: HermesVoiceCall?
+
+    var isOnVoiceCall: Bool { voiceCall.map { !$0.isEnded } ?? false }
+
+    private(set) var voiceCallInProgress: HermesVoiceCall?
+
+    private(set) var offersVoiceCall = false
+    @ObservationIgnored private var didReadVoiceCallOffer = false
+    /// The read in flight, for tests to await.
+    @ObservationIgnored private(set) var voiceCallOfferRead: Task<Void, Never>?
+
+    private func readVoiceCallOfferIfNeeded() {
+        // A legacy webui server's Bots chats get no call: new features are a Hermes server's.
+        guard let hermesTurn, liveCall.webuiServer != server, !didReadVoiceCallOffer, voiceCallOfferRead == nil else { return }
+        voiceCallOfferRead = Task { [weak self, hermesTurn] in
+            let status: HermesVoiceLiveStatus?
+            do {
+                status = try await hermesTurn.voiceLiveStatus()
+            } catch {
+                guard let self else { return }
+                voiceCallOfferRead = nil
+                if requestsVoiceCall {
+                    requestsVoiceCall = false
+                    sendErrorMessage = VoiceLiveTransportError.peerConnectionFailed.errorDescription
+                }
+                return
+            }
+            guard let self else { return }
+            voiceCallOfferRead = nil
+            didReadVoiceCallOffer = true
+            offersVoiceCall = status?.offersCall == true
+            voiceCallRefusal = Self.voiceCallRefusal(status)
+            if requestsVoiceCall { isRequestedVoiceCallReady = true }
+        }
+    }
+
+    @ObservationIgnored private var voiceCallRefusal: String?
+    @ObservationIgnored private var requestsVoiceCall = false
+    private(set) var isRequestedVoiceCallReady = false
+
+    static func voiceCallRefusal(_ status: HermesVoiceLiveStatus?) -> String? {
+        guard status?.offersCall != true else { return nil }
+        if status?.mode == "gpt-live", let reason = status?.reason?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !reason.isEmpty {
+            return reason
+        }
+        return String(localized: "Voice calls need this Profile’s voice mode set to GPT-Live on the host.")
+    }
+
+    func requestVoiceCall() {
+        guard hermesTurn != nil else { return }
+        requestsVoiceCall = true
+        if didReadVoiceCallOffer { isRequestedVoiceCallReady = true }
+    }
+
+    @discardableResult
+    func startRequestedVoiceCall() -> Task<Void, Never>? {
+        guard isRequestedVoiceCallReady else { return nil }
+        isRequestedVoiceCallReady = false
+        requestsVoiceCall = false
+        guard offersVoiceCall else {
+            sendErrorMessage = voiceCallRefusal
+            return nil
+        }
+        return startVoiceCall()
+    }
+
+    static func voiceCallEndMessage(_ reason: HermesVoiceCall.EndReason) -> String? {
+        switch reason {
+        case .hungUp: nil
+        case .failed(let detail): detail
+        // The raw reason stays untranslated: it tells a network drop from the vendor's close.
+        case .closed(let detail): String(localized: "The voice call disconnected.") + " (\(detail))"
+        case .inactive: String(localized: "The voice call ended after 10 quiet minutes.")
+        case .chatReplaced: String(localized: "The host replaced this Bot Chat, so the voice call ended.")
+        }
+    }
+
+    @ObservationIgnored private var owesNavigationSuspend = false
+    @ObservationIgnored var viewsOnScreen = 0 {
+        didSet { if oldValue == 0, viewsOnScreen > 0 { liveCall.follow(self) } }
+    }
+
+    @discardableResult
+    func startVoiceCall() -> Task<Void, Never>? {
+        guard !isOnVoiceCall else { return nil }
+        // One call per app: Call on another chat goes back to the call that is on.
+        if liveCall.call != nil {
+            liveCall.requestReopen()
+            return nil
+        }
+        guard let call = makeVoiceCall() else { return nil }
+        // A new call's row replaces the last one's error.
+        if errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }
+        voiceCallArrived(call)
+        liveCall.begin(call, model: self)
+        // The call may have moved to another chat by then; the app's call owner lets that one go.
+        call.onEnded = { [weak call, liveCall] in
+            if let call { liveCall.ended(call) }
+        }
+        return Task { [call] in await call.start() }
+    }
+
+    /// The chat's session is read-only (a delegated subagent's, or one the host marks so): it takes
+    /// no Send, so a voice call never moves to it or delegates into it. `ChatView` sets it.
+    @ObservationIgnored var isReadOnlyForVoice = false
+
+    /// The connection `voiceCallArrived` holds open for the call, released by `voiceCallLeft`.
+    @ObservationIgnored private var voiceCallConnection: HermesConnection?
+
+    /// The app's call now talks on this chat, from its start or moved here from the chat the user
+    /// left: the chat's connection keeps its socket through the background and its stream under a
+    /// pushed screen, so the delegated reply keeps streaming into the call.
+    func voiceCallArrived(_ call: HermesVoiceCall) {
+        voiceCall = call
+        voiceCallInProgress = call
+        let connection = hermesTurn?.connection
+        voiceCallConnection = connection
+        connection?.callStarted()
+        connection?.onRetire = { [weak call] in call?.end() }
+    }
+
+    /// The call ended, or moved to the chat the user opened: this chat lets go of what it held
+    /// for it, suspending in the background or with no view of it on screen. An ended call stays
+    /// as `voiceCall` with its reason; a moved one leaves none.
+    func voiceCallLeft(_ call: HermesVoiceCall) {
+        guard voiceCallInProgress === call else { return }
+        voiceCallInProgress = nil
+        if !call.isEnded { voiceCall = nil }
+        let connection = voiceCallConnection
+        voiceCallConnection = nil
+        if owesNavigationSuspend {
+            owesNavigationSuspend = false
+            suspendActiveStreamConnection()
+        } else if connection?.owesBackgroundClose == true {
+            suspendStreamForBackground()
+        }
+        connection?.callEnded()
+        connection?.onRetire = nil
+    }
+
+    func endVoiceCall() {
+        voiceCall?.end()
+    }
+
+    func makeVoiceCall() -> HermesVoiceCall? {
+        guard hermesTurn != nil else { return nil }
+        // Minted on whichever chat the call talks on by then: a redial after the call moved goes
+        // to the chat it moved to, not to this one, which may be gone.
+        weak var opened: HermesVoiceCall?
+        let transport = makeVoiceLiveTransport { sdp, history in
+            guard let opened else { throw BotFailure.stale }
+            return try await opened.openSession(sdp: sdp, history: history)
+        }
+        let call = HermesVoiceCall(transport: transport, chat: self)
+        opened = call
+        return call
+    }
+
+    func submitVoicePrompt(_ prompt: String, context: String) async -> Bool {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let hermes = hermesTurn, hermes.isIdle, !text.isEmpty, !isReadOnlyForVoice, !isViewingCachedData, !isClearingConversation,
+              !isHoldingWaitingSend, !isHermesSubmissionUncertain else { return false }
+        let promptID = "local-\(UUID().uuidString)"
+        isStartingChat = true
+        defer { isStartingChat = false }
+        archiveLiveActivityForNewTurn()
+        messages.append(ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: promptID))
+        let outcome: BotPromptOutcome
+        do {
+            isSubmittingHermesPrompt = true
+            defer { isSubmittingHermesPrompt = false }
+            outcome = try await hermes.submitVoice(text, context: context)
+        } catch {
+            rollbackOptimisticMessage(id: promptID)
+            if !(error is HermesChatTurnCoordinator.NotSent), !BotPromptMode.send.definitelyRejected(error) {
+                hermes.recoverAfterLostAnswer()
+            }
+            return false
+        }
+        guard outcome == .started else {
+            rollbackOptimisticMessage(id: promptID)
+            if outcome == .unknown { hermes.recoverAfterLostAnswer() }
+            return false
+        }
+        return true
     }
 
     func restoreSubmissionMark(_ uncertain: Bool) {
@@ -5964,12 +6166,20 @@ final class ChatViewModel {
         }
     }
 
+    /// A voice call keeps the chat attached in the background (#1091); it suspends when the call ends.
     func suspendStreamForBackground() {
+        guard !isOnVoiceCall else { return }
         pauseWaitingSend()
         suspendActiveStreamConnection()
     }
 
+    /// The chat's last view left: a screen pushed over it, or the chat closing. During a voice
+    /// call both keep the stream (#1091), which the call hears; it suspends when the call ends.
     func suspendStreamForNavigation() {
+        guard !isOnVoiceCall else {
+            owesNavigationSuspend = true
+            return
+        }
         suspendActiveStreamConnection()
     }
 
@@ -5984,6 +6194,7 @@ final class ChatViewModel {
     }
 
     func reconnectStreamIfNeeded(modelContext: ModelContext? = nil) async {
+        owesNavigationSuspend = false
         if hermesTurn != nil, let modelContext { hermesCache = modelContext }
         await turn.reconnectIfNeeded(modelContext: modelContext)
     }
@@ -7663,6 +7874,8 @@ extension ChatViewModel: HermesChatTurnDelegate {
     }
 
     func hermesBotChatWasReplaced() {
+        // The call was talking about the old chat (#1091).
+        voiceCall?.end(.chatReplaced)
         messages = []
         hasOlderMessages = false
         latestRunOutcome = nil
@@ -7826,6 +8039,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
             if errorMessage != nil { errorMessage = nil }
             if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
             releaseSubmissionMark()
+            readVoiceCallOfferIfNeeded()
             deliverWaitingSendIfReady()
             if needsHermesForkCheck { Task { [weak self] in await self?.resolveHermesForkOrigin() } }
             return
@@ -8698,5 +8912,42 @@ final class ListenAudioSessionController: ListenAudioSessionControlling {
             false,
             options: ListenAudioSessionConfiguration.deactivationOptions
         )
+    }
+}
+
+/// A voice call drives its delegations through the chat it was started from (#1091).
+extension ChatViewModel: VoiceCallChatPort {
+    var isIdleForVoice: Bool { hermesTurn?.isIdle == true }
+    var isRunningTurn: Bool { activeStreamID != nil }
+    var turnAwaitsAnswer: Bool { hermesTurn?.turnAwaitsAnswer == true }
+
+    func interruptForVoice() async -> Bool { await cancelActiveStream() }
+
+    func submitVoice(prompt: String, context: String) async -> Bool {
+        await submitVoicePrompt(prompt, context: context)
+    }
+
+    func voiceLiveSession(sdp: String, history: [BotJSON]) async throws -> HermesVoiceLiveSession {
+        guard let hermesTurn else { throw BotFailure.stale }
+        return try await hermesTurn.voiceLiveSession(sdp: sdp, history: history)
+    }
+
+    /// The latest turn's reply as the chat shows it: none when the latest turn has no reply row.
+    var voiceTurnReply: String? {
+        guard let last = messages.last(where: { $0.role == "user" || $0.role == "assistant" }),
+              last.role == "assistant" else { return nil }
+        return last.content
+    }
+
+    var voiceHistory: [(speaker: VoiceLiveSpeaker, text: String)] {
+        messages.compactMap { message in
+            guard let text = message.content, message.role == "user" || message.role == "assistant" else { return nil }
+            return (message.role == "user" ? .user : .assistant, text)
+        }
+    }
+
+    var voiceTurnEvents: ((HermesVoiceTurnEvent) -> Void)? {
+        get { hermesTurn?.voiceTurnObserver }
+        set { hermesTurn?.voiceTurnObserver = newValue }
     }
 }

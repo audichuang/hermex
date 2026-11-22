@@ -61,7 +61,8 @@ enum HermesCall: Equatable, Sendable {
     case projectsUpdate(profile: String, id: String, name: String, color: String?)
     case projectsDelete(profile: String, id: String)
 
-    case promptSubmit(sessionID: String, text: String, fence: Fence? = nil, images: [BotUploadedImage] = [], titlePreview: String? = nil)
+    case promptSubmit(sessionID: String, text: String, fence: Fence? = nil, images: [BotUploadedImage] = [],
+                      titlePreview: String? = nil, voiceContext: String? = nil)
     case promptRewind(sessionID: String, text: String, beforeRowID: Int, deep: Bool)
     case sessionUndo(runtime: String)
     case sessionCompress(runtime: String, focus: String?, profile: String)
@@ -503,7 +504,7 @@ enum HermesCall: Equatable, Sendable {
         case .sessionDetach(let profile, let sessionID, let subscriptionID):
             return ["profile": .string(profile), "session_id": .string(sessionID), "subscription_id": .string(subscriptionID)]
         case .sessionActiveList, .groupsCapabilities: return [:]
-        case .promptSubmit(let sessionID, let text, _, let images, let titlePreview):
+        case .promptSubmit(let sessionID, let text, _, let images, let titlePreview, let voiceContext):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
             if let titlePreview,
                let bounded = HermesCompatibility.boundedTitlePreview(titlePreview),
@@ -512,6 +513,11 @@ enum HermesCall: Equatable, Sendable {
             }
             if !images.isEmpty {
                 params["attachments"] = .array(images.map { .object(["path": .string($0.path), "mime": .string($0.mime)]) })
+            }
+            if let voiceContext {
+                params["surface"] = .string("voice-live")
+                // The host cuts by code point (`voice_context[:6000]`).
+                params["voice_context"] = .string(String(String.UnicodeScalarView(voiceContext.unicodeScalars.prefix(6000))))
             }
             return params
         case .promptRewind(let sessionID, let text, let rowID, let deep):

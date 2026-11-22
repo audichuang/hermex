@@ -5,6 +5,12 @@
 #   scripts/fork/testflight-release            # HEAD must already be on fork/develop
 #   ALLOW_UNMERGED=1 scripts/fork/testflight-release   # test build from a feature branch
 #   DRY_RUN=1 scripts/fork/testflight-release  # print the steps, upload nothing
+#   NO_WAIT=1 scripts/fork/testflight-release  # stop after the upload instead of waiting for TestFlight
+#
+# A finished upload is not installable yet: App Store Connect processes the build first. The script
+# waits (WAIT_MINUTES, default 30) until the build is VALID and IN_BETA_TESTING, and only then says it
+# is ready, so nobody is told to update before TestFlight offers the build (2026-11-17). Exit 2 means
+# it was uploaded and recorded but still processing when the wait ran out.
 #
 # Needs: Config/Local.xcconfig (team 37HFR5V2JJ), and the App Store Connect API key named in
 # ~/.asc/config.json (key_id, issuer_id, private_key_path). Nothing secret lives in this repo.
@@ -83,4 +89,29 @@ if ! run git push --atomic --force-with-lease=main:${old_main} fork "${commit}:r
   print -u2 "Then, if ${commit[1,8]} is the newest build, move main: git fetch fork && git push --force-with-lease=main:\$(git rev-parse fork/main) fork ${commit}:refs/heads/main"
   exit 1
 fi
-print "Uploaded $build from ${commit[1,8]}; tagged testflight/$build and moved fork/main. TestFlight lists it once processing ends."
+print "Uploaded $build from ${commit[1,8]}; tagged testflight/$build and moved fork/main."
+[[ -z "${DRY_RUN:-}" && -z "${NO_WAIT:-}" ]] || exit 0
+
+bundle=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleIdentifier' $work/Hermex.xcarchive/Info.plist)
+build_state() {
+  asc builds list --app $bundle --build-number $build --include buildBetaDetail --output json 2>/dev/null | head -1 |
+    python3 -c 'import json, sys
+d = json.loads(sys.stdin.readline()); b = d["data"][0]
+detail = b["relationships"]["buildBetaDetail"]["data"]["id"]
+inc = {(i["type"], i["id"]): i for i in d.get("included", [])}
+print(b["attributes"]["processingState"], inc[("buildBetaDetails", detail)]["attributes"]["internalBuildState"])' 2>/dev/null
+}
+print "Waiting for TestFlight to finish processing $build (up to ${WAIT_MINUTES:-30} min)…"
+deadline=$(( SECONDS + ${WAIT_MINUTES:-30} * 60 ))
+state=""
+while (( SECONDS < deadline )); do
+  state=$(build_state) || state=""
+  case $state in
+    "VALID IN_BETA_TESTING") print "Ready: $build is installable in TestFlight."; exit 0 ;;
+    INVALID*|FAILED*) print -u2 "App Store Connect did not accept $build: $state"; exit 1 ;;
+  esac
+  sleep 30
+done
+print -u2 "$build is still processing after ${WAIT_MINUTES:-30} min (last state: ${state:-not listed yet})."
+print -u2 "Check again: asc builds list --app $bundle --build-number $build --include buildBetaDetail"
+exit 2

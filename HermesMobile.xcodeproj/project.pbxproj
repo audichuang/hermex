@@ -99,6 +99,16 @@
 		1A2B3C4D5E6F700000000007 /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F700000000097 /* Highlightr */; };
 		1A2B3C4D5E6F700000000008 /* KeychainAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F700000000098 /* KeychainAccess */; };
 		5417A7400000000000000092 /* SwiftMath in Frameworks */ = {isa = PBXBuildFile; productRef = 5417A7400000000000000091 /* SwiftMath */; };
+		6C11E000000000000000A092 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 6C11E000000000000000A091 /* WebRTC */; };
+		6C11E000000000000000A201 /* VoiceLiveProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A202 /* VoiceLiveProtocol.swift */; };
+		6C11E000000000000000A203 /* VoiceLiveProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */; };
+		6C11E000000000000000A301 /* HermesVoiceCall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A302 /* HermesVoiceCall.swift */; };
+		6C11E000000000000000A303 /* HermesVoiceCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A304 /* HermesVoiceCallTests.swift */; };
+		6C11E000000000000000A309 /* LiveVoiceCallBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A30A /* LiveVoiceCallBar.swift */; };
+		6C11E000000000000000A3B9 /* LiveVoiceCallScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A3BA /* LiveVoiceCallScreen.swift */; };
+		6C11E000000000000000A307 /* LiveVoiceCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A308 /* LiveVoiceCallTests.swift */; };
+		6C11E000000000000000A305 /* LiveVoiceCall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A306 /* LiveVoiceCall.swift */; };
+		6C11E000000000000000A001 /* WebRTCVoiceLiveTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */; };
 		1A2B3C4D5E6F7000000000A0 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */; };
 		1A2B3C4D5E6F7000000000A1 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B1 /* AuthManager.swift */; };
 		FE4E43ABAB3A416FA881C6C8 /* AuthManager+MoveToHermes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0258EA266C5141C2B253F58E /* AuthManager+MoveToHermes.swift */; };
@@ -650,6 +660,7 @@
 		C8240A000000000000000001 /* HermesConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8240A000000000000000002 /* HermesConnection.swift */; };
 		C87080000000000000000001 /* HermesBrowserSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87080000000000000000002 /* HermesBrowserSignIn.swift */; };
 		E1071000000000000000A001 /* HermesTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1071000000000000000A002 /* HermesTranscription.swift */; };
+		6C11E000000000000000A101 /* HermesVoiceLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C11E000000000000000A102 /* HermesVoiceLive.swift */; };
 		C8250A000000000000000001 /* HermesGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8250A000000000000000002 /* HermesGateway.swift */; };
 		C1601CA00000000000000001 /* HermesCanonicalProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */; };
 		C8970A000000000000000001 /* HermesCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8970A000000000000000002 /* HermesCompatibility.swift */; };
@@ -1057,6 +1068,15 @@
 		C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitControlsVisibilityPolicy.swift; sourceTree = "<group>"; };
 		C27800000000000000000004 /* ChatGitControlsVisibilityPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitControlsVisibilityPolicyTests.swift; sourceTree = "<group>"; };
 		C0DE22000000000000000002 /* ChatHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHaptics.swift; sourceTree = "<group>"; };
+		6C11E000000000000000A202 /* VoiceLiveProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/VoiceLiveProtocol.swift"; sourceTree = "<group>"; };
+		6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceLiveProtocolTests.swift; sourceTree = "<group>"; };
+		6C11E000000000000000A302 /* HermesVoiceCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/HermesVoiceCall.swift"; sourceTree = "<group>"; };
+		6C11E000000000000000A304 /* HermesVoiceCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceCallTests.swift; sourceTree = "<group>"; };
+		6C11E000000000000000A30A /* LiveVoiceCallBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/LiveVoiceCallBar.swift"; sourceTree = "<group>"; };
+		6C11E000000000000000A3BA /* LiveVoiceCallScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/LiveVoiceCallScreen.swift"; sourceTree = "<group>"; };
+		6C11E000000000000000A308 /* LiveVoiceCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveVoiceCallTests.swift; sourceTree = "<group>"; };
+		6C11E000000000000000A306 /* LiveVoiceCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/LiveVoiceCall.swift"; sourceTree = "<group>"; };
+		6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/WebRTCVoiceLiveTransport.swift"; sourceTree = "<group>"; };
 		C0DE22000000000000000004 /* ChatHapticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHapticsTests.swift; sourceTree = "<group>"; };
 		C08730000000000000000F01 /* HorizontalOverflowEdgeFadesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalOverflowEdgeFadesTests.swift; sourceTree = "<group>"; };
 		C08800000000000000000002 /* SessionHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHaptics.swift; sourceTree = "<group>"; };
@@ -1425,6 +1445,7 @@
 		C8240A000000000000000002 /* HermesConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesConnection.swift"; sourceTree = "<group>"; };
 		C87080000000000000000002 /* HermesBrowserSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesBrowserSignIn.swift"; sourceTree = "<group>"; };
 		E1071000000000000000A002 /* HermesTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesTranscription.swift"; sourceTree = "<group>"; };
+		6C11E000000000000000A102 /* HermesVoiceLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesVoiceLive.swift"; sourceTree = "<group>"; };
 		C8250A000000000000000002 /* HermesGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesGateway.swift"; sourceTree = "<group>"; };
 		C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesCanonicalProtocol.swift"; sourceTree = "<group>"; };
 		C8970A000000000000000002 /* HermesCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesCompatibility.swift"; sourceTree = "<group>"; };
@@ -1526,6 +1547,7 @@
 				1A2B3C4D5E6F700000000007 /* Highlightr in Frameworks */,
 				1A2B3C4D5E6F700000000008 /* KeychainAccess in Frameworks */,
 				5417A7400000000000000092 /* SwiftMath in Frameworks */,
+				6C11E000000000000000A092 /* WebRTC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1723,6 +1745,9 @@
 				C0390000000000000000000D /* APIClientUploadTests.swift */,
 				C03250000000000000F105 /* APIClientTranscribeTests.swift */,
 				C03260000000000000F102 /* APIClientTTSTests.swift */,
+				6C11E000000000000000A204 /* VoiceLiveProtocolTests.swift */,
+				6C11E000000000000000A304 /* HermesVoiceCallTests.swift */,
+				6C11E000000000000000A308 /* LiveVoiceCallTests.swift */,
 				C03270000000000000F102 /* APIClientSessionExportTests.swift */,
 				C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */,
 				C03251000000000000F106 /* ComposerVoiceInputServerRecordingTests.swift */,
@@ -1946,6 +1971,7 @@
 				C8240A000000000000000002 /* HermesConnection.swift */,
 				C87080000000000000000002 /* HermesBrowserSignIn.swift */,
 				E1071000000000000000A002 /* HermesTranscription.swift */,
+				6C11E000000000000000A102 /* HermesVoiceLive.swift */,
 				C8250A000000000000000002 /* HermesGateway.swift */,
 				C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */,
 				C8970A000000000000000002 /* HermesCompatibility.swift */,
@@ -2278,6 +2304,12 @@
 				A82A2A58F08883E396B94B1C /* SlashAutocompleteRanking.swift */,
 				0D1CE5F12B9E4D4D9E5A01C1 /* SlashCommandExecutor.swift */,
 				FC2A37872AC842629FBDDFA4 /* SlashCommandAutocompleteView.swift */,
+				6C11E000000000000000A002 /* WebRTCVoiceLiveTransport.swift */,
+				6C11E000000000000000A202 /* VoiceLiveProtocol.swift */,
+				6C11E000000000000000A302 /* HermesVoiceCall.swift */,
+				6C11E000000000000000A30A /* LiveVoiceCallBar.swift */,
+				6C11E000000000000000A3BA /* LiveVoiceCallScreen.swift */,
+				6C11E000000000000000A306 /* LiveVoiceCall.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -2591,6 +2623,7 @@
 				1A2B3C4D5E6F700000000097 /* Highlightr */,
 				1A2B3C4D5E6F700000000098 /* KeychainAccess */,
 				5417A7400000000000000091 /* SwiftMath */,
+				6C11E000000000000000A091 /* WebRTC */,
 			);
 			productName = HermesMobile;
 			productReference = 1A2B3C4D5E6F700000000010 /* HermesMobile.app */;
@@ -2729,6 +2762,7 @@
 				1A2B3C4D5E6F700000000093 /* XCRemoteSwiftPackageReference "Highlightr" */,
 				1A2B3C4D5E6F700000000099 /* XCRemoteSwiftPackageReference "KeychainAccess" */,
 				5417A7400000000000000090 /* XCRemoteSwiftPackageReference "SwiftMath" */,
+				6C11E000000000000000A090 /* XCRemoteSwiftPackageReference "WebRTC" */,
 			);
 			productRefGroup = 1A2B3C4D5E6F700000000032 /* Products */;
 			projectDirPath = "";
@@ -2841,6 +2875,7 @@
 				C8240A000000000000000001 /* HermesConnection.swift in Sources */,
 				C87080000000000000000001 /* HermesBrowserSignIn.swift in Sources */,
 				E1071000000000000000A001 /* HermesTranscription.swift in Sources */,
+				6C11E000000000000000A101 /* HermesVoiceLive.swift in Sources */,
 				C8250A000000000000000001 /* HermesGateway.swift in Sources */,
 				C1601CA00000000000000001 /* HermesCanonicalProtocol.swift in Sources */,
 				C8970A000000000000000001 /* HermesCompatibility.swift in Sources */,
@@ -3148,6 +3183,12 @@
 				C8660A000000000000000005 /* SafariView.swift in Sources */,
 				C27800000000000000000001 /* ChatGitControlsVisibilityPolicy.swift in Sources */,
 				C0DE22000000000000000001 /* ChatHaptics.swift in Sources */,
+				6C11E000000000000000A001 /* WebRTCVoiceLiveTransport.swift in Sources */,
+				6C11E000000000000000A201 /* VoiceLiveProtocol.swift in Sources */,
+				6C11E000000000000000A301 /* HermesVoiceCall.swift in Sources */,
+				6C11E000000000000000A309 /* LiveVoiceCallBar.swift in Sources */,
+				6C11E000000000000000A3B9 /* LiveVoiceCallScreen.swift in Sources */,
+				6C11E000000000000000A305 /* LiveVoiceCall.swift in Sources */,
 				C08800000000000000000001 /* SessionHaptics.swift in Sources */,
 				031031031031031031031009 /* DisplayMathView.swift in Sources */,
 				031031031031031031031001 /* MarkdownMathSegmenter.swift in Sources */,
@@ -3330,6 +3371,9 @@
 				C0391000000000000000000D /* APIClientUploadTests.swift in Sources */,
 				C03250000000000000B105 /* APIClientTranscribeTests.swift in Sources */,
 				C03260000000000000B102 /* APIClientTTSTests.swift in Sources */,
+				6C11E000000000000000A203 /* VoiceLiveProtocolTests.swift in Sources */,
+				6C11E000000000000000A303 /* HermesVoiceCallTests.swift in Sources */,
+				6C11E000000000000000A307 /* LiveVoiceCallTests.swift in Sources */,
 				C03270000000000000B102 /* APIClientSessionExportTests.swift in Sources */,
 				C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */,
 				C03251000000000000B106 /* ComposerVoiceInputServerRecordingTests.swift in Sources */,
@@ -4072,6 +4116,14 @@
 				minimumVersion = 1.7.3;
 			};
 		};
+		6C11E000000000000000A090 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 157.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -4109,6 +4161,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5417A7400000000000000090 /* XCRemoteSwiftPackageReference "SwiftMath" */;
 			productName = SwiftMath;
+		};
+		6C11E000000000000000A091 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6C11E000000000000000A090 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
