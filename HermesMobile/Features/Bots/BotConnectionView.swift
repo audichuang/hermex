@@ -358,6 +358,7 @@ extension BotHostStatus {
         self.probe = probe ?? { await BotHostStatusProbe().check($0, headers: $1) }
         self.relay = relay ?? { PushRegistrar.shared?.pairing(for: $0)?.relayURL }
         self.discard = discard ?? { old in
+            BotRoomDraftStore.shared.remove(server: server, connectionID: old.id)
             await PushRegistrar.shared?.forget(for: server)
             try? await BotHistoryCache.shared.remove(server: server, connectionID: old.id)
             await BotRosterCache.shared.remove(server: server, connectionID: old.id)

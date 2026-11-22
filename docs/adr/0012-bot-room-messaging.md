@@ -22,7 +22,7 @@ Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
 ## Never resend room commands automatically
 
-`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail. Only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure. A matching server event id in the loaded log settles an uncertain send without resending. For an attachment send, a retry rejection before admission triggers the log check below.
+`BotRoomReader.send` starts a new thread from the overview and continues the current discussion from detail. Only the dedicated retry button reuses an uncertain send's event id and payload. `BotRoomReader.command` checks ownership and the pending tuple inside `BotClient`'s actual socket write closure. A matching server event id in the loaded log settles an uncertain send without resending. A retry rejection before admission triggers the log check below.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
@@ -39,6 +39,24 @@ A poll can race the send acknowledgment, so `BotRoomReader.publishLog` hides the
 Desktop lets a send finish through navigation, shows the log event as soon as it arrives, and exposes Retry on the send button once the outcome is uncertain. Hermex suspends the room socket on backgrounding or navigation, so a lost reply can leave the send hidden and the composer locked even when the host received it. Matching the event in already-loaded history resolves that case immediately, even if the next poll has no new events.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Persist room drafts and one unresolved send across relaunches
+
+Room drafts live in protected Application Support storage, scoped to the server,
+Bot connection and room. Writing the send before socket dispatch preserves its
+original event and thread IDs if the process exits before the reply. The disk
+record keeps the oldest unresolved send while other threads can still send.
+Accepted sends and matching log events clear the saved send. Disband, expiry,
+connection removal or replacement, sign-out, and server removal purge the
+corresponding drafts and prevent readers already open from recreating them.
+
+Only the sent attachment manifest is needed for a retry. A restored manifest
+can refer to a message the host already committed, so its age cannot decide
+whether the files need to be attached again. If the host rejects Retry, the
+reader checks the log before asking for the files again. Unsent attachment
+chips, bytes and reply targets end with the reader.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomDraftStore.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`
 
 ## Show a thread's first message as the lead routing it
 
@@ -96,16 +114,17 @@ original ID and the prepared bytes for an explicit retry.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomAttachments.swift`, `HermesMobile/Features/Bots/BotRoomReader.swift`, `HermesMobile/Networking/Hermes/HermesGateway.swift`
 
-## Check the room log before restoring an uncertain attachment send
+## Check the room log before restoring an uncertain send to the composer
 
 Unsent attachment chips expire locally after 55 minutes, five minutes before
 the host can remove them. A committed event retains its attachments, so an
-explicit retry may still be safe after that deadline. The canonical gateway
-reports expired manifests as `invalid_params`. A standalone gateway reports
-`5112` with `data.admitted: false`. After either rejection, a successful poll
-lets the reader reconcile a matching event through the same log check. If the
-event is absent, restore the text and ask the user to attach the files again.
-A failed poll leaves the send uncertain while delivery is unconfirmed.
+explicit retry may still be safe after that deadline. The room treats canonical
+`invalid_params` and standalone `5112` with `data.admitted: false` as pre-admission
+rejections. Either can leave the original send's delivery unresolved. A successful
+poll settles it if the event is present. If the event is absent, clear the saved
+send and return its text to the composer. For an attachment send, ask the user
+to attach the files again. A failed poll leaves the send uncertain while delivery
+is unconfirmed.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
