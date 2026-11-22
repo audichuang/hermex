@@ -13,9 +13,15 @@ struct BotRoomMemberOutcome: Equatable {
 
     static func latest(in events: [BotRoomEvent]) -> [String: BotRoomMemberOutcome] {
         var discussions: [String: String] = [:]
+        var routingTasks: [String: Set<String>] = [:]
         for event in events {
-            guard event.kind == "message.user", let id = event.eventID, !id.isEmpty else { continue }
-            discussions[event.payload["thread_id"].text ?? ""] = id
+            if event.kind == "message.user", let id = event.eventID, !id.isEmpty {
+                discussions[event.payload["thread_id"].text ?? ""] = id
+            } else if event.kind == "room.assignment",
+                      let discussion = event.payload["discussion_event_id"].text, !discussion.isEmpty,
+                      let taskID = event.payload["task_id"].text, !taskID.isEmpty {
+                routingTasks[discussion, default: []].insert(taskID)
+            }
         }
         guard !discussions.isEmpty else { return [:] }
 
@@ -26,6 +32,8 @@ struct BotRoomMemberOutcome: Equatable {
             guard let discussion = discussions[thread],
                   let eventDiscussion = event.payload["discussion_event_id"].text,
                   eventDiscussion == discussion else { continue }
+            if let taskID = event.payload["task_id"].text, !taskID.isEmpty,
+               routingTasks[discussion]?.contains(taskID) == true { continue }
             guard let outcome = outcome(for: event) else { continue }
             outcomes[memberID] = outcome
         }

@@ -124,7 +124,9 @@ Matching Desktop's `memberOutcomes` rules, each thread tracks its current discus
 `turn.cancelled`, and `turn.deferred` with `reason == "member_unavailable"`) whose
 `discussion_event_id` matches their thread's current discussion count; a newer user message in
 the same thread retires older outcomes there without affecting other threads, and later events
-for a member overwrite earlier ones. Because Hermex loads rooms in pages and disk-cached rows
+for a member overwrite earlier ones. Terminal events whose `task_id` matches a `room.assignment`
+event in the same discussion are skipped, matching `BotRoomRound`, so a lead's routing turn is
+not reported as an answer or skip. Because Hermex loads rooms in pages and disk-cached rows
 omit `discussion_event_id` and `turn.*`, outcomes reflect only loaded host-fetched events:
 members whose last turn predates the loaded window show no outcome rather than a stale one.
 

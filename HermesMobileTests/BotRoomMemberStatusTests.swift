@@ -82,6 +82,42 @@ import XCTest
                        "a later event for the same member overwrites an earlier one")
     }
 
+    func testLeadRoutingTurnsMatchingRoomAssignmentTaskIDAreIgnored() {
+        let routingOnly = [
+            user(1, thread: "t1"),
+            event(2, "room.assignment", payload: [
+                "discussion_event_id": .string("user:1"), "thread_id": .string("t1"),
+                "task_id": .string("dtask:route"), "lead_member_id": .string("ada"),
+                "member_ids": .array([.string("linus")]), "fallback": .bool(false)
+            ]),
+            terminal(3, "turn.settled", member: "ada", discussion: "user:1", thread: "t1",
+                     payload: ["task_id": .string("dtask:route"), "passed": .bool(true)]),
+            terminal(4, "turn.settled", member: "linus", discussion: "user:1", thread: "t1",
+                     payload: ["task_id": .string("dtask:reply"), "passed": .bool(false)]),
+            user(5, thread: "t2"),
+            event(6, "room.assignment", payload: [
+                "discussion_event_id": .string("user:5"), "thread_id": .string("t2"),
+                "task_id": .string("dtask:route2"), "lead_member_id": .string("grace"),
+                "member_ids": .array([.string("grace")]), "fallback": .bool(true)
+            ]),
+            terminal(7, "turn.failed", member: "grace", discussion: "user:5", thread: "t2",
+                     payload: ["task_id": .string("dtask:route2"), "reason_code": .string("runtime_offline")])
+        ].compactMap(BotRoomEvent.init)
+
+        let outcomes = BotRoomMemberOutcome.latest(in: routingOnly)
+        XCTAssertNil(outcomes["ada"], "lead routing settle under room.assignment task_id must not count as an outcome")
+        XCTAssertNil(outcomes["grace"], "lead routing failure under room.assignment task_id must not count as an outcome")
+        XCTAssertEqual(outcomes["linus"], BotRoomMemberOutcome(kind: .replied))
+
+        let withLeadAnswer = routingOnly + [
+            terminal(8, "turn.settled", member: "grace", discussion: "user:5", thread: "t2",
+                     payload: ["task_id": .string("dtask:route"), "passed": .bool(false)])
+        ].compactMap(BotRoomEvent.init)
+        let afterAnswer = BotRoomMemberOutcome.latest(in: withLeadAnswer)
+        XCTAssertEqual(afterAnswer["grace"], BotRoomMemberOutcome(kind: .replied),
+                       "a real lead turn is counted and routing task_ids are scoped per discussion")
+    }
+
     func testLiveActivityOutranksOutcomeAndNilInputsProduceNil() throws {
         let failed = BotRoomMemberOutcome(kind: .failed, reasonCode: "runtime_offline")
         let runningWithTool = try XCTUnwrap(BotRoomMemberActivity(.object([
