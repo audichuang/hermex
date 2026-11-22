@@ -5,9 +5,11 @@ import SwiftUI
     @Bindable var reader: BotRoomReader
     let roster: [BotProfile]
     let avatars: [String: UIImage]
+    var hostProfile: String? = nil
     var onUpdateSignIn: () -> Void = {}
     @State private var name = ""
     @State private var settings: BotRoomSettingsDraft?
+    @State private var copiedDeliveryTarget = false
     @State private var confirmingDisband = false
     @State private var visible = false
     @State private var owner = UUID()
@@ -60,6 +62,7 @@ import SwiftUI
                     } else { memberRow(member) }
                 }
             }
+            deliveryTargetSection
             if reader.foreignAuthority { Text("Managed by another Hermes").font(AppFont.callout()) }
             if let message = reader.commandMessage { Text(message).font(AppFont.callout()) }
             if reader.finishingStop { Text("Finishing stop…").font(AppFont.callout()) }
@@ -109,6 +112,54 @@ import SwiftUI
         }
         .onDisappear { visible = false; reader.leave(owner: owner) }
         .onChange(of: NetworkPathMonitor.shared.changeCount) { if visible { reader.networkPathDidChange() } }
+        .onChange(of: hostProfile) { copiedDeliveryTarget = false }
+        .task(id: copiedDeliveryTarget) {
+            guard copiedDeliveryTarget else { return }
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            copiedDeliveryTarget = false
+        }
+    }
+    private var deliveryTargetSection: some View {
+        let target = BotRoomDeliveryTarget.address(roomID: reader.room.id, profile: hostProfile)
+        return Section {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    deliveryTargetText(target)
+                    Spacer(minLength: 8)
+                    copyDeliveryTargetButton(target)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    deliveryTargetText(target)
+                    copyDeliveryTargetButton(target)
+                }
+            }
+        } header: {
+            Text("Delivery target")
+        } appFooter: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Use this target in a scheduled task’s deliver field to post here.")
+                if BotRoomDeliveryTarget.normalizedProfile(hostProfile) == nil {
+                    Text("If the scheduled task belongs to another Profile, append @profile.")
+                }
+            }
+        }
+    }
+    private func deliveryTargetText(_ target: String) -> some View {
+        Text(verbatim: target)
+            .font(AppFont.footnote().monospaced())
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+    private func copyDeliveryTargetButton(_ target: String) -> some View {
+        Button {
+            UIPasteboard.general.string = target
+            copiedDeliveryTarget = true
+        } label: {
+            Label(copiedDeliveryTarget ? String(localized: "Copied") : String(localized: "Copy"),
+                  systemImage: copiedDeliveryTarget ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(copiedDeliveryTarget ? String(localized: "Copied delivery target") : String(localized: "Copy delivery target"))
     }
     private func commitName() {
         guard reader.mayRename, BotRoomRPC.validName(name) else { return }

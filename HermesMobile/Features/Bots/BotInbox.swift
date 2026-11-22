@@ -122,6 +122,7 @@ import UIKit
 
     let server: URL
     private(set) var connection: BotConnection?
+    private(set) var hostProfile: String?
     private(set) var profiles: [BotProfile] = []
     private(set) var rooms: [BotGroupRoom] = []
     private var hasRoomList = false
@@ -378,7 +379,7 @@ import UIKit
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         statusPollTask?.cancel(); statusPollTask = nil
         freshnessTask?.cancel(); freshnessTask = nil
-        lastRosterRows = nil; lastRoomsRead = nil
+        lastRosterRows = nil; lastRoomsRead = nil; hostProfile = nil
         wire?.close(); wire = nil
         link = .idle
     }
@@ -500,6 +501,10 @@ import UIKit
             let roster = try await client.call(.profilesList(includeSessions: true))
             guard wire === client, serial == reloadSerial else { return false }
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
+            let nextHostProfile = client.speaksCanonicalProtocol
+                ? BotRoomDeliveryTarget.normalizedProfile(rows.first?["name"].text)
+                : nil
+            if nextHostProfile != hostProfile { hostProfile = nextHostProfile }
             let previous = Set(profiles.map(\.id))
             let rowsChanged = rows != lastRosterRows
             let fresh = Self.roster(rows)

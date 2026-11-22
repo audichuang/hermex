@@ -117,7 +117,7 @@ import SwiftUI
                 toast = String(localized: "This room’s history is no longer available.")
             }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
                 inbox.removeRoom(key); inbox.selection.room = nil
-            }), roster: inbox.profiles, avatars: inbox.avatars,
+            }), roster: inbox.profiles, avatars: inbox.avatars, hostProfile: inbox.hostProfile,
                 onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
                 .id(key)
                 .onAppear { UsageReports.shared.record(.bots) }
@@ -137,7 +137,7 @@ import SwiftUI
                         toast = String(localized: "This room’s history is no longer available.")
                     }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
                         inbox.removeRoom(key); inbox.selection.room = nil
-                    }), roster: inbox.profiles, avatars: inbox.avatars,
+                    }), roster: inbox.profiles, avatars: inbox.avatars, hostProfile: inbox.hostProfile,
                         onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
                     .id(key)
                     .onAppear { UsageReports.shared.record(.bots) }
