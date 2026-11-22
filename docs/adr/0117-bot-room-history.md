@@ -10,13 +10,21 @@ Lives in: `HermesMobile/Features/Bots/BotHistoryCache.swift`
 
 ## Persist cursor-only room changes lazily, with a periodic save
 
-Invisible events move only the cursor, so `BotHistoryCache.appendRoom` keeps that cursor in memory and lets the next real write persist it. After a kill, reopening re-reads from the older saved cursor and the overlap merge absorbs the repeated pages. A periodic save every `cursorOnlySaveInterval` (10 minutes) keeps a long-running room's saved `savedAt` fresh so it cannot expire past `lifetime` (30 days) on relaunch.
+Invisible events move only the cursor, so `BotHistoryCache.appendRoom` keeps that cursor in memory and lets the next real write persist it. A periodic save every `cursorOnlySaveInterval` (10 minutes) keeps a long-running room's saved `savedAt` fresh so it cannot expire past `lifetime` (30 days) on relaunch.
 
 Lives in: `HermesMobile/Features/Bots/BotHistoryCache.swift`
 
 ## Cache a room's replay window in one write
 
 `BotRoomReader.readPages` commits the complete contiguous window of pages to `BotHistoryCache` together. Saving earlier pages one at a time would temporarily leave a gap before the already-cached window. Storage is best-effort; its failures never stop live reading.
+
+Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
+
+## Replay the recent event window after a cold start
+
+The disk search cache can advance past events it omits, such as failed turns and routing signals. The first successful connection after restoring a snapshot replays up to 200 events behind its cursor. The cached transcript stays visible while the pages load, including when the first connection fails. A reopen using the in-memory transcript already has the recent events and reads forward from its cursor.
+
+Older rows restored from disk have message text, thread IDs and cached attachment manifests. Discussion IDs and turn events are available only in pages loaded from the host, so room details derived from them cover only those pages.
 
 Lives in: `HermesMobile/Features/Bots/BotRoomReader.swift`
 
@@ -34,10 +42,10 @@ Lives in: `HermesMobile/Features/Bots/BotHistoryCache.swift`
 
 ## Save attachment manifests with their owning messages
 
-Reopening after app termination resumes from the saved cursor, so the host may
-never replay the events behind it. Persist manifest metadata and the owning event
-ID even when a message has no cacheable text. The optional field lets older
-snapshots decode. Downloaded bytes may expire on the host, and local search still
-matches message text only.
+Cached messages remain visible offline and can predate the window replayed on
+relaunch. Persist manifest metadata and the owning event ID even when a message
+has no cacheable text. The optional field lets older snapshots decode.
+Downloaded bytes may expire on the host, and local search still matches message
+text only.
 
 Lives in: `HermesMobile/Features/Bots/BotHistoryCache.swift`

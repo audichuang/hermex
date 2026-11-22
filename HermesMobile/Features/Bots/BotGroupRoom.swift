@@ -262,6 +262,13 @@ struct BotRoomLog {
     mutating func begin(latest: Int) {
         self = Self(); cursor = Self.windowStart(before: latest); earlierBoundary = cursor
     }
+    mutating func rewind(to sequence: Int) {
+        events.removeAll { $0.seq > sequence }
+        signals.removeAll { $0.seq > sequence }
+        seen = seen.filter { $0 <= sequence }
+        cursor = sequence
+        earlierBoundary = min(earlierBoundary, sequence)
+    }
     mutating func loadedEarlier(from start: Int) { earlierBoundary = start }
     mutating func acknowledge(_ event: BotJSON) {
         let previous = cursor
