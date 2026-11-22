@@ -133,14 +133,153 @@ import Observation
         conversation.suspend()
     }
 
-    func testAMissingOrFailedLookupNeverCreatesABotChat() async {
-        for failure in [BotFailure.missingChat, .rejected(5000)] {
-            let wire = BotFixtureWire(); wire.lookupFailure = failure
-            let (conversation, owner) = attach(wire, .canonicalChat(profile: profile))
-            await conversation.activate()
-            XCTAssertEqual(wire.calls.map(\.0), ["session.list"], "\(failure)")
-            XCTAssertEqual(owner.disconnects.map(\.failure), [failure])
-            conversation.suspend()
+    func testAnEmptyLookupCreatesAndOpensTheBotChat() async {
+        let host = BotSocketHost()
+        let empty = BotSocketHost.Reply(result: .object(["sessions": .array([])]))
+        host.next("session.list", empty)
+        host.next("session.list", empty)
+        host.always("session.create", .init(result: .object(["session_id": .string("tip")])))
+        host.always("session.resume", .init(result: canonicalSnapshot()))
+        host.always("session.events.since", .init(result: BotFixtureWire.replay(epoch: "session-epoch")))
+        addTeardownBlock { HermesHostFixture.reset() }
+        let wire = BotClient(http: host.connection(record, canonical: true))
+        let (conversation, owner) = attach(wire, .canonicalChat(profile: profile))
+        defer { conversation.suspend() }
+
+        await conversation.activate()
+
+        let creates = host.requests.filter { $0["method"].text == "session.create" }
+        XCTAssertEqual(creates.count, 1)
+        XCTAssertEqual(creates.first?["params"]["profile"].text, profile)
+        XCTAssertFalse(host.requests.contains { $0["method"].text == "session.title" })
+        XCTAssertEqual(conversation.connectionState, .connected)
+        XCTAssertEqual(owner.log, ["root root", "snapshot", "connected"])
+    }
+
+    func testAFailedLookupNeverCreatesABotChat() async {
+        let wire = BotFixtureWire(); wire.lookupFailure = .rejected(5000)
+        let (conversation, owner) = attach(wire, .canonicalChat(profile: profile))
+        defer { conversation.suspend() }
+
+        await conversation.activate()
+
+        XCTAssertEqual(wire.calls.map(\.0), ["session.list"])
+        XCTAssertEqual(owner.disconnects.map(\.failure), [.rejected(5000)])
+    }
+
+    func testADeepLinkedOpenStillCreatesAMissingBotChat() async {
+        var rows: [BotJSON] = []
+        let wire = BotChatOpeningWire(lookup: { rows }, create: {
+            rows = [.object(["id": .string("root"), "resolved_id": .string("tip")])]
+        })
+        let (conversation, owner) = attach(wire, .canonicalChat(profile: profile), linkedRoot: "old-root")
+        defer { conversation.suspend() }
+
+        await conversation.activate()
+
+        XCTAssertEqual(wire.calls.filter { $0 == "session.create" }.count, 1)
+        XCTAssertEqual(conversation.connectionState, .connected)
+        XCTAssertEqual(conversation.root, "root")
+        XCTAssertEqual(owner.log, ["replaced", "root root", "snapshot", "connected"])
+    }
+
+    func testAnAmbiguousLookupStillReportsMissingChat() async {
+        let host = BotSocketHost()
+        host.always("session.list", .init(result: .object(["sessions": .array([
+            .object(["id": .string("root"), "resolved_id": .string("tip")]),
+            .object(["id": .string("other-root"), "resolved_id": .string("other-tip")])
+        ])])))
+        let (conversation, owner, _) = attach(host, .canonicalChat(profile: profile))
+        defer { conversation.suspend() }
+
+        await conversation.activate()
+
+        XCTAssertEqual(host.requests.map { $0["method"].text }, ["session.list"])
+        XCTAssertEqual(owner.disconnects.map(\.failure), [.missingChat])
+    }
+
+    func testConcurrentOpensCreateOnlyOneBotChat() async {
+        let creating = expectation(description: "first open sent session.create")
+        let secondLookup = expectation(description: "second open read the empty list")
+        var release: CheckedContinuation<Void, Never>?
+        var rows: [BotJSON] = []
+        let publishChat = {
+            rows = [.object(["id": .string("root"), "resolved_id": .string("tip")])]
+        }
+        let firstWire = BotChatOpeningWire(lookup: { rows }, create: {
+            await withCheckedContinuation { release = $0; creating.fulfill() }
+            publishChat()
+        })
+        var secondReadCount = 0
+        let secondWire = BotChatOpeningWire(lookup: {
+            secondReadCount += 1
+            if secondReadCount == 1 { secondLookup.fulfill() }
+            return rows
+        }, create: publishChat)
+        let (first, _) = attach(firstWire, .canonicalChat(profile: profile))
+        let (second, _) = attach(secondWire, .canonicalChat(profile: profile))
+        defer { first.suspend(); second.suspend() }
+
+        let firstOpen = Task { await first.activate() }
+        await fulfillment(of: [creating], timeout: 3)
+        let secondOpen = Task { await second.activate() }
+        await fulfillment(of: [secondLookup], timeout: 3)
+        release?.resume()
+        await firstOpen.value
+        await secondOpen.value
+
+        XCTAssertEqual((firstWire.calls + secondWire.calls).filter { $0 == "session.create" }.count, 1)
+        XCTAssertEqual(secondReadCount, 2)
+        XCTAssertEqual(first.connectionState, .connected)
+        XCTAssertEqual(second.connectionState, .connected)
+        XCTAssertEqual(first.root, second.root)
+    }
+
+    func testConcurrentOpenRecoversWhenTheFirstOpenIsCancelled() async {
+        for createWasSent in [false, true] {
+            let firstMint = expectation(description: "first open reached the create boundary")
+            let secondLookup = expectation(description: "second open read the empty list")
+            var release: CheckedContinuation<Void, Never>?
+            var rows: [BotJSON] = []
+            let publishChat = {
+                rows = [.object(["id": .string("root"), "resolved_id": .string("tip")])]
+            }
+            let waitForCancellation: () async -> Void = {
+                await withCheckedContinuation { release = $0; firstMint.fulfill() }
+            }
+            let firstWire = BotChatOpeningWire(lookup: { rows }, create: {
+                await waitForCancellation()
+                publishChat()
+            })
+            if !createWasSent {
+                firstWire.beforeCreate = {
+                    await waitForCancellation()
+                    try Task.checkCancellation()
+                }
+            }
+            var secondReadCount = 0
+            let secondWire = BotChatOpeningWire(lookup: {
+                secondReadCount += 1
+                if secondReadCount == 1 { secondLookup.fulfill() }
+                return rows
+            }, create: publishChat)
+            let (first, _) = attach(firstWire, .canonicalChat(profile: profile))
+            let (second, _) = attach(secondWire, .canonicalChat(profile: profile))
+            defer { first.suspend(); second.suspend() }
+
+            let firstOpen = Task { await first.activate() }
+            await fulfillment(of: [firstMint], timeout: 3)
+            let secondOpen = Task { await second.activate() }
+            await fulfillment(of: [secondLookup], timeout: 3)
+            first.suspend()
+            firstOpen.cancel()
+            release?.resume()
+            await firstOpen.value
+            await secondOpen.value
+
+            XCTAssertEqual(second.connectionState, .connected, "First create dispatched: \(createWasSent)")
+            XCTAssertEqual(second.root, "root")
+            XCTAssertEqual((firstWire.calls + secondWire.calls).filter { $0 == "session.create" }.count, 1)
         }
     }
 
@@ -159,6 +298,26 @@ import Observation
             XCTAssertEqual(Set(wire.calls.map(\.0)), ["session.list", "session.resume", "session.events.since"])
             conversation.suspend()
         }
+    }
+
+    func testAReconnectNeverCreatesAReplacementBotChat() async {
+        let wire = BotFixtureWire()
+        let (conversation, owner) = attach(wire, .canonicalChat(profile: profile), reconnectDelay: { _ in })
+        defer { conversation.suspend() }
+        await conversation.activate()
+        XCTAssertEqual(conversation.connectionState, .connected)
+
+        wire.lookupFailure = .missingChat
+        let stopped = expectation(description: "reconnect stopped after an empty lookup")
+        wire.onDisconnect?(BotFailure.transport)
+        withObservationTracking { _ = conversation.isReconnecting } onChange: { stopped.fulfill() }
+        await fulfillment(of: [stopped], timeout: 3)
+
+        XCTAssertFalse(wire.calls.contains { $0.0 == "session.create" }, "A reconnect must not send session.create")
+        XCTAssertEqual(owner.disconnects.last?.failure, .missingChat)
+        XCTAssertEqual(owner.disconnects.last?.retrying, false)
+        XCTAssertEqual(conversation.root, "root")
+        XCTAssertFalse(owner.log.contains("replaced"))
     }
 
     func testReconnectBacksOffAndStopsForARefusedPassword() async {
@@ -383,13 +542,14 @@ import Observation
         return (conversation, owner, client)
     }
 
-    private func attach(_ wire: any BotTransport, _ target: ConversationTarget,
+    private func attach(_ wire: any BotTransport, _ target: ConversationTarget, linkedRoot: String? = nil,
                         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
                         // test-wait: a factory default; a reconnect waits 1 s or more, so a test that reaches one passes its own delay.
                         reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) })
         -> (HermesConversation, RecordingOwner) {
         let conversation = HermesConversation(server: URL(string: "https://hermes.example")!, connection: record,
-                                              target: target, wire: wire, reconnectDelay: reconnectDelay, now: now)
+                                              target: target, linkedRoot: linkedRoot, wire: wire,
+                                              reconnectDelay: reconnectDelay, now: now)
         let owner = RecordingOwner()
         conversation.owner = owner
         return (conversation, owner)
@@ -403,6 +563,39 @@ import Observation
     private func frame(_ seq: Int, of session: String) -> BotJSON {
         .object(["session_id": .string(session), "seq": .number(Double(seq)), "type": .string("message.delta"),
                  "payload": .object(["text": .string("part \(seq)")])])
+    }
+}
+
+@MainActor private final class BotChatOpeningWire: BotTransport {
+    private let fixture = BotFixtureWire()
+    private let lookup: () -> [BotJSON]
+    private let create: () async -> Void
+    var beforeCreate: (() async throws -> Void)?
+    var calls: [String] = []
+    var replayEpoch: String? { fixture.replayEpoch }
+    var onEvent: ((BotJSON) -> Void)?
+    var onDisconnect: ((Error) -> Void)?
+
+    init(lookup: @escaping () -> [BotJSON], create: @escaping () async -> Void) {
+        self.lookup = lookup
+        self.create = create
+    }
+
+    func connect() async throws {}
+    func close() {}
+
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        if case .sessionCreate = call { try await beforeCreate?() }
+        try validateDispatch?()
+        calls.append(call.method)
+        switch call {
+        case .sessionList: return .object(["sessions": .array(lookup())])
+        case .sessionCreate:
+            await create()
+            return .object(["session_id": .string(fixture.runtimeID)])
+        case .sessionTitle: return .object([:])
+        default: return try await fixture.call(call)
+        }
     }
 }
 
