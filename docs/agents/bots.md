@@ -2301,8 +2301,9 @@ Room RPC errors preserve `data.reason`: `room_history_expired` or code 4114 remo
 the room with a toast. Canonical `runtime_coordination_required` and standalone
 4123 both ask for a gateway restart. Known retry, discard, disband, and approval
 refusals explain what happened and what to do next. A non-disbanded room whose
-`groups.state` omits `driver_status` shows an unavailable banner and disables
-the composer, room commands, and attachment downloads and automatic previews.
+`groups.state` omits `driver_status` shows an unavailable notice pill above the
+composer and disables the composer, room commands, and attachment downloads and
+automatic previews.
 The next state with `driver_status` restores the controls. No replica, peer,
 promotion, or demotion method is permitted.
 
@@ -2454,8 +2455,9 @@ only to the app target; the share extension and Live Activity do not manage room
 ## Activity presentation
 
 The room composer has one action pill (`BotComposerPill`) for requests, errors, reconnect,
-Update sign-in and retry; a Hermes chat borrows its Update sign-in. In rooms, command
-errors and uncertain-send recovery take precedence over a blocked member's request; its
+Update sign-in, retry, and temporary room unavailability; a Hermes chat borrows its Update sign-in. In rooms, command
+errors, sign-in, reconnect, and uncertain-send recovery take precedence over temporary room
+unavailability and a blocked member's request; its
 inline action card remains available. Routine Working/Connecting banners are omitted. The
 composer's primary button stays Send while members work and switches to Retry when that
 composer has an uncertain send (`BotRoomReader.primaryAction(in:)`); the room-wide Stop

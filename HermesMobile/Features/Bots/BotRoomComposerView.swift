@@ -271,11 +271,15 @@ enum BotComposerPill: Equatable {
     var errorText: String? { if case .error(let text) = self { return text }; return nil }
 
     static func room(link: BotRoomReader.Link, blocked: Bool, hasActions: Bool,
-                     mayRetry: Bool, needsSignIn: Bool = false, errorText: String?) -> BotComposerPill? {
+                     mayRetry: Bool, needsSignIn: Bool = false, unavailable: Bool,
+                     errorText: String?) -> BotComposerPill? {
         if let errorText { return .error(errorText) }
         if needsSignIn { return .updateSignIn }
         if link == .stopped { return .reconnect }
         if mayRetry { return .retrySend }
+        if link == .live && unavailable {
+            return .notice(String(localized: "This group is temporarily unavailable. Restart or update the Hermes gateway that manages it."))
+        }
         if link == .live && blocked {
             return hasActions ? .request(String(localized: "Waiting for your answer"))
                 : .notice(String(localized: "Waiting on Hermes Desktop"))
@@ -291,8 +295,17 @@ struct BotComposerPillView: View {
     var onShowRequest: () -> Void = {}
     var onDismissError: () -> Void = {}
     var onRetrySend: () -> Void = {}
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var isNotice: Bool {
+        if case .notice = pill { return true }
+        return false
+    }
 
     var body: some View {
+        let shape = isNotice && dynamicTypeSize.isAccessibilitySize
+            ? AnyShape(RoundedRectangle(cornerRadius: 20))
+            : AnyShape(Capsule())
         Group {
             switch pill {
             case .request(let text):
@@ -312,13 +325,13 @@ struct BotComposerPillView: View {
         }
         .buttonStyle(.plain)
         .font(AppFont.footnote())
-        .lineLimit(3)
+        .lineLimit(isNotice ? nil : 3)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
         .foregroundStyle(.appPrimary)
         .padding(.horizontal, 14).padding(.vertical, 9)
-        .background(.appMaterial(.regularMaterial), in: Capsule())
-        .overlay(Capsule().stroke(.primary.opacity(0.10), lineWidth: 1))
+        .background(.appMaterial(.regularMaterial), in: shape)
+        .overlay(shape.stroke(.primary.opacity(0.10), lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 24)
         .accessibilityIdentifier("bot-chat-status")

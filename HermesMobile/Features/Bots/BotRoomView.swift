@@ -48,10 +48,6 @@ import SwiftUI
                         if reader.foreignAuthority {
                             Text("Managed by another Hermes").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         }
-                        if reader.runtimeDown {
-                            Text("This group is temporarily unavailable. Restart or update the Hermes gateway that manages it.")
-                                .font(AppFont.caption()).foregroundStyle(.appSecondary)
-                        }
                         if threadID != nil, reader.threads.first(where: { $0.id == threadID })?.root == nil {
                             Text("Earlier messages not loaded").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         }
@@ -283,7 +279,8 @@ import SwiftUI
 
     private var pill: BotComposerPill? {
         BotComposerPill.room(link: reader.link, blocked: reader.status.blocked,
-            hasActions: !reader.status.actions.isEmpty, mayRetry: reader.mayResend(in: threadID), needsSignIn: reader.needsSignIn,
+            hasActions: !reader.status.actions.isEmpty, mayRetry: reader.mayResend(in: threadID),
+            needsSignIn: reader.needsSignIn, unavailable: reader.runtimeDown,
             errorText: errorTexts.first { !dismissedErrors.contains($0) })
     }
 
