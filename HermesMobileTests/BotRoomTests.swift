@@ -1177,10 +1177,14 @@ enum RoomFixture {
     static let approval = BotJSON.object(["kind": .string("approval"), "member_id": .string("chief"),
         "task_id": .string("task:1"), "execution_generation": .number(1), "request_id": .string("approval:1"),
         "approval": .object(["command": .string("echo hello"), "choices": .array([.string("once"), .string("always"), .string("deny")])])])
-    static func status(running: Int = 0, stopping: Int = 0, actions: [BotJSON] = []) -> BotJSON {
-        .object(["working": .bool(running > 0), "blocked": .bool(!actions.isEmpty || stopping > 0),
-                 "counts": .object(["running": .number(Double(running)), "stopping": .number(Double(stopping))]),
-                 "pending_actions": .array(actions)])
+    static func status(running: Int = 0, stopping: Int = 0, actions: [BotJSON] = [], maxContinues: Int? = nil) -> BotJSON {
+        var fields: [String: BotJSON] = [
+            "working": .bool(running > 0), "blocked": .bool(!actions.isEmpty || stopping > 0),
+            "counts": .object(["running": .number(Double(running)), "stopping": .number(Double(stopping))]),
+            "pending_actions": .array(actions)
+        ]
+        fields["max_continues"] = maxContinues.map { .number(Double($0)) }
+        return .object(fields)
     }
     static let methods = ["groups.capabilities", "groups.list", "groups.state", "groups.log",
                           "groups.send", "groups.stop", "groups.approve", "groups.retry",
@@ -1266,7 +1270,7 @@ enum RoomFixture {
     func close() { closed += 1 }
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         let method = call.method, params = try call.params()
-        if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.discard", "groups.create", "groups.rename",
+        if ["groups.send", "groups.stop", "groups.continue", "groups.approve", "groups.retry", "groups.discard", "groups.create", "groups.rename",
             "groups.disband"].contains(method) {
             await beforeWrite?()
             try validateDispatch?()
@@ -1302,8 +1306,28 @@ enum RoomFixture {
                 disbanded = true
                 result = .object(["tombstone": .object(["room_id": params["room_id"]!, "disbanded_at": .number(100)])])
             case "groups.stop":
-                driverStatus = RoomFixture.status(stopping: 1)
-                result = .object(["cancelled": .number(1)])
+                let cancelled = BotRoomStatus(driverStatus).stoppable
+                driverStatus = RoomFixture.status(stopping: cancelled, maxContinues: driverStatus["max_continues"].integer)
+                latest += 1
+                roomEvents[latest] = RoomFixture.event(latest, kind: "room.stop_requested")
+                result = .object(["cancelled": .number(Double(cancelled))])
+            case "groups.continue":
+                let discussion = params["discussion_event_id"]!
+                let pause = roomEvents.values.filter {
+                    $0["kind"].text == "room.activity" && $0["payload"]["status"].text == "bounded"
+                        && $0["payload"]["discussion_event_id"] == discussion
+                }.max { ($0["seq"].integer ?? 0) < ($1["seq"].integer ?? 0) }
+                let thread = try XCTUnwrap(pause?["payload"]["thread_id"].text)
+                let grant = roomEvents.values.filter {
+                    $0["kind"].text == "room.continued" && $0["payload"]["discussion_event_id"] == discussion
+                }.count + 1
+                latest += 1
+                var event = RoomFixture.event(latest, kind: "room.continued").fields!
+                event["payload"] = .object(["discussion_event_id": discussion, "thread_id": .string(thread),
+                                            "grant": .number(Double(grant))])
+                let continued = BotJSON.object(event)
+                roomEvents[latest] = continued
+                result = .object(["continued": .bool(true), "event": continued])
             case "groups.approve": result = .object(["approved": .bool(true)])
             case "groups.discard": result = .object(["discarded": .bool(true), "task": params["task_id"]!])
             default: result = .object(["retried": .bool(true)])

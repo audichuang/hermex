@@ -163,6 +163,7 @@ struct BotRoomStatus: Equatable {
     let blocked: Bool
     let stopping: Int
     let stoppable: Int
+    let maxContinues: Int?
     let actions: [BotRoomAction]
     let activity: [BotRoomMemberActivity]
     init(_ value: BotJSON) {
@@ -171,6 +172,7 @@ struct BotRoomStatus: Equatable {
         blocked = value["blocked"].flag == true
         stopping = max(0, value["counts"]["stopping"].integer ?? 0)
         stoppable = max(0, value["counts"]["queued"].integer ?? 0) + max(0, value["counts"]["running"].integer ?? 0)
+        maxContinues = value["max_continues"].integer
         actions = (value["pending_actions"].list ?? []).map(BotRoomAction.init)
     }
     var interval: Duration { working || blocked || stopping > 0 ? .seconds(2) : .seconds(10) }
@@ -194,12 +196,14 @@ struct BotRoomEvent: Identifiable, Equatable {
         return id
     }
     var isMessage: Bool { kind == "message.user" || kind == "message.member" }
+    var isBoundedActivity: Bool { kind == "room.activity" && payload["status"].text == "bounded" }
 
     static func hasConversation(in events: some Sequence<BotRoomEvent>) -> Bool {
         events.contains { ["message.user", "message.member"].contains($0.kind) }
     }
     var visible: Bool {
-        ["message.user", "message.member", "turn.failed", "turn.cancelled", "room.stop_requested", "room.renamed"].contains(kind)
+        isBoundedActivity || ["message.user", "message.member", "turn.failed", "turn.cancelled",
+                              "room.stop_requested", "room.renamed", "room.continued"].contains(kind)
     }
     var isRoundSignal: Bool { ["room.context_set", "room.assignment", "turn.settled"].contains(kind) }
     func member(in room: BotGroupRoom) -> BotGroupRoom.Member? {
@@ -214,6 +218,8 @@ struct BotRoomEvent: Identifiable, Equatable {
         case "turn.failed": return payload["error"].text.map { String(localized: "Failed: \($0)") } ?? String(localized: "Turn failed")
         case "turn.cancelled": return String(localized: "Turn cancelled")
         case "room.stop_requested": return String(localized: "Stop requested")
+        case "room.continued": return String(localized: "Discussion continued")
+        case "room.activity" where isBoundedActivity: return String(localized: "Work limit reached")
         case "room.renamed": return String(localized: "Room renamed to \(payload["name"].text ?? "")")
         default: return ""
         }

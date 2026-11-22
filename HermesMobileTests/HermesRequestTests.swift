@@ -178,6 +178,8 @@ final class HermesRequestTests: XCTestCase {
              ["room_id": .string("room"), "event_id": .string("e1"),
               "payload": .object(["text": .string("hi"), "thread_id": .string("t1")])]),
             (.groupsStop(roomID: "room", cancelID: "c1"), "groups.stop", ["room_id": .string("room"), "cancel_id": .string("c1")]),
+            (.groupsContinue(roomID: "room", discussionEventID: "user:1"), "groups.continue",
+             ["room_id": .string("room"), "discussion_event_id": .string("user:1")]),
             (.groupsApprove(roomID: "room", memberID: "dev", taskID: "t1", executionGeneration: 2, requestID: "r1", choice: .deny),
              "groups.approve", ["room_id": .string("room"), "member_id": .string("dev"), "task_id": .string("t1"),
                                 "execution_generation": .number(2), "request_id": .string("r1"), "choice": .string("deny")]),
@@ -205,6 +207,11 @@ final class HermesRequestTests: XCTestCase {
             XCTAssertEqual(call.method, method)
             XCTAssertEqual(try call.params(), params, method)
         }
+    }
+
+    func testRoomContinueValidatesBothIdentifiers() {
+        XCTAssertThrowsError(try HermesCall.groupsContinue(roomID: "../room", discussionEventID: "user:1").params())
+        XCTAssertThrowsError(try HermesCall.groupsContinue(roomID: "room", discussionEventID: "").params())
     }
 
     func testRoomUploadSendsRawBase64AndStableIdentity() throws {

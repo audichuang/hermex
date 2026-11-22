@@ -56,10 +56,13 @@ import SwiftUI
                             if threadID == nil, let thread = reader.threads.first(where: { $0.latest.seq == event.seq }) {
                                 Button { selectedThread = thread.id } label: {
                                     BotRoomThreadPreview(thread: thread, reader: reader,
-                                                         rootFiles: thread.root.flatMap { reader.attachmentLists[$0.seq]?.summary })
+                                                         rootFiles: thread.root.flatMap { reader.attachmentLists[$0.seq]?.summary },
+                                                         isPaused: reader.pausedThreadIDs.contains(thread.id))
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("room-thread-\(thread.id)")
+                            } else if event.isBoundedActivity {
+                                BotRoomPausedRow(event: event, reader: reader)
                             } else {
                                 BotRoomEventView(
                                     event: event,
@@ -300,6 +303,7 @@ struct BotRoomThreadPreview: View {
     let thread: BotRoomThread
     let reader: BotRoomReader
     let rootFiles: String?
+    var isPaused = false
 
     var rootTitle: String? {
         guard let root = thread.root else { return nil }
@@ -317,6 +321,9 @@ struct BotRoomThreadPreview: View {
                 VStack(alignment: .leading) { author; activity }
             }
             .font(AppFont.caption()).foregroundStyle(.appSecondary)
+            if isPaused {
+                Text("Paused").font(AppFont.caption()).foregroundStyle(.appSecondary)
+            }
             if let rootTitle {
                 Text(rootTitle).lineLimit(2)
             } else {
