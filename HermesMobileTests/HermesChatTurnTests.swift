@@ -221,6 +221,81 @@ import SwiftUI
         XCTAssertNotNil(chat.model.activeStreamID, "the running turn is still shown")
     }
 
+    private static let fallbackLine =
+        "⚠️ Model fallback: claude-sonnet via anthropic could not respond (rate limit); using gpt-6.2-sol via openai."
+
+    private func fallbackFrame(_ seq: Int, kind: String = "fallback", text: String = HermesChatTurnTests.fallbackLine) -> BotJSON {
+        event(seq, "status.update", ["kind": .string(kind), "text": .string(text)])
+    }
+
+    private func notices(_ chat: Chat) -> [ChatMessage] {
+        chat.model.messages.filter { $0.role == "local_notice" }
+    }
+
+    func testAFallbackSwitchShowsTheHostsLineDuringTheTurnAndKeepsItAfter() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(fallbackFrame(2))
+        XCTAssertEqual(chat.model.pinnedLocalNotices, [Self.fallbackLine])
+        chat.receive(event(3, "message.delta", ["text": .string("Done.")]))
+        chat.receive(event(4, "message.complete", ["status": .string("complete"), "text": .string("Done.")]))
+        chat.receive(event(5, "session.info", ["running": .bool(false)]))
+        XCTAssertTrue(chat.model.pinnedLocalNotices.isEmpty)
+        XCTAssertEqual(notices(chat).map(\.content), [Self.fallbackLine])
+    }
+
+    func testAReplayedFallbackSwitchShowsOnce() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(fallbackFrame(2))
+        chat.receive(fallbackFrame(2))
+        XCTAssertEqual(chat.model.pinnedLocalNotices, [Self.fallbackLine])
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        chat.receive(fallbackFrame(2))
+        XCTAssertTrue(chat.model.pinnedLocalNotices.isEmpty)
+        XCTAssertEqual(notices(chat).count, 1, "the row already after the last prompt is not added twice")
+    }
+
+    func testAFallbackStatusWithoutTextShowsNothing() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(fallbackFrame(2, text: "   "))
+        XCTAssertTrue(chat.model.pinnedLocalNotices.isEmpty)
+        XCTAssertTrue(notices(chat).isEmpty)
+    }
+
+    func testAStatusThatNamesAFallbackWithoutTheKindShowsItsLine() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(fallbackFrame(2, kind: "lifecycle", text: "Switching to fallback model gpt-6.2-sol"))
+        XCTAssertEqual(chat.model.pinnedLocalNotices, ["Switching to fallback model gpt-6.2-sol"])
+    }
+
+    func testACompactionStatusNamingAFallbackOnlyCompacts() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(fallbackFrame(2, kind: "compacting", text: "Compacting after model fallback"))
+        XCTAssertTrue(chat.model.isCompacting)
+        XCTAssertTrue(chat.model.pinnedLocalNotices.isEmpty)
+        XCTAssertTrue(notices(chat).isEmpty)
+    }
+
+    func testAFallbackSwitchWithNoTurnRunningGoesIntoTheTranscript() async {
+        let chat = await openChat()
+        chat.receive(fallbackFrame(1))
+        XCTAssertTrue(chat.model.pinnedLocalNotices.isEmpty)
+        XCTAssertEqual(notices(chat).map(\.content), [Self.fallbackLine])
+    }
+
+    func testAReattachMidTurnKeepsThePinnedFallbackLine() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(fallbackFrame(2))
+        await reattach(chat, resume(running: true), latest: 2)
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertEqual(chat.model.pinnedLocalNotices, [Self.fallbackLine])
+    }
+
     func testACompressPinnedStatusEndsWithItsReady() async {
         let chat = await openChat()
         chat.receive(event(1, "status.update", ["kind": .string("compressing"), "text": .string("compressing 10 messages")]))
@@ -1914,6 +1989,26 @@ import SwiftUI
             reply["inflight"] = .object(inflight)
         }
         return .object(reply)
+    }
+}
+
+@MainActor final class PinnedLocalNoticeStackSizingTests: XCTestCase {
+    func testALongFallbackLineIsNotClippedToTwoLines() {
+        func height(_ notice: String) -> CGFloat {
+            UIHostingController(rootView: PinnedLocalNoticeStack(notices: [notice]))
+                .sizeThatFits(in: CGSize(width: 390, height: 4000)).height
+        }
+        let twoLines = height("a\nb")
+        let fallback = height("⚠️ Model fallback: claude-sonnet via anthropic could not respond (context window exceeded); using gpt-6.2-sol via openai. Primary retry eligible in ~300 s; recovery is not guaranteed.")
+        XCTAssertGreaterThan(fallback, twoLines + 1)
+    }
+
+    func testAVeryLongNoticeIsBoundedSoItCannotTakeOverTheScreen() {
+        func height(_ n: Int) -> CGFloat {
+            UIHostingController(rootView: PinnedLocalNoticeStack(notices: [String(repeating: "word ", count: n)]))
+                .sizeThatFits(in: CGSize(width: 390, height: 20000)).height
+        }
+        XCTAssertEqual(height(400), height(4000), accuracy: 0.5)
     }
 }
 
