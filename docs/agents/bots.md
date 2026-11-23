@@ -2164,6 +2164,30 @@ Socket dispatch, read completion and confirmations all validate the captured con
 disconnect invalidates them and never retries a write. Rejections keep the previous value
 and preserve the host's error text.
 
+## Teammate waits
+
+A card above the composer of a one-to-one Bot Chat (`.canonicalChat`) lists the hand-offs this bot made with
+`message_agent` that have not settled: queued, picked up, working, waiting on you, or failed. It never appears
+in a room (rooms dispatch through `room.assignment`, not this list) or in an ordinary Hermes chat.
+
+- The call is `bot_delivery.list` with `{profile}` only (`HermesCall.botDeliveryList`): read-only, capability
+  `session:read`, any other param key is `invalid_params`. Desktop sends `{}` and routes per bot in its own
+  transport; Hermex sends the explicit `profile` every per-profile call uses. It goes through the chat's own
+  connection (`HermesConversation.request`), never a second socket.
+- `BotTeammateWaits.poll()` runs while the chat is on screen and the scene is active (`ChatView.task(id:)`),
+  every 5 s; leaving `.active` cancels it and returning refreshes once.
+- `-32601` (`BotFailure.rejected(-32601)` from `wire.call`, or `BotSettingFailure.rejected(-32601, _)`) means
+  the host lacks the method: no card, and the chat is not asked again. Any other failure keeps the last rows,
+  dimmed, with a stale line.
+- Only failed rows can be dismissed. Dismissed ids are stored per connection UUID (a connection is one server),
+  where Desktop keeps one global key.
+- `since` is the receipt's last write, so the age is time in the current state, measured against the last
+  answer's `fetchedAt` (no per-second timer). `reason == "unknown_outcome"` shows the never-resent line: the
+  teammate may already have acted, and the card has no resend, retry or cancel control.
+- Open posts the teammate's bot deep link on the same server and connection. Desktop disables Open for a
+  teammate missing from its roster; Hermex has no roster here, so an unknown target opens the Bots list with
+  nothing selected.
+
 ## Recent chat entry
 
 `BotHistoryCache.recent` keeps each recently visited room's log for at most 12 rooms

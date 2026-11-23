@@ -549,6 +549,11 @@ final class ChatViewModel {
     private var currentProfile: String?
     private let isCLISession: Bool
     private let server: URL
+    var hermesCanonicalBotConversation: HermesConversation? {
+        guard let engine = hermesTurn?.engine, case .canonicalChat = engine.target else { return nil }
+        return engine
+    }
+
     var hermesSessionLink: HermesSessionDestination? {
         guard let engine = hermesTurn?.engine,
               let key = HermesDeepLink.normalizedSessionID(engine.storedKey ?? sessionID) else { return nil }
