@@ -303,16 +303,13 @@ import SwiftUI
         let canAnswer = BotDeepLinkRouter.inboxCanAnswer(
             link: inbox.link, hasConnection: inbox.connection != nil, hasSettled: hasSettled
         )
-        switch BotRoomDeepLinkRouter.decide(destination, canAnswer: canAnswer, connectionID: inbox.connection?.id,
-                                            loadedRoomIDs: inbox.searchableRoomIDs) {
-        case .wait:
-            return
-        case .open(let key):
-            pendingRoom = nil
-            roomSequence = nil
-            inbox.selection.room = key
-        case .missing:
-            pendingRoom = nil
+        let decision = BotRoomDeepLinkRouter.decide(destination, canAnswer: canAnswer, connectionID: inbox.connection?.id,
+                                                    loadedRoomIDs: inbox.searchableRoomIDs)
+        if decision == .wait { return }
+        pendingRoom = nil
+        if case .open = decision { roomSequence = nil }
+        inbox.selection.apply(decision)
+        if decision == .missing {
             let serverName = home?.title ?? server.host ?? server.absoluteString
             toast = String(localized: "That chat is no longer on \(serverName).")
         }

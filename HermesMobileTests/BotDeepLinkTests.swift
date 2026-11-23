@@ -290,6 +290,20 @@ import XCTest
         XCTAssertEqual(decide(connection: UUID(), ids: ["room-7"]), .missing)
     }
 
+    func testAMissingRoomLinkPopsToTheListWhereTheNoticeShows() {
+        let current = BotRoomKey(server: serverA, connectionID: connectionID, roomID: "room-1")
+        var selection = BotInboxSelection()
+        selection.room = current
+        selection.apply(.wait)
+        XCTAssertEqual(selection.room, current)
+        selection.apply(.missing)
+        XCTAssertNil(selection.room)
+        XCTAssertNil(selection.profile)
+        let key = BotRoomKey(server: serverA, connectionID: connectionID, roomID: "room-7")
+        selection.apply(.open(key))
+        XCTAssertEqual(selection.room, key)
+    }
+
     func testADeepLinkedConversationOpensTheBotsCurrentChat() async {
         for linked in ["root-then", "root-now"] {
             let wire = BotFixtureWire()
