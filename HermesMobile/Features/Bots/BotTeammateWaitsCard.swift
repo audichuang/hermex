@@ -5,25 +5,36 @@ struct BotTeammateWaitsCard: View {
     let server: URL
     let connectionID: UUID
 
+    private static let maxRowsHeight: CGFloat = 260
+    @State private var rowsHeight: CGFloat = 0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Waiting on teammates")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            ForEach(waits.visibleRows) { row in
-                BotTeammateWaitRow(row: row, age: waits.age(of: row),
-                                   open: { open(row) }, dismiss: { waits.dismiss(row.id) })
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(waits.visibleRows) { row in
+                        BotTeammateWaitRow(row: row, age: waits.age(of: row),
+                                           open: { open(row) }, dismiss: { waits.dismiss(row.id) })
+                    }
+                    if waits.isStale {
+                        Text("Couldn’t refresh — showing the last known state.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    if waits.showsNeverResent {
+                        Text("Nothing here is ever resent. An unknown outcome means the teammate may already have acted — open its chat before asking again.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowsHeight = $0 }
             }
-            if waits.isStale {
-                Text("Couldn’t refresh — showing the last known state.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            if waits.showsNeverResent {
-                Text("Nothing here is ever resent. An unknown outcome means the teammate may already have acted — open its chat before asking again.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: rowsHeight > 0 ? min(rowsHeight, Self.maxRowsHeight) : nil)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
@@ -53,15 +64,20 @@ private struct BotTeammateWaitRow: View {
         return formatter
     }()
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var canOpen: Bool { !row.target.isEmpty }
+    private var stacked: Bool { dynamicTypeSize.isAccessibilitySize }
 
     var body: some View {
-        HStack(spacing: 8) {
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                             : AnyLayout(HStackLayout(spacing: 8))
+        layout {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(verbatim: row.teammateName)
                         .font(.footnote.weight(.medium))
-                        .lineLimit(1)
+                        .lineLimit(stacked ? nil : 1)
                     if let age, let text = Self.ageFormatter.string(from: age) {
                         Text(verbatim: text)
                             .font(.caption2)
@@ -71,9 +87,9 @@ private struct BotTeammateWaitRow: View {
                 Text(labelText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(stacked ? nil : 2)
             }
-            Spacer(minLength: 4)
+            if !stacked { Spacer(minLength: 4) }
             HStack(spacing: 4) {
                 Button("Open chat", action: open)
                     .disabled(!canOpen)
@@ -84,6 +100,7 @@ private struct BotTeammateWaitRow: View {
             .font(.caption.weight(.medium))
             .buttonStyle(.bordered)
             .controlSize(.mini)
+            .fixedSize()
             .accessibilityHidden(true)
         }
         .accessibilityElement(children: .combine)
