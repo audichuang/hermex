@@ -99,7 +99,9 @@ struct CronJobEditorSheet: View {
                                     }
                                     Spacer()
                                     if row.isSelected {
-                                        Image(systemName: "checkmark").foregroundStyle(.tint)
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.tint)
+                                            .accessibilityHidden(true)
                                     }
                                 }
                                 .contentShape(Rectangle())
