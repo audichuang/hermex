@@ -396,6 +396,8 @@ struct ChatView: View {
     @State private var showsModelSettings = false
     @State private var pinnedNoticeStackHeight: CGFloat = 0
     @State private var hostNoticeHeight: CGFloat = 0
+    @State private var teammateWaits: BotTeammateWaits?
+    @State private var teammateWaitsHeight: CGFloat = 0
     @State private var composerIsFocused = false
     @State private var didHydrateDraft = false
     @State private var hasRequestedSkillsForTranscriptChips = false
@@ -1024,6 +1026,9 @@ struct ChatView: View {
         chatScaffold
             .task(id: didCompleteInitialAppearance) {
                 await handleInitialAppearanceTask()
+            }
+            .task(id: pollsTeammateWaits) {
+                await pollTeammateWaits()
             }
             .task {
                 guard let skipped = shareNotice?.take(), let toast = ActionToast(sharedSkips: skipped) else { return }
@@ -1931,6 +1936,16 @@ struct ChatView: View {
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
 
+                if let waits = teammateWaits, showsTeammateWaits, let engine = viewModel.hermesCanonicalBotConversation {
+                    BotTeammateWaitsCard(waits: waits, server: engine.server, connectionID: engine.connection.id)
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            teammateWaitsHeight = height
+                        }
+                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
+
                 if !composerLocalNotices.isEmpty {
                     PinnedLocalNoticeStack(notices: composerLocalNotices)
                         .allowsHitTesting(false)
@@ -1988,9 +2003,23 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation?.kind)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsHostNotice)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsTeammateWaits)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsShortcutNotice)
         }
+    }
+
+    private var showsTeammateWaits: Bool { teammateWaits?.visibleRows.isEmpty == false && viewModel.hermesCanonicalBotConversation != nil }
+
+    private var pollsTeammateWaits: Bool { scenePhase == .active && viewModel.hermesCanonicalBotConversation != nil }
+
+    private func pollTeammateWaits() async {
+        guard pollsTeammateWaits, let engine = viewModel.hermesCanonicalBotConversation else { return }
+        let waits = teammateWaits ?? BotTeammateWaits(connectionID: engine.connection.id) {
+            try await engine.request(.botDeliveryList(profile: engine.target.profile), attempt: engine.generation)
+        }
+        teammateWaits = waits
+        await waits.poll()
     }
 
     private var showsShortcutNotice: Bool { showsShortcutProvenance || waitingShortcut != nil }
@@ -2447,6 +2476,9 @@ struct ChatView: View {
         if showsHostNotice {
             height += hostNoticeHeight
         }
+        if showsTeammateWaits {
+            height += teammateWaitsHeight
+        }
         if activeRunStatusPresentation != nil {
             height += activeRunStatusHeight + composerAccessoryVerticalSpacing
         }
@@ -2470,6 +2502,9 @@ struct ChatView: View {
     private var composerAccessoryVisibleItemCount: Int {
         var count = 0
         if showsHostNotice {
+            count += 1
+        }
+        if showsTeammateWaits {
             count += 1
         }
         if !composerLocalNotices.isEmpty {

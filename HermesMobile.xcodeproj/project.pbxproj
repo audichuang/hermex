@@ -705,6 +705,8 @@
 		3C0CCE7773554B87B7E32D74 /* BotDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75316C058B034AC291F92E76 /* BotDeepLink.swift */; };
 		A1F0A1B0C0DE4A11B0070001 /* BotRoomDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0A1B0C0DE4A11B0070002 /* BotRoomDeepLink.swift */; };
 		A2C0DE1000000000000000A2 /* CronDeliveryTargets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C0DE1000000000000000A1 /* CronDeliveryTargets.swift */; };
+		145637447EE644D5C81F90CE /* BotTeammateWaitsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F890743F4474401D1F944D /* BotTeammateWaitsCard.swift */; };
+		F79D247508285FB877C6B9D4 /* BotTeammateWaits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FF64F4958515BDF9E9B654 /* BotTeammateWaits.swift */; };
 		4890A0000000000000000001 /* BotLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4890A0000000000000000010 /* BotLiveActivity.swift */; };
 		FB790728981341218BFA1099 /* BotRoomReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D7812D9F0554D6C9D205F6A /* BotRoomReader.swift */; };
 		B41E71BA7CC94A07A2A813D7 /* BotRoomDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8879FB3E24489C90331936 /* BotRoomDraftStore.swift */; };
@@ -713,6 +715,7 @@
 		4BD37C1CCB8A45B493C8DBF0 /* BotRoomProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49433CFA1FF4DEBAB6E5645 /* BotRoomProfileView.swift */; };
 		49793ABA58F841BE8AF4B27E /* BotRoomCreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8738D4AB53F84D1CBC2E1B22 /* BotRoomCreateView.swift */; };
 		CF99AE7CDC2E472881C269AC /* BotDeepLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689A646974F44DF4BFE57FD7 /* BotDeepLinkTests.swift */; };
+		FC3AC7F830254F09C462E6D9 /* BotTeammateWaitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B789C03FBE8FA2CE95E89DFC /* BotTeammateWaitsTests.swift */; };
 		B1176000000000000000A003 /* HermesSessionLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1176000000000000000A004 /* HermesSessionLinkTests.swift */; };
 		B1176000000000000000A005 /* HermesSessionLookupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1176000000000000000A006 /* HermesSessionLookupTests.swift */; };
 		4890A0000000000000000002 /* BotLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4890A0000000000000000011 /* BotLiveActivityTests.swift */; };
@@ -1508,6 +1511,8 @@
 		75316C058B034AC291F92E76 /* BotDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotDeepLink.swift"; sourceTree = "<group>"; };
 		A1F0A1B0C0DE4A11B0070002 /* BotRoomDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomDeepLink.swift"; sourceTree = "<group>"; };
 		A2C0DE1000000000000000A1 /* CronDeliveryTargets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronDeliveryTargets.swift; sourceTree = "<group>"; };
+		48F890743F4474401D1F944D /* BotTeammateWaitsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotTeammateWaitsCard.swift"; sourceTree = "<group>"; };
+		97FF64F4958515BDF9E9B654 /* BotTeammateWaits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotTeammateWaits.swift"; sourceTree = "<group>"; };
 		4890A0000000000000000010 /* BotLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotLiveActivity.swift"; sourceTree = "<group>"; };
 		5D7812D9F0554D6C9D205F6A /* BotRoomReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomReader.swift"; sourceTree = "<group>"; };
 		1C8879FB3E24489C90331936 /* BotRoomDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomDraftStore.swift"; sourceTree = "<group>"; };
@@ -1516,6 +1521,7 @@
 		B49433CFA1FF4DEBAB6E5645 /* BotRoomProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomProfileView.swift"; sourceTree = "<group>"; };
 		8738D4AB53F84D1CBC2E1B22 /* BotRoomCreateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomCreateView.swift"; sourceTree = "<group>"; };
 		689A646974F44DF4BFE57FD7 /* BotDeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotDeepLinkTests.swift"; sourceTree = "<group>"; };
+		B789C03FBE8FA2CE95E89DFC /* BotTeammateWaitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotTeammateWaitsTests.swift"; sourceTree = "<group>"; };
 		B1176000000000000000A004 /* HermesSessionLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HermesSessionLinkTests.swift"; sourceTree = "<group>"; };
 		B1176000000000000000A006 /* HermesSessionLookupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HermesSessionLookupTests.swift"; sourceTree = "<group>"; };
 		4890A0000000000000000011 /* BotLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotLiveActivityTests.swift"; sourceTree = "<group>"; };
@@ -1727,6 +1733,7 @@
 				C0DE16230000000000000008 /* HTMLReportTests.swift */,
 				EE6A7BC5738C4EF9AB0A965B /* BotDraftTests.swift */,
 				689A646974F44DF4BFE57FD7 /* BotDeepLinkTests.swift */,
+				B789C03FBE8FA2CE95E89DFC /* BotTeammateWaitsTests.swift */,
 				B1176000000000000000A004 /* HermesSessionLinkTests.swift */,
 				B1176000000000000000A006 /* HermesSessionLookupTests.swift */,
 				4890A0000000000000000011 /* BotLiveActivityTests.swift */,
@@ -2118,6 +2125,8 @@
 				3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */,
 				75316C058B034AC291F92E76 /* BotDeepLink.swift */,
 				A1F0A1B0C0DE4A11B0070002 /* BotRoomDeepLink.swift */,
+				48F890743F4474401D1F944D /* BotTeammateWaitsCard.swift */,
+				97FF64F4958515BDF9E9B654 /* BotTeammateWaits.swift */,
 				4890A0000000000000000010 /* BotLiveActivity.swift */,
 				5D7812D9F0554D6C9D205F6A /* BotRoomReader.swift */,
 				1C8879FB3E24489C90331936 /* BotRoomDraftStore.swift */,
@@ -2951,6 +2960,8 @@
 				3C0CCE7773554B87B7E32D74 /* BotDeepLink.swift in Sources */,
 				A1F0A1B0C0DE4A11B0070001 /* BotRoomDeepLink.swift in Sources */,
 				A2C0DE1000000000000000A2 /* CronDeliveryTargets.swift in Sources */,
+				145637447EE644D5C81F90CE /* BotTeammateWaitsCard.swift in Sources */,
+				F79D247508285FB877C6B9D4 /* BotTeammateWaits.swift in Sources */,
 				4890A0000000000000000001 /* BotLiveActivity.swift in Sources */,
 				FB790728981341218BFA1099 /* BotRoomReader.swift in Sources */,
 				B41E71BA7CC94A07A2A813D7 /* BotRoomDraftStore.swift in Sources */,
@@ -3381,6 +3392,7 @@
 				C0DE16230000000000000007 /* HTMLReportTests.swift in Sources */,
 				142E7F57D82742678CF78DCA /* BotDraftTests.swift in Sources */,
 				CF99AE7CDC2E472881C269AC /* BotDeepLinkTests.swift in Sources */,
+				FC3AC7F830254F09C462E6D9 /* BotTeammateWaitsTests.swift in Sources */,
 				B1176000000000000000A003 /* HermesSessionLinkTests.swift in Sources */,
 				B1176000000000000000A005 /* HermesSessionLookupTests.swift in Sources */,
 				4890A0000000000000000002 /* BotLiveActivityTests.swift in Sources */,

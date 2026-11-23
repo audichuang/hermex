@@ -476,7 +476,7 @@ private extension HermesCall {
     var isCancellationSafe: Bool {
         switch self {
         case .groupsAttachmentUpload, .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
-             .subagentRoster,
+             .subagentRoster, .botDeliveryList,
              .sessionActiveList, .approvalPending, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
              .commitMessage, .approvalSummary, .displayStatus, .displayObserve, .pluginsList, .rollbackList,
              .rollbackDiff: return true
@@ -486,7 +486,7 @@ private extension HermesCall {
 
     var timesOutLocally: Bool {
         switch self {
-        case .subagentList, .subagentTail, .subagentRoster, .sessionActiveList, .approvalPending, .sessionMostRecent,
+        case .subagentList, .subagentTail, .subagentRoster, .botDeliveryList, .sessionActiveList, .approvalPending, .sessionMostRecent,
              .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
              .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,

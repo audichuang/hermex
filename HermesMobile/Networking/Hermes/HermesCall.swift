@@ -109,6 +109,7 @@ enum HermesCall: Equatable, Sendable {
 
     case subagentList(sessionID: String)
     case subagentRoster(profile: String)
+    case botDeliveryList(profile: String)
     case subagentTail(sessionID: String, subagentID: String)
     case subagentInterrupt(sessionID: String, subagentID: String)
 
@@ -375,6 +376,7 @@ enum HermesCall: Equatable, Sendable {
         case .commitMessage, .approvalSummary: return "llm.oneshot"
         case .subagentList: return "subagent.list"
         case .subagentRoster: return "subagent.roster"
+        case .botDeliveryList: return "bot_delivery.list"
         case .subagentTail: return "subagent.tail"
         case .subagentInterrupt: return "subagent.interrupt"
         case .groupsCapabilities: return "groups.capabilities"
@@ -461,7 +463,7 @@ enum HermesCall: Equatable, Sendable {
             return ["profile": .string(profile), "hidden": .bool(true), "follow_profile_config": .bool(true),
                     "close_on_disconnect": .bool(true), "source": .string(Self.source)]
         case .sessionMostRecent(let profile), .displayStatus(let profile), .displayStart(let profile),
-             .subagentRoster(let profile):
+             .subagentRoster(let profile), .botDeliveryList(let profile):
             return ["profile": .string(profile)]
         case .displayStop(let profile, let force):
             return force ? ["profile": .string(profile), "force": .bool(true)] : ["profile": .string(profile)]
@@ -700,7 +702,7 @@ enum HermesCall: Equatable, Sendable {
         case .profilesConfigure(let changes): valid = changes.isAdmissible
         case .profilesCreate(let profile): valid = profile.isAdmissible
         case .sessionCreate(let profile), .sessionMostRecent(let profile), .sessionDraft(let profile),
-             .subagentRoster(let profile): valid = !profile.isEmpty
+             .subagentRoster(let profile), .botDeliveryList(let profile): valid = !profile.isEmpty
         case .sessionNew(let profile, let cwd, let model):
             valid = !profile.isEmpty && cwd?.isEmpty != true && model?.isAdmissible != false
         case .sessionCompress(let runtime, let focus, let profile):
