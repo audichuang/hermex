@@ -1204,6 +1204,8 @@ struct ChatOfflineCacheBanner: View {
 struct PinnedLocalNoticeStack: View {
     let notices: [String]
 
+    static let maxLines = 8
+
     var body: some View {
         VStack(spacing: 8) {
             ForEach(Array(notices.enumerated()), id: \.offset) { _, notice in
@@ -1215,6 +1217,7 @@ struct PinnedLocalNoticeStack: View {
                     Text(Self.plainText(notice))
                         .font(AppFont.footnote())
                         .foregroundStyle(.appPrimary)
+                        .lineLimit(Self.maxLines)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }

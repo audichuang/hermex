@@ -2002,6 +2002,14 @@ import SwiftUI
         let fallback = height("⚠️ Model fallback: claude-sonnet via anthropic could not respond (context window exceeded); using gpt-6.2-sol via openai. Primary retry eligible in ~300 s; recovery is not guaranteed.")
         XCTAssertGreaterThan(fallback, twoLines + 1)
     }
+
+    func testAVeryLongNoticeIsBoundedSoItCannotTakeOverTheScreen() {
+        func height(_ n: Int) -> CGFloat {
+            UIHostingController(rootView: PinnedLocalNoticeStack(notices: [String(repeating: "word ", count: n)]))
+                .sizeThatFits(in: CGSize(width: 390, height: 20000)).height
+        }
+        XCTAssertEqual(height(400), height(4000), accuracy: 0.5)
+    }
 }
 
 @MainActor private final class ManualNoticeTimer {
