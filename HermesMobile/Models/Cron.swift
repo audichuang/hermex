@@ -307,21 +307,25 @@ struct CronDeliveryOption: Decodable, Equatable, Identifiable {
 
     let value: String?
     let label: String?
+    let homeTargetSet: Bool?
 
     enum CodingKeys: String, CodingKey {
         case value
         case label
+        case homeTargetSet = "home_target_set"
     }
 
-    init(value: String?, label: String?) {
+    init(value: String?, label: String?, homeTargetSet: Bool? = nil) {
         self.value = value
         self.label = label
+        self.homeTargetSet = homeTargetSet
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         value = container.decodeLossyStringIfPresent(forKey: .value)
         label = container.decodeLossyStringIfPresent(forKey: .label)
+        homeTargetSet = try? container.decodeIfPresent(Bool.self, forKey: .homeTargetSet)
     }
 }
 
@@ -509,13 +513,7 @@ struct CronJobEditorDraft: Equatable {
         skillsText = names.joined(separator: ", ")
     }
 
-    mutating func keepChoices(madeBefore earlier: CronJobEditorDraft, offeredTargets: [String]?,
-                              offeredSkills: [String]?) {
-        if let offeredTargets, deliver == earlier.deliver {
-            let kept = deliver.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { offeredTargets.contains(String($0.prefix { $0 != ":" })) }
-            deliver = kept.isEmpty ? "local" : kept.joined(separator: ",")
-        }
+    mutating func keepChoices(madeBefore earlier: CronJobEditorDraft, offeredSkills: [String]?) {
         if let offeredSkills {
             applySkillSelection(skills.filter { offeredSkills.contains($0) || !earlier.skills.contains($0) })
         }

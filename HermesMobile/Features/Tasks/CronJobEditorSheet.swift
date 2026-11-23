@@ -58,6 +58,14 @@ struct CronJobEditorSheet: View {
         ))
     }
 
+    private var deliveryRows: [CronDeliveryTargets.Row]? {
+        guard client.cronFeatures.deliversToMultipleTargets else { return nil }
+        let serverOptions = configuration.deliveryOptions ?? serverDeliveryOptions ?? []
+        let rows = CronDeliveryTargets.rows(serverOptions: serverOptions, current: draft.deliver)
+        return serverOptions.contains { !($0.value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty }
+            ? rows : nil
+    }
+
     var body: some View {
         NavigationStack {
             AppForm {
@@ -73,7 +81,34 @@ struct CronJobEditorSheet: View {
                 }
 
                 Section("Delivery") {
-                    if let deliverPickerOptions {
+                    if let deliveryRows {
+                        ForEach(deliveryRows) { row in
+                            Button {
+                                draft.deliver = CronDeliveryTargets.toggle(draft.deliver, target: row.id, on: !row.isSelected)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(row.label)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                        if row.needsHomeChannel {
+                                            Text("Set a home channel first")
+                                                .font(AppFont.footnote())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    if row.isSelected {
+                                        Image(systemName: "checkmark").foregroundStyle(.tint)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(row.isSelected ? .isSelected : [])
+                        }
+                    } else if let deliverPickerOptions {
                         Picker("Deliver", selection: $draft.deliver) {
                             ForEach(deliverPickerOptions) { option in
                                 Group {
@@ -141,7 +176,7 @@ struct CronJobEditorSheet: View {
                 await loader.load()
                 guard let earlier = draftAtProfilePick, !Task.isCancelled else { return }
                 draftAtProfilePick = nil
-                draft.keepChoices(madeBefore: earlier, offeredTargets: loader.deliveryOptions?.compactMap(\.value),
+                draft.keepChoices(madeBefore: earlier,
                                   offeredSkills: loader.skillsErrorMessage == nil ? loader.skills.compactMap(\.name) : nil)
             }
             .onChange(of: draft.trimmedProfile) { _, profile in

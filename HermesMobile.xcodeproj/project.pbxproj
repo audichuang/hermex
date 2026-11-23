@@ -704,6 +704,7 @@
 		1887ACCCA7594CEA88195FCD /* BotGroupRoom.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */; };
 		3C0CCE7773554B87B7E32D74 /* BotDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75316C058B034AC291F92E76 /* BotDeepLink.swift */; };
 		A1F0A1B0C0DE4A11B0070001 /* BotRoomDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0A1B0C0DE4A11B0070002 /* BotRoomDeepLink.swift */; };
+		A2C0DE1000000000000000A2 /* CronDeliveryTargets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C0DE1000000000000000A1 /* CronDeliveryTargets.swift */; };
 		4890A0000000000000000001 /* BotLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4890A0000000000000000010 /* BotLiveActivity.swift */; };
 		FB790728981341218BFA1099 /* BotRoomReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D7812D9F0554D6C9D205F6A /* BotRoomReader.swift */; };
 		B41E71BA7CC94A07A2A813D7 /* BotRoomDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8879FB3E24489C90331936 /* BotRoomDraftStore.swift */; };
@@ -1506,6 +1507,7 @@
 		3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotGroupRoom.swift"; sourceTree = "<group>"; };
 		75316C058B034AC291F92E76 /* BotDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotDeepLink.swift"; sourceTree = "<group>"; };
 		A1F0A1B0C0DE4A11B0070002 /* BotRoomDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomDeepLink.swift"; sourceTree = "<group>"; };
+		A2C0DE1000000000000000A1 /* CronDeliveryTargets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronDeliveryTargets.swift; sourceTree = "<group>"; };
 		4890A0000000000000000010 /* BotLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotLiveActivity.swift"; sourceTree = "<group>"; };
 		5D7812D9F0554D6C9D205F6A /* BotRoomReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomReader.swift"; sourceTree = "<group>"; };
 		1C8879FB3E24489C90331936 /* BotRoomDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomDraftStore.swift"; sourceTree = "<group>"; };
@@ -2624,6 +2626,7 @@
 				D500000000000000000011 /* TaskDetailHeaderCard.swift */,
 				C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */,
 				C0369000000000000000008 /* CronJobEditorSheet.swift */,
+				A2C0DE1000000000000000A1 /* CronDeliveryTargets.swift */,
 				C0369000000000000000004 /* CronJobConfigurationPickers.swift */,
 				C036900000000000000000A /* CronJobSkillsPicker.swift */,
 			);
@@ -2947,6 +2950,7 @@
 				1887ACCCA7594CEA88195FCD /* BotGroupRoom.swift in Sources */,
 				3C0CCE7773554B87B7E32D74 /* BotDeepLink.swift in Sources */,
 				A1F0A1B0C0DE4A11B0070001 /* BotRoomDeepLink.swift in Sources */,
+				A2C0DE1000000000000000A2 /* CronDeliveryTargets.swift in Sources */,
 				4890A0000000000000000001 /* BotLiveActivity.swift in Sources */,
 				FB790728981341218BFA1099 /* BotRoomReader.swift in Sources */,
 				B41E71BA7CC94A07A2A813D7 /* BotRoomDraftStore.swift in Sources */,

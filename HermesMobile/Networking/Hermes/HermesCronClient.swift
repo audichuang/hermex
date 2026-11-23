@@ -17,7 +17,9 @@ import Foundation
     func cronDeliveryOptions(profile: String?) async throws -> CronDeliveryOptionsResponse {
         let targets = try Self.json(try await send(.cronDeliveryTargets(profile: profile)))["targets"].list ?? []
         return CronDeliveryOptionsResponse(platforms: targets.compactMap { target in
-            target["id"].text.map { CronDeliveryOption(value: $0, label: target["name"].text) }
+            target["id"].text.map {
+                CronDeliveryOption(value: $0, label: target["name"].text, homeTargetSet: target["home_target_set"].flag)
+            }
         })
     }
 
