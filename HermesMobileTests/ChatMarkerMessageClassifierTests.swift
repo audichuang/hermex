@@ -12,6 +12,12 @@ final class ChatMarkerMessageClassifierTests: XCTestCase {
         XCTAssertEqual(ChatMarkerMessageClassifier.classify(message), .contextCompaction)
     }
 
+    func testTheHostsFallbackLineIsNotAMarker() {
+        let line = "⚠️ Model fallback: claude-sonnet via anthropic could not respond (context window exceeded); using gpt-6.2-sol via openai."
+        XCTAssertNil(ChatMarkerMessageClassifier.classify(makeMessage(role: "local_notice", content: line)))
+        XCTAssertNil(ChatMarkerMessageClassifier.classify(makeMessage(role: "assistant", content: line)))
+    }
+
     func testToolRoleNeverMatches() {
         let message = makeMessage(role: "tool", content: "[context compaction] details")
         XCTAssertNil(ChatMarkerMessageClassifier.classify(message))

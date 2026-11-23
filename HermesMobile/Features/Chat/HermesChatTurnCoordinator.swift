@@ -24,6 +24,7 @@ struct HermesUnservedProfile: Equatable {
     func hermesBackgroundDidChange(_ task: HermesBackgroundTask)
     func hermesGoalDidChange(_ goal: SubmittedGoal?)
     func hermesWorkspaceDidChange()
+    func hermesModelDidFallBack(_ line: String)
 }
 
 struct HermesSessionChat: Hashable, Identifiable {
@@ -1038,7 +1039,9 @@ struct HermesLostTurn: Equatable {
             case "status" where payload["text"].text == "ready":
                 endCompaction()
             default:
-                break
+                if let line = HermesFallbackNotice.line(kind: payload["kind"].text, text: payload["text"].text) {
+                    delegate?.hermesModelDidFallBack(line)
+                }
             }
             if compactionPending, payload["kind"].text == "compacted" { pendingCompactionDidFinish() }
         case "btw.complete", "background.complete", "session.control.update":

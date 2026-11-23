@@ -505,6 +505,7 @@
 		B5A100000000000000000060 /* AuthManagerStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000061 /* AuthManagerStateTests.swift */; };
 		B5A1000000000000000FA001 /* TestHostStateGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A1000000000000000FA002 /* TestHostStateGuard.swift */; };
 		B5A220000000000000000001 /* ChatMarkerMessageClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */; };
+		B5A2200000000000000A4001 /* HermesFallbackNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A2200000000000000A4002 /* HermesFallbackNotice.swift */; };
 		B5A220000000000000000003 /* MarkerMessageCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A220000000000000000004 /* MarkerMessageCardView.swift */; };
 		C22300000000000000000001 /* CompressionAnchorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22300000000000000000002 /* CompressionAnchorResolver.swift */; };
 		C22300000000000000000003 /* CompressionAnchorResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22300000000000000000004 /* CompressionAnchorResolverTests.swift */; };
@@ -1344,6 +1345,7 @@
 		B5A100000000000000000061 /* AuthManagerStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManagerStateTests.swift; sourceTree = "<group>"; };
 		B5A1000000000000000FA002 /* TestHostStateGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHostStateGuard.swift; sourceTree = "<group>"; };
 		B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkerMessageClassifier.swift; sourceTree = "<group>"; };
+		B5A2200000000000000A4002 /* HermesFallbackNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesFallbackNotice.swift; sourceTree = "<group>"; };
 		B5A220000000000000000004 /* MarkerMessageCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkerMessageCardView.swift; sourceTree = "<group>"; };
 		C22300000000000000000002 /* CompressionAnchorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressionAnchorResolver.swift; sourceTree = "<group>"; };
 		C22300000000000000000004 /* CompressionAnchorResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressionAnchorResolverTests.swift; sourceTree = "<group>"; };
@@ -2300,6 +2302,7 @@
 				C08640000000000000000002 /* ToolCallDiff.swift */,
 				1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */,
 				B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */,
+				B5A2200000000000000A4002 /* HermesFallbackNotice.swift */,
 				B5A220000000000000000004 /* MarkerMessageCardView.swift */,
 				C22300000000000000000002 /* CompressionAnchorResolver.swift */,
 				C21200000000000000000002 /* StreamingRevealGate.swift */,
@@ -3202,6 +3205,7 @@
 				C08640000000000000000001 /* ToolCallDiff.swift in Sources */,
 				1A2B3C4D5E6F7000000000E2 /* ReasoningBlockView.swift in Sources */,
 				B5A220000000000000000001 /* ChatMarkerMessageClassifier.swift in Sources */,
+				B5A2200000000000000A4001 /* HermesFallbackNotice.swift in Sources */,
 				B5A220000000000000000003 /* MarkerMessageCardView.swift in Sources */,
 				C22300000000000000000001 /* CompressionAnchorResolver.swift in Sources */,
 				C21200000000000000000001 /* StreamingRevealGate.swift in Sources */,
