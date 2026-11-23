@@ -124,7 +124,7 @@ struct BotTeammateDismissedStore {
             if isStale { isStale = false }
             fetchedAt = now()
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, error as? BotFailure != .stale else { return }
             if Self.isMethodMissing(error) {
                 rows = []
                 isUnsupported = true

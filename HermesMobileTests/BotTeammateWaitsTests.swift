@@ -106,6 +106,18 @@ import XCTest
         XCTAssertEqual(model.visibleRows.map(\.id), ["1", "2"])
     }
 
+    func testARefreshBeforeTheSocketAttachesIsNotAFailure() async throws {
+        var reply: Result<BotJSON, Error> = .success(answer([row("1", state: "working")]))
+        let model = waits(try defaults()) { try reply.get() }
+        await model.refresh()
+
+        reply = .failure(BotFailure.stale)
+        await model.refresh()
+        XCTAssertFalse(model.isStale)
+        XCTAssertFalse(model.isUnsupported)
+        XCTAssertEqual(model.visibleRows.map(\.id), ["1"])
+    }
+
     func testOnlyAFailureCanBeDismissedAndOnlyOnItsOwnConnection() async throws {
         let shared = try defaults()
         var rows = [row("w", state: "working"), row("f", state: "failed", ["reason": .string("cancelled")])]

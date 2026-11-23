@@ -87,8 +87,7 @@ private struct BotTeammateWaitRow: View {
             .accessibilityHidden(true)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityAction(named: Text("Open chat"), open)
-        .accessibilityAction(named: Text("Dismiss")) { if row.state == .failed { dismiss() } }
+        .modifier(RowActions(canOpen: canOpen, canDismiss: row.state == .failed, open: open, dismiss: dismiss))
     }
 
     private var labelText: String {
@@ -123,6 +122,20 @@ private struct BotTeammateWaitRow: View {
             case "cancelled": return String(localized: "cancelled")
             default: return String(localized: "unknown error")
             }
+        }
+    }
+}
+
+private struct RowActions: ViewModifier {
+    let canOpen: Bool
+    let canDismiss: Bool
+    let open: () -> Void
+    let dismiss: () -> Void
+
+    func body(content: Content) -> some View {
+        content.accessibilityActions {
+            if canOpen { Button("Open chat", action: open) }
+            if canDismiss { Button("Dismiss", action: dismiss) }
         }
     }
 }
