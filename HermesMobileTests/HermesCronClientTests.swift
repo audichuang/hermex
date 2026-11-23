@@ -199,30 +199,26 @@ import XCTest
         await loader.loadDeliveryOptions()
         await loader.loadSkills()
 
-        XCTAssertEqual(loader.deliveryOptions, [CronDeliveryOption(value: "local", label: "Local (save only)"),
-                                                CronDeliveryOption(value: "telegram", label: "Telegram")])
+        XCTAssertEqual(loader.deliveryOptions, [CronDeliveryOption(value: "local", label: "Local (save only)", homeTargetSet: true),
+                                                CronDeliveryOption(value: "telegram", label: "Telegram", homeTargetSet: false)])
+        XCTAssertEqual(loader.deliveryOptions?.last?.homeTargetSet, false)
         XCTAssertEqual(loader.skills.compactMap(\.name), ["arxiv"])
         let reads = HermesHostFixture.requests.filter { $0.url?.path == "/api/cron/delivery-targets" || $0.url?.path == "/api/skills" }
         XCTAssertEqual(reads.map { $0.url?.query }, ["profile=research", "profile=research"])
     }
 
-    func testAPickedProfileKeepsOnlyTheChoicesItOffers() {
-        let earlier = CronJobEditorDraft(deliver: "telegram,discord:123", skillsText: "arxiv, web-search")
+    func testAPickedProfileKeepsDeliveryAndOnlyTheSkillsItOffers() {
+        let earlier = CronJobEditorDraft(deliver: "telegram,bot-chat,origin,room:r1@default",
+                                         skillsText: "arxiv, web-search")
         var draft = earlier
         draft.applySkillSelection(earlier.skills + ["my-custom"])
 
-        draft.keepChoices(madeBefore: earlier, offeredTargets: ["local", "discord"], offeredSkills: ["web-search"])
-        XCTAssertEqual(draft.deliver, "discord:123")
+        draft.keepChoices(madeBefore: earlier, offeredSkills: ["web-search"])
+        XCTAssertEqual(draft.deliver, "telegram,bot-chat,origin,room:r1@default")
         XCTAssertEqual(draft.skills, ["web-search", "my-custom"])
 
-        draft.keepChoices(madeBefore: draft, offeredTargets: ["local"], offeredSkills: nil)
-        XCTAssertEqual(draft.deliver, "local", "With no target left, delivery falls back to local")
+        draft.keepChoices(madeBefore: draft, offeredSkills: nil)
         XCTAssertEqual(draft.skills, ["web-search", "my-custom"], "A skill list that didn't load checks nothing")
-
-        var retargeted = earlier
-        retargeted.deliver = "telegram"
-        retargeted.keepChoices(madeBefore: earlier, offeredTargets: ["local"], offeredSkills: nil)
-        XCTAssertEqual(retargeted.deliver, "telegram", "A target chosen since the pick stays")
     }
 }
 

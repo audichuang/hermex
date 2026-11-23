@@ -188,6 +188,65 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         XCTAssertNil(loader.modelsErrorMessage)
         XCTAssertNil(loader.profilesErrorMessage)
     }
+
+    private var hostTargets: [CronDeliveryOption] {
+        [CronDeliveryOption(value: "local", label: "Local (save only)", homeTargetSet: true),
+         CronDeliveryOption(value: "discord", label: "Discord", homeTargetSet: true),
+         CronDeliveryOption(value: "hermex", label: "Hermex", homeTargetSet: true),
+         CronDeliveryOption(value: "bot-chat:hermes", label: "Bot Chat (hermes)", homeTargetSet: true)]
+    }
+
+    func testDeliveryRowsAreTheHostsTargetsThenSavedOnesItDoesNotList() {
+        let rows = CronDeliveryTargets.rows(serverOptions: hostTargets, current: "room:r1@default,hermex:default")
+
+        XCTAssertEqual(rows.map(\.id), ["local", "discord", "hermex", "bot-chat:hermes", "room:r1@default", "hermex:default"])
+        XCTAssertEqual(rows.map(\.isSelected), [false, false, false, false, true, true])
+        XCTAssertEqual(rows.suffix(2).map(\.label), ["room:r1@default", "hermex:default"])
+    }
+
+    func testUncheckingATargetKeepsTheRestAndTheLastOneStays() {
+        let start = "room:r1@default,hermex:default"
+        let one = CronDeliveryTargets.toggle(start, target: "hermex:default", on: false)
+        XCTAssertEqual(one, "room:r1@default")
+        XCTAssertEqual(CronDeliveryTargets.toggle(one, target: "room:r1@default", on: false), "room:r1@default")
+        XCTAssertEqual(CronDeliveryTargets.toggle(one, target: "local", on: true), "room:r1@default,local")
+        XCTAssertEqual(CronDeliveryTargets.toggle(one, target: "room:r1@default", on: true), "room:r1@default")
+    }
+
+    func testAnEmptyDeliveryReadsAsLocal() {
+        let rows = CronDeliveryTargets.rows(serverOptions: hostTargets, current: "")
+
+        XCTAssertEqual(rows.filter(\.isSelected).map(\.id), ["local"])
+        XCTAssertEqual(CronDeliveryTargets.parse(" a, a ,b,"), ["a", "b"])
+    }
+
+    func testSavedTokensTheHostNeverListsSurviveAnEdit() {
+        let offered = [hostTargets[0], hostTargets[3]]
+        let current = "bot-chat,origin,room:r1@default"
+        let rows = CronDeliveryTargets.rows(serverOptions: offered, current: current)
+
+        XCTAssertEqual(rows.filter(\.isSelected).map(\.id), ["bot-chat", "origin", "room:r1@default"])
+        XCTAssertEqual(rows.first { $0.id == "bot-chat:hermes" }?.isSelected, false)
+        XCTAssertEqual(CronDeliveryTargets.toggle(current, target: "local", on: true),
+                       "bot-chat,origin,room:r1@default,local")
+    }
+
+    func testAPlatformWithoutAHomeChannelSaysSo() {
+        func row(_ flag: Bool?, current: String = "local") -> CronDeliveryTargets.Row? {
+            CronDeliveryTargets.rows(
+                serverOptions: [CronDeliveryOption(value: "local", label: "Local", homeTargetSet: flag),
+                                CronDeliveryOption(value: "discord", label: "Discord", homeTargetSet: flag)],
+                current: current
+            ).first { $0.id == "discord" }
+        }
+
+        XCTAssertEqual(row(false)?.needsHomeChannel, true)
+        XCTAssertEqual(row(nil)?.needsHomeChannel, true)
+        XCTAssertEqual(row(true)?.needsHomeChannel, false)
+        XCTAssertEqual(CronDeliveryTargets.rows(serverOptions: [CronDeliveryOption(value: "local", label: "Local")],
+                                                current: "local").first?.needsHomeChannel, false)
+        XCTAssertEqual(CronDeliveryTargets.rows(serverOptions: [], current: "discord:1").first?.needsHomeChannel, false)
+    }
 }
 
 final class CronJobSkillsPickerTests: APIClientTestCase {

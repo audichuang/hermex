@@ -31,11 +31,14 @@ struct CronFeatures: Equatable, Sendable {
     let hasRecentRunsFeed: Bool
     let runNowWaitsForRun: Bool
     let runsAreSessions: Bool
+    let deliversToMultipleTargets: Bool
 
     static let webui = CronFeatures(isProfileScoped: false, hasToastNotifications: true, hasRecentRunsFeed: true,
-                                    runNowWaitsForRun: false, runsAreSessions: false)
+                                    runNowWaitsForRun: false, runsAreSessions: false,
+                                    deliversToMultipleTargets: false)
     static let hermes = CronFeatures(isProfileScoped: true, hasToastNotifications: false, hasRecentRunsFeed: false,
-                                     runNowWaitsForRun: true, runsAreSessions: true)
+                                     runNowWaitsForRun: true, runsAreSessions: true,
+                                     deliversToMultipleTargets: true)
 
     func offersRunNow(for job: CronJob) -> Bool {
         !(runNowWaitsForRun && job.state == "completed")
