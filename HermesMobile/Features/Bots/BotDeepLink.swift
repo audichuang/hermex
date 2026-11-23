@@ -139,6 +139,14 @@ struct BotInboxSelection {
         conversation = profile == nil ? nil : destination.conversation
     }
 
+    mutating func apply(_ decision: BotRoomLinkDecision) {
+        switch decision {
+        case .wait: break
+        case .open(let key): room = key
+        case .missing: self = BotInboxSelection()
+        }
+    }
+
     func chat(server: URL, connection: BotConnection) -> HermesSessionChat? {
         profile.map {
             HermesSessionChat(server: server, connection: connection, target: .canonicalChat(profile: $0.id),

@@ -10,6 +10,7 @@ import SwiftUI
     let server: URL
     private let home: HermesHome?
     @Binding private var pendingDestination: BotDestination?
+    @Binding private var pendingRoom: BotRoomDestination?
     @State private var inbox: BotInbox
     @State private var showingSearch = false
     @State private var searchedProfile: (connectionID: UUID, profileID: String)?
@@ -44,10 +45,12 @@ import SwiftUI
         self.init(server: server, pendingDestination: pendingDestination, home: nil, inbox: BotInbox(server: server))
     }
 
-    init(server: URL, pendingDestination: Binding<BotDestination?>, home: HermesHome?, inbox: BotInbox) {
+    init(server: URL, pendingDestination: Binding<BotDestination?>, pendingRoom: Binding<BotRoomDestination?> = .constant(nil),
+         home: HermesHome?, inbox: BotInbox) {
         self.server = server
         self.home = home
         _pendingDestination = pendingDestination
+        _pendingRoom = pendingRoom
         _inbox = State(initialValue: inbox)
         _isScreenEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
     }
@@ -56,6 +59,7 @@ import SwiftUI
         self.server = server
         home = nil
         _pendingDestination = .constant(nil)
+        _pendingRoom = .constant(nil)
         _inbox = State(initialValue: inbox)
         _isScreenEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
     }
@@ -292,6 +296,23 @@ import SwiftUI
         pendingDestination = nil
         inbox.selection.open(destination, connection: inbox.connection, profiles: inbox.profiles)
         if destination.opensScreen, let profile = inbox.selection.profile { openScreen(profile) }
+    }
+
+    private func openPendingRoom() {
+        guard let destination = pendingRoom, destination.server == server else { return }
+        let canAnswer = BotDeepLinkRouter.inboxCanAnswer(
+            link: inbox.link, hasConnection: inbox.connection != nil, hasSettled: hasSettled
+        )
+        let decision = BotRoomDeepLinkRouter.decide(destination, canAnswer: canAnswer, connectionID: inbox.connection?.id,
+                                                    loadedRoomIDs: inbox.searchableRoomIDs)
+        if decision == .wait { return }
+        pendingRoom = nil
+        if case .open = decision { roomSequence = nil }
+        inbox.selection.apply(decision)
+        if decision == .missing {
+            let serverName = home?.title ?? server.host ?? server.absoluteString
+            toast = String(localized: "That chat is no longer on \(serverName).")
+        }
     }
 
     private func openSearchSelection() {
@@ -680,11 +701,12 @@ extension BotsInboxView {
             }
             .task(id: revision) {
                 inbox.offlineCache = modelContext
-                await inbox.open(); hasSettled = true; openPendingDestination()
+                await inbox.open(); hasSettled = true; openPendingDestination(); openPendingRoom()
                 if let connection = inbox.connection { await ScreenHolds.reconcile(server: server, connection: connection) }
             }
-            .onChange(of: inbox.link) { openPendingDestination() }
+            .onChange(of: inbox.link) { openPendingDestination(); openPendingRoom() }
             .onChange(of: pendingDestination) { openPendingDestination() }
+            .onChange(of: pendingRoom) { openPendingRoom() }
             .refreshable { await inbox.open() }
             .onChange(of: scenePhase) {
                 switch scenePhase {

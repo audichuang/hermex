@@ -140,13 +140,23 @@ import XCTest
                        BotDestination(server: server, connectionID: connection.id, profile: "inbox-triage"))
     }
 
-    func testARoomSessionNeverOpens() async throws {
+    func testARoomSessionNamesItsRoom() async throws {
         let wire = LookupWire()
         wire.rows = ["default": ["abc": row("abc", "default", title: "Group: room-7", hidden: true)]]
 
         let outcome = try await HermesSessionLookup.resolve(link("abc", profile: "default"), on: wire)
 
-        XCTAssertEqual(outcome, .room)
+        XCTAssertEqual(outcome, .room(roomID: "room-7"))
+    }
+
+    func testARoomSessionFoundWithoutAProfileIsNotAmbiguous() async throws {
+        let wire = LookupWire()
+        wire.profiles = [("default", true), ("research", false)]
+        wire.rows = ["research": ["abc": row("abc", "research", title: "Group: room-7", hidden: true)]]
+
+        let outcome = try await HermesSessionLookup.resolve(link("abc", profile: nil), on: wire)
+
+        XCTAssertEqual(outcome, .room(roomID: "room-7"))
     }
 
     func testASubagentLinkOpensItsParent() async throws {

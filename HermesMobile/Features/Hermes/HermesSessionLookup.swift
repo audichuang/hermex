@@ -43,7 +43,7 @@ enum HermesSessionLinkOutcome: Equatable {
         case found(SessionSummary)
         case gone
         case ambiguous
-        case room
+        case room(roomID: String)
     }
 
     static let lineageHopLimit = 8
@@ -83,7 +83,11 @@ enum HermesSessionLinkOutcome: Equatable {
             }
         }
         let row = try await listRow(hit.row, profile: hit.profile, on: wire)
-        return row.isRoomSession ? .room : .found(row.summary(in: hit.profile))
+        if row.isRoomSession {
+            let title = row.title ?? ""
+            return .room(roomID: String(title.dropFirst("Group: ".count)).trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return .found(row.summary(in: hit.profile))
     }
 
     private static func exactRow(_ key: String, profile: String, on wire: any BotTransport) async throws -> BotJSON? {
