@@ -209,6 +209,87 @@ import XCTest
         XCTAssertFalse(BotDeepLinkRouter.inboxCanAnswer(link: .idle, hasConnection: false, hasSettled: false))
     }
 
+    private func room(server: URL? = nil, connectionID: UUID? = nil, roomID: String = "room-7") -> BotRoomDestination {
+        BotRoomDestination(server: server ?? serverA, connectionID: connectionID ?? self.connectionID, roomID: roomID)
+    }
+
+    private func resolveRoom(
+        _ destination: BotRoomDestination, state: AuthManager.State, servers: [ServerAccount], connectionID: UUID?
+    ) -> BotRoomDeepLinkOutcome {
+        BotRoomDeepLinkRouter.resolve(destination, state: state, servers: servers, botConnectionID: { _ in connectionID })
+    }
+
+    func testARoomLinkRoundTripsServerConnectionAndRoom() throws {
+        let url = try XCTUnwrap(HermesDeepLink.botRoomURL(for: room()))
+
+        XCTAssertEqual(HermesDeepLink.botRoomDestination(from: url), room())
+        XCTAssertNil(HermesDeepLink.botRoomURL(for: room(roomID: "  ")))
+    }
+
+    func testARoomLinkMissingAPartIsDropped() throws {
+        let full = try XCTUnwrap(HermesDeepLink.botRoomURL(for: room()))
+        for name in ["server", "connection", "room"] {
+            var components = try XCTUnwrap(URLComponents(url: full, resolvingAgainstBaseURL: false))
+            components.queryItems?.removeAll { $0.name == name }
+            XCTAssertNil(HermesDeepLink.botRoomDestination(from: try XCTUnwrap(components.url)), name)
+        }
+        let bot = try XCTUnwrap(HermesDeepLink.botURL(for: destination()))
+        XCTAssertNil(HermesDeepLink.botRoomDestination(from: bot))
+        XCTAssertNil(HermesDeepLink.botDestination(from: full))
+        XCTAssertNil(HermesDeepLink.sessionID(from: full))
+    }
+
+    func testARoomLinkRoutesByServerAndSignIn() {
+        let hermes = [account(serverA, kind: .hermes), account(serverB, kind: .hermes)]
+        XCTAssertEqual(resolveRoom(room(), state: .loggedIn(server: serverB), servers: [account(serverB, kind: .hermes)],
+                                   connectionID: connectionID), .ignore)
+        XCTAssertEqual(resolveRoom(room(), state: .loggedIn(server: serverA), servers: hermes, connectionID: UUID()), .ignore)
+        XCTAssertEqual(resolveRoom(room(), state: .loggedIn(server: serverA), servers: [account(serverA)],
+                                   connectionID: connectionID), .ignore)
+        XCTAssertEqual(resolveRoom(room(server: serverB), state: .loggedIn(server: serverA), servers: hermes,
+                                   connectionID: connectionID), .switchServer(account(serverB, kind: .hermes), room(server: serverB)))
+        XCTAssertEqual(resolveRoom(room(), state: .loggedOut(server: serverA), servers: hermes, connectionID: connectionID),
+                       .waitForSignIn(room()))
+        XCTAssertEqual(resolveRoom(room(), state: .loggedIn(server: serverA), servers: hermes, connectionID: connectionID),
+                       .open(room()))
+    }
+
+    func testAHeldRoomLinkSurvivesSignInAndAServerSwitch() {
+        let hermes = [account(serverA, kind: .hermes), account(serverB, kind: .hermes)]
+        let saved: @MainActor (URL) -> UUID? = { _ in self.connectionID }
+        var links = PendingLinks()
+
+        XCTAssertNil(links.route(room(), state: .loggedOut(server: serverA), servers: hermes, botConnectionID: saved))
+        XCTAssertEqual(links.botRoom, room())
+
+        XCTAssertEqual(links.reroute(state: .loggedIn(server: serverB), servers: hermes, isBotModeEnabled: true,
+                                     botConnectionID: saved), account(serverA, kind: .hermes))
+        XCTAssertEqual(links.botRoom, room())
+
+        XCTAssertNil(links.reroute(state: .loggedIn(server: serverA), servers: hermes, isBotModeEnabled: true,
+                                   botConnectionID: saved))
+        XCTAssertEqual(links.botRoom, room())
+
+        links.bot = destination()
+        _ = links.route(room(), state: .loggedOut(server: serverA), servers: hermes, botConnectionID: saved)
+        XCTAssertNil(links.bot)
+        XCTAssertEqual(links.botRoom, room())
+    }
+
+    func testARoomLinkOpensOnlyARoomTheLoadedListHas() {
+        let target = room()
+        let key = BotRoomKey(server: serverA, connectionID: connectionID, roomID: "room-7")
+        func decide(canAnswer: Bool = true, connection: UUID? = nil, ids: Set<String>?) -> BotRoomLinkDecision {
+            BotRoomDeepLinkRouter.decide(target, canAnswer: canAnswer, connectionID: connection ?? connectionID, loadedRoomIDs: ids)
+        }
+
+        XCTAssertEqual(decide(canAnswer: false, ids: nil), .wait)
+        XCTAssertEqual(decide(ids: ["room-7"]), .open(key))
+        XCTAssertEqual(decide(ids: ["room-8"]), .missing)
+        XCTAssertEqual(decide(ids: nil), .missing)
+        XCTAssertEqual(decide(connection: UUID(), ids: ["room-7"]), .missing)
+    }
+
     func testADeepLinkedConversationOpensTheBotsCurrentChat() async {
         for linked in ["root-then", "root-now"] {
             let wire = BotFixtureWire()

@@ -858,8 +858,14 @@ struct HermesSessionListView: View {
             showLinkNotice(String(localized: "That chat is no longer on \(server)."))
         case .ambiguous:
             showLinkNotice(String(localized: "That chat is in more than one Profile. Open it from Sessions."))
-        case .room:
-            break
+        case .room(let roomID):
+            let room = BotRoomDestination(server: entry.server, connectionID: entry.connection.id, roomID: roomID)
+            if let url = HermesDeepLink.botRoomURL(for: room) {
+                AppIntentRouter.shared.requestDeepLink(url)
+            } else {
+                let server = home?.title ?? entry.server.host ?? entry.server.absoluteString
+                showLinkNotice(String(localized: "That chat is no longer on \(server)."))
+            }
         }
     }
 

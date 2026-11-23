@@ -93,6 +93,7 @@ struct ContentView: View {
                 .id(server)
         case .loggedIn(let server) where authManager.kind(of: server) == .hermes:
             HermesServerHome(authManager: authManager, server: server, pendingBotDestination: $pendingLinks.bot,
+                             pendingBotRoom: $pendingLinks.botRoom,
                              pendingSessionDestination: $pendingLinks.hermesSession,
                              pendingNewChat: $pendingLinks.hermesNewChat, pendingUsage: $pendingLinks.hermesUsage,
                              pendingShare: shares.offered(to: server), claimShare: { shares.claim($0) },
@@ -159,7 +160,13 @@ struct ContentView: View {
             return
         }
 
+        if let destination = HermesDeepLink.botRoomDestination(from: url) {
+            switchServer(pendingLinks.route(destination, state: authManager.state, servers: authManager.servers))
+            return
+        }
+
         if let destination = HermesDeepLink.botDestination(from: url) {
+            pendingLinks.botRoom = nil
             switchServer(pendingLinks.route(destination, state: authManager.state, servers: authManager.servers,
                                             isBotModeEnabled: isBotModeEnabled))
             return
@@ -529,6 +536,7 @@ struct HermesServerHome: View {
     @Bindable var authManager: AuthManager
     let server: URL
     @Binding var pendingBotDestination: BotDestination?
+    @Binding var pendingBotRoom: BotRoomDestination?
     @Binding var pendingSessionDestination: HermesSessionDestination?
     @Binding var pendingNewChat: HermesNewChatDestination?
     @Binding var pendingUsage: HermesUsageDestination?
@@ -545,6 +553,7 @@ struct HermesServerHome: View {
     @State private var isPresentingAddServer = false
 
     init(authManager: AuthManager, server: URL, pendingBotDestination: Binding<BotDestination?>,
+         pendingBotRoom: Binding<BotRoomDestination?> = .constant(nil),
          pendingSessionDestination: Binding<HermesSessionDestination?>, pendingNewChat: Binding<HermesNewChatDestination?>,
          pendingUsage: Binding<HermesUsageDestination?> = .constant(nil),
          pendingShare: SharedImportReservation?, claimShare: @escaping (SharedImportReservation) -> Bool,
@@ -555,6 +564,7 @@ struct HermesServerHome: View {
         self.authManager = authManager
         self.server = server
         _pendingBotDestination = pendingBotDestination
+        _pendingBotRoom = pendingBotRoom
         _pendingSessionDestination = pendingSessionDestination
         _pendingNewChat = pendingNewChat
         _pendingUsage = pendingUsage
@@ -603,6 +613,9 @@ struct HermesServerHome: View {
         .onChange(of: pendingBotDestination, initial: true) {
             if pendingBotDestination != nil { tab = .bots; settings = nil }
         }
+        .onChange(of: pendingBotRoom, initial: true) {
+            if pendingBotRoom != nil { tab = .bots; settings = nil }
+        }
         .onChange(of: pendingSessionDestination, initial: true) {
             guard pendingSessionDestination != nil else { return }
             if sessions == nil { pendingSessionDestination = nil; return }
@@ -649,7 +662,8 @@ struct HermesServerHome: View {
                                       isCoveredByHome: { settings != nil || isPresentingAddServer })
                     .id(sessions.entry.id)
             } else {
-                BotsInboxView(server: server, pendingDestination: $pendingBotDestination, home: home, inbox: inbox)
+                BotsInboxView(server: server, pendingDestination: $pendingBotDestination, pendingRoom: $pendingBotRoom,
+                              home: home, inbox: inbox)
             }
         }
         .onAppear(perform: readConnection)
@@ -805,6 +819,7 @@ struct PendingLinks {
     var newChatRequest: NewChatRequest?
     var webuiPush: WebuiPushDestination?
     var bot: BotDestination?
+    var botRoom: BotRoomDestination?
     var hermesSession: HermesSessionDestination?
     var hermesNewChat: HermesNewChatDestination?
     var hermesUsage: HermesUsageDestination?
@@ -854,6 +869,9 @@ struct PendingLinks {
         if let bot {
             account = route(bot, state: state, servers: servers, isBotModeEnabled: isBotModeEnabled,
                             botConnectionID: botConnectionID) ?? account
+        }
+        if let botRoom {
+            account = route(botRoom, state: state, servers: servers, botConnectionID: botConnectionID) ?? account
         }
         if let hermesSession { account = route(hermesSession, state: state, servers: servers) ?? account }
         if let hermesNewChat { account = route(hermesNewChat, state: state, servers: servers) ?? account }

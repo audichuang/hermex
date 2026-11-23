@@ -1531,6 +1531,11 @@ once `open()` has settled, and a Profile the server no longer has simply leaves
 the user on that inbox. Opening follows the ordinary canonical resume rules: a
 link never sends a prompt and never auto-continues on its own.
 
+A second route opens a group room: `hermes-agent://bot-room?server=…&connection=…&room=…`
+(`BotRoomDestination` and `BotRoomDeepLinkRouter` in `Features/Bots/BotRoomDeepLink.swift`).
+It routes like the bot route but only for Hermes servers, and `BotsInboxView` opens the
+room only once the inbox is live and its room list is loaded (`BotRoomDeepLinkRouter.decide`).
+
 `conversation` is the bot's durable canonical root when the sender knows it. It is
 seeded as `HermesConversation.root` (`linkedRoot`), so a link to a chat the host has since
 replaced opens the current one with the same notice as a reattach (#1339).
@@ -2224,7 +2229,12 @@ pages. Identical room IDs on different connections never share history.
 
 The gateway owns room execution. iOS may poll reads while a room is visible;
 it never orchestrates member turns, retries work, or opens the hidden
-`Group: <room_id>` sessions. There are no room push events at the tested pin.
+`Group: <room_id>` sessions. The gateway emits no room push events, but hermex-push
+sends an ordinary `reply` push for each member's hidden `Group: <room_id>` session.
+Tapping it resolves the session link, and `HermesSessionLookup` reports `.room(roomID:)`
+from the title; the app then opens the room through the `bot-room` route. A title whose
+room id the loaded room list lacks (disbanded room, an old Desktop display-name title)
+shows the "no longer on" line instead.
 
 On inbox open and pull to refresh, `groups.capabilities.methods` gates room rows
 and name search on `groups.list`, `groups.state`, and `groups.log`. The list and
