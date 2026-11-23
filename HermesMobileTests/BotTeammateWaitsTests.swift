@@ -106,14 +106,21 @@ import XCTest
         XCTAssertEqual(model.visibleRows.map(\.id), ["1", "2"])
     }
 
-    func testARefreshBeforeTheSocketAttachesIsNotAFailure() async throws {
+    func testAStaleSocketBeforeAnyLoadIsNotAFailure() async throws {
+        let model = waits(try defaults()) { throw BotFailure.stale }
+        await model.refresh()
+        XCTAssertFalse(model.isStale)
+        XCTAssertFalse(model.isUnsupported)
+    }
+
+    func testADisconnectAfterASuccessfulLoadKeepsTheRowsAndMarksThemStale() async throws {
         var reply: Result<BotJSON, Error> = .success(answer([row("1", state: "working")]))
         let model = waits(try defaults()) { try reply.get() }
         await model.refresh()
 
         reply = .failure(BotFailure.stale)
         await model.refresh()
-        XCTAssertFalse(model.isStale)
+        XCTAssertTrue(model.isStale)
         XCTAssertFalse(model.isUnsupported)
         XCTAssertEqual(model.visibleRows.map(\.id), ["1"])
     }
