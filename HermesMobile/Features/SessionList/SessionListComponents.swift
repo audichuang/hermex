@@ -144,6 +144,9 @@ struct SessionListRowActions {
     let refreshProjects: () -> Void
     let export: (SessionSummary, SessionExportFormat) -> Void
     var addServer: (() -> Void)?
+    /// A Hermes row's Voice Call (#1091): opens its chat and starts a call there, as Hermes
+    /// Desktop's call talks on the chat that is open. Nil where calls don't exist.
+    var call: ((SessionSummary) -> Void)?
 }
 
 enum SessionRowActionPolicy {
@@ -1253,6 +1256,18 @@ struct SessionRowContextMenu: View {
             Label(isUnread ? "Mark as Read" : "Mark as Unread", systemImage: isUnread ? "envelope.open" : "envelope.badge")
         }
         .disabled(!canToggleUnread)
+
+        // A Bot Chat's call starts on the Bots side, and a read-only or archived session takes no
+        // Send; one call at a time, ended from its bar.
+        if let call = actions.call, session.hermes != nil, session.hermes?.isBotChat != true,
+           !session.isSessionReadOnly, session.archived != true, LiveVoiceCall.shared.call == nil {
+            Button {
+                call(session)
+            } label: {
+                Label("Voice Call", systemImage: "phone")
+            }
+            .disabled(isViewingCachedData)
+        }
 
         if SessionRowActionPolicy.offersMutationActions(for: session) {
             Button {

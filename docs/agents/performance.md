@@ -24,7 +24,7 @@ limit, so read the value there.
 | Signposts carry static names and integer metadata only | `PerformanceSignposts.swift` header | Review only |
 | Launch paints cached rows first, then the host's first page | `LaunchSignpost` | `scripts/benchmark-sim-launch` (`Launch` and `live` medians) |
 | Debug instruments compile out of Release | `HitchMeter` (`#if DEBUG`), `RenderProbe` (Release `hit` is an empty inlined stub) | `HitchMeterTests` covers the hitch math only; the Release compile-out is review only |
-| No continuously repainting animation; every animation respects Reduce Motion | `AGENTS.md` § Taste | Review only. `repeatForever` has zero uses in `HermesMobile/` today. One owner-approved exception: the Thinking slider in Model settings and its Settings picker (`ThinkingSliderTrack`, #1550) repaint at up to 60 fps while on screen, and only there. Reduce Motion stills them. |
+| No continuously repainting animation; every animation respects Reduce Motion | `AGENTS.md` § Taste | Review only. `repeatForever` has zero uses in `HermesMobile/` today. One owner-approved exception: the Thinking slider in Model settings and its Settings picker (`ThinkingSliderTrack`, #1550) repaint at up to 60 fps while on screen, and only there. Reduce Motion stills them. A second: the voice call (#1091). Its pill's waveform (`LiveVoiceWaveform`) and full-screen orb (`LiveVoiceOrb`) redraw on each of the transport's 100 ms audio level readings, which stop changing in silence, so they move only with sound; the orb also drifts every 250 ms while Hermes works. Only those views read the level (`LiveVoiceCallWaveform`, `LiveVoiceCallOrb`), and under Reduce Motion neither moves. |
 
 ## Guards
 

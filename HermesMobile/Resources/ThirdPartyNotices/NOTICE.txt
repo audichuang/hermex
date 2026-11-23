@@ -15,6 +15,8 @@ with the iOS app.
   See SwiftMath-LICENSE.txt.
 - KeychainAccess 4.2.2
   See KeychainAccess-LICENSE.txt.
+- WebRTC / stasel/WebRTC 157.0.0 (prebuilt WebRTC.xcframework, M157)
+  See WebRTC-LICENSE.txt.
 - NetworkImage 6.0.1
   See NetworkImage-LICENSE.txt.
 - swift-cmark / cmark-gfm 0.9.0

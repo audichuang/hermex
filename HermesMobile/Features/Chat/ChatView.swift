@@ -307,6 +307,8 @@ struct ChatView: View {
     let onAPIError: (Error) -> Void
     let loadsInitialMessages: Bool
     let autoStartsVoiceInput: Bool
+    /// Start Voice Call opened it (#1091): the keyboard stays down for the call.
+    private let opensForVoiceCall: Bool
     let draftStore: ChatDraftStore
     let draftAttachmentStore: any ChatDraftAttachmentStoring
     let restoresDraftSettings: Bool
@@ -449,6 +451,7 @@ struct ChatView: View {
         self.onAPIError = onAPIError
         self.loadsInitialMessages = loadsInitialMessages
         self.autoStartsVoiceInput = autoStartsVoiceInput
+        opensForVoiceCall = hermesSession?.autoStartsVoiceCall == true
         self.draftStore = draftStore ?? .shared
         let resolvedDraftAttachmentStore = draftAttachmentStore ?? ChatDraftAttachmentStore.shared
         self.draftAttachmentStore = resolvedDraftAttachmentStore
@@ -468,7 +471,12 @@ struct ChatView: View {
         _initialAttachments = State(initialValue: initialAttachments)
         self.shareNotice = shareNotice
         let continuity = continuity ?? ChatContinuity()
+        // The chat the voice call talks on reopens on the call's own model (#1091).
+        if continuity.model == nil, let hermesSession, let live = LiveVoiceCall.shared.model(for: hermesSession) {
+            continuity.resume(live)
+        }
         _continuity = State(initialValue: continuity)
+        let isMadeHere = continuity.model == nil
         let model = continuity.model ?? ChatViewModel(
             session: session,
             server: server,
@@ -479,9 +487,21 @@ struct ChatView: View {
             draftStore: self.draftStore,
             backend: hermesSession.map { .hermes(HermesChatTurnCoordinator($0)) } ?? .webui
         )
-        model.hermesBotChatRoot = hermesSession?.botChatRoot
-        model.hermesLineageRoot = hermesSession?.lineageRoot
+        // A kept model keeps the roots it caches under, whichever chat value reopened it.
+        if isMadeHere {
+            model.hermesBotChatRoot = hermesSession?.botChatRoot
+            model.hermesLineageRoot = hermesSession?.lineageRoot
+        }
+        model.hermesSeat = hermesSession.map {
+            var seat = $0
+            seat.autoStartsVoiceInput = false
+            seat.autoStartsVoiceCall = false
+            return seat
+        }
         model.onHermesDraftKeyChange = onHermesDraftKeyChange
+        model.isReadOnlyForVoice = session.isSessionReadOnly
+        // Only a model made here: a kept one already took its request.
+        if isMadeHere, hermesSession?.autoStartsVoiceCall == true { model.requestVoiceCall() }
         _viewModel = State(initialValue: model)
         _isScrolledNearBottom = State(initialValue: model.followLatch.isFollowing)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
@@ -731,7 +751,10 @@ struct ChatView: View {
             showsNewChatControls: showsNewChatControls,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
-            hermesTranscriber: hermesTranscriber
+            hermesTranscriber: hermesTranscriber,
+            voiceCall: viewModel.voiceCallInProgress,
+            onStartVoiceCall: viewModel.offersVoiceCall ? { viewModel.startVoiceCall() } : nil,
+            onStartRequestedVoiceCall: viewModel.isRequestedVoiceCallReady ? { viewModel.startRequestedVoiceCall() } : nil
         )
         .environment(\.layoutDirection, chatLayoutDirection)
         .background(
@@ -3987,7 +4010,7 @@ struct ChatView: View {
         guard !didApplyInitialComposerFocusPolicy else { return }
         guard didCompleteInitialAppearance, isInitialComposerFocusContentReady else { return }
 
-        if !viewModel.messages.isEmpty {
+        if !viewModel.messages.isEmpty || opensForVoiceCall {
             didApplyInitialComposerFocusPolicy = true
             return
         }
