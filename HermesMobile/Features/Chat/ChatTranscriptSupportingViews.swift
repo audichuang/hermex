@@ -1215,7 +1215,6 @@ struct PinnedLocalNoticeStack: View {
                     Text(Self.plainText(notice))
                         .font(AppFont.footnote())
                         .foregroundStyle(.appPrimary)
-                        .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }

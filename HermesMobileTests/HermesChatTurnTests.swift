@@ -1992,6 +1992,18 @@ import SwiftUI
     }
 }
 
+@MainActor final class PinnedLocalNoticeStackSizingTests: XCTestCase {
+    func testALongFallbackLineIsNotClippedToTwoLines() {
+        func height(_ notice: String) -> CGFloat {
+            UIHostingController(rootView: PinnedLocalNoticeStack(notices: [notice]))
+                .sizeThatFits(in: CGSize(width: 390, height: 4000)).height
+        }
+        let twoLines = height("a\nb")
+        let fallback = height("⚠️ Model fallback: claude-sonnet via anthropic could not respond (context window exceeded); using gpt-6.2-sol via openai. Primary retry eligible in ~300 s; recovery is not guaranteed.")
+        XCTAssertGreaterThan(fallback, twoLines + 1)
+    }
+}
+
 @MainActor private final class ManualNoticeTimer {
     private(set) var delays: [Duration] = []
     private(set) var tasks: [Task<Void, Never>] = []
